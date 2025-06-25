@@ -1,7 +1,7 @@
 {
     "sleeper":{
         "projectName" : "sleeper-462701",
-        "credentialPath" : "sleeper-462701-admin.json",
+        "credentialPath" : "json/sleeper-462701-admin.json",
         "tb_sleeper_flatten" : "tb_sleeper.tb_sleeper_flatten",
         "tb_sleeper_psi" : "tb_sleeper.tb_sleeper_psi",
         "tb_product_no" : "tb_sleeper.tb_product_no"

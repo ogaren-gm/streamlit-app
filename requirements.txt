@@ -18,3 +18,4 @@ plotly==5.23.0
 tqdm==4.67.1
 db_dtypes==1.4.3
 plotly
+google-cloud-bigquery-storage==2.32.0
