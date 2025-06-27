@@ -43,7 +43,7 @@ class BigQuery():
         self.credentialPath = json_data[self.projectCode]['credentialPath']
         self.tb_sleeper_flatten = json_data[self.projectCode]['tb_sleeper_flatten']
         self.tb_sleeper_psi = json_data[self.projectCode]['tb_sleeper_psi']
-        self.tb_product_no = json_data[self.projectCode]['tb_product_no']
+        self.tb_sleeper_product = json_data[self.projectCode]['tb_sleeper_product']
         self._bqstorage = BigQueryReadClient(credentials=self.credentialPath)
 
         # -- Date Option
