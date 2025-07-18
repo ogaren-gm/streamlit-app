@@ -17,8 +17,8 @@ from streamlit_option_menu import option_menu
 
 st.set_page_config(layout="wide", page_title="SLPR Analytics")
 
-view01_name = "유입 대시보드"
-view03_name = "매체 대시보드"
+view01_name = "트래픽 대시보드"
+view03_name = "퍼포먼스 대시보드"
 view02_name = "제품 대시보드"
 
 

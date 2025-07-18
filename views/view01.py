@@ -17,7 +17,7 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정 (반드시 최상단)
     # ──────────────────────────────────
-    st.set_page_config(layout="wide", page_title="SLPR 대시보드")
+    st.set_page_config(layout="wide", page_title="SLPR 대시보드 | 트래픽 대시보드")
     st.markdown(
         """
         <style>
@@ -31,8 +31,10 @@ def main():
         """,
         unsafe_allow_html=True,
     )
-    st.subheader('유입 대시보드')
+    st.subheader('트래픽 대시보드')
     st.markdown("설명")
+    st.markdown(":primary-badge[:material/Cached: Update]ㅤD-1 데이터는 오전 중 예비 처리된 후, **15:00 이후** 매체 분류가 완료되어 최종 업데이트됩니다.")
+    # st.markdown(":green-badge[:material/star: INFO]ㅤ설명")
     st.divider()
 
 
@@ -49,7 +51,7 @@ def main():
         df = bq.get_data("tb_sleeper_psi")
         # 최소한의 전처리: 날짜 변환, 파생컬럼 준비
         df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d")
-        df["_sourceMedium"] = df["traffic_source__source"].astype(str) + " / " + df["traffic_source__medium"].astype(str)
+        df["_sourceMedium"] = df["collected_traffic_source__manual_source"].astype(str) + " / " + df["collected_traffic_source__manual_medium"].astype(str)
         df["_isUserNew_y"] = (df["first_visit"] == 1).astype(int)
         df["_isUserNew_n"] = (df["first_visit"] == 0).astype(int)
         df["_engagement_time_sec_sum"] = df["engagement_time_msec_sum"] / 1000
@@ -73,9 +75,9 @@ def main():
         sms_referral   = ['m.facebook.com / referral','l.facebook.com / referral','facebook.com / referral']
         conds = [
             df["_sourceMedium"].isin(['google / organic','naver / organic']),
-            df["traffic_source__source"].isin(paid_sources)   | df["_sourceMedium"].isin(['youtube / demand_gen','kakako / crm']),
-            df["traffic_source__source"].isin(owned_sources)  | (df["_sourceMedium"]=='kakao / channel_message'),
-            df["traffic_source__source"].isin(earned_sources) | df["_sourceMedium"].isin(sms_referral),
+            df["collected_traffic_source__manual_source"].isin(paid_sources)   | df["_sourceMedium"].isin(['youtube / demand_gen','kakako / crm']),
+            df["collected_traffic_source__manual_source"].isin(owned_sources)  | (df["_sourceMedium"]=='kakao / channel_message'),
+            df["collected_traffic_source__manual_source"].isin(earned_sources) | df["_sourceMedium"].isin(sms_referral),
         ]
         choices = ['ETC','Paid','Owned','Earned']
         df["isPaid_4"] = np.select(conds, choices, default='ETC')
@@ -152,7 +154,7 @@ def main():
     
     # 초기화 버튼 (기간 제외, 나머지 필터만 세션리셋)
     st.sidebar.button(
-        "♻️ 필터 초기화",
+        "🗑️ 필터 초기화",
         on_click=reset_filters
     )
 
@@ -179,14 +181,10 @@ def main():
     # 6. (1) 유입 추이
     # ──────────────────────────────────
     # st.markdown("<h5 style='margin:0'>유입 추이</h5>", unsafe_allow_html=True)
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>유입</span> 추이</h5>", unsafe_allow_html=True)
-    _col1, _col2 = st.columns([1, 25])
-    with _col1:
-        # badge() 자체를 호출만 하고, 반환값을 쓰지 마세요
-        st.badge("Info", icon=":material/star:", color="green")
-    with _col2:
-        st.markdown("설명")
-    
+    # st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>방문 추이</span></h5>", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>방문 추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **방문수, 고유 사용자, 신규 및 재방문수** 현황을 확인할 수 있습니다.")
+
     
     df_daily = (
         df.groupby("event_date")[["pseudo_session_id", "user_pseudo_id", "_isUserNew_y","_isUserNew_n"]]
@@ -413,12 +411,10 @@ def main():
     # ──────────────────────────────────
     st.divider()
     # st.markdown("<h5 style='margin:0'>유입 현황</h5>", unsafe_allow_html=True)
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>유입</span> 현황</h5>", unsafe_allow_html=True)
-    _col1, _col2 = st.columns([1, 25])
-    with _col1:
-        st.badge("Info", icon=":material/star:", color="green")
-    with _col2:
-        st.markdown("설명")
+    # st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>방문 현황</span></h5>", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>방문 현황</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ**광고유무, 디바이스, 접속지역**별 추이를 확인하고, 하단에서는 선택한 행 필드를 기준으로 해당 지표들을 피벗하여 조회할 수 있습니다.")
+
         
     col_paid, col_device, col_geo = st.columns(3)
 
@@ -499,10 +495,10 @@ def main():
 
     # (2) 매핑
     row_map = {
-        "날짜":        "event_date",
-        "세션 소스":   "traffic_source__source",
-        "세션 매체":   "traffic_source__medium",
-        "세션 캠페인":"traffic_source__name"
+        "날짜":       "event_date",
+        "세션 소스":   "collected_traffic_source__manual_source",
+        "세션 매체":   "collected_traffic_source__manual_medium",
+        "세션 캠페인": "collected_traffic_source__manual_campaign_name"
     }
     col_map = {
         "광고유무":    "isPaid_4",
@@ -599,12 +595,10 @@ def main():
     # ──────────────────────────────────
     st.divider()
     # st.markdown("<h5 style='margin:0'>액션 추이</h5>", unsafe_allow_html=True)
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>액션</span> 추이</h5>", unsafe_allow_html=True)
-    _col1, _col2 = st.columns([1, 25])
-    with _col1:
-        st.badge("Info", icon=":material/star:", color="green")
-    with _col2:
-        st.markdown("설명")
+    # st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>액션</span> 추이</h5>", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>주요 이벤트 현황</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ**제품탐색, 관심표현, 전환의도**별 추이를 확인하고, 하단에서는 선택한 행 필드를 기준으로 해당 지표들을 피벗하여 조회할 수 있습니다.")
+
 
     # (a) 메트릭 집계
     metrics_df = (
@@ -715,10 +709,10 @@ def main():
 
     # (d) 매핑 정의
     row_map = {
-        "날짜":        "event_date",
-        "세션 소스":   "traffic_source__source",
-        "세션 매체":   "traffic_source__medium",
-        "세션 캠페인":"traffic_source__name"
+        "날짜":       "event_date",
+        "세션 소스":   "collected_traffic_source__manual_source",
+        "세션 매체":   "collected_traffic_source__manual_medium",
+        "세션 캠페인": "collected_traffic_source__manual_campaign_name"
     }
     inv_row_map = {v:k for k,v in row_map.items()}
     col_labels = {
@@ -802,7 +796,7 @@ def main():
         gridOptions=grid_opts,
         height=265,
         theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
-        fit_columns_on_grid_load=False,
+        fit_columns_on_grid_load=True,
         allow_unsafe_jscode=True
     )
 

@@ -36,14 +36,19 @@ class BigQuery():
         
         # -- Allocation
         # Read json file and allocate table information.
-        f  = open('json/bigquery_projectCode.json', encoding='UTF-8')
+        f  = open('C:/_code/streamlit-app/streamlit-app/json/bigquery_projectCode.json', encoding='UTF-8')
+        
         json_data = json.loads(f.read(),strict=False) 
         self.projectCode = projectCode
         self.projectName = json_data[self.projectCode]['projectName']
         self.credentialPath = json_data[self.projectCode]['credentialPath']
+        
+        # 테이블 추가
         self.tb_sleeper_flatten = json_data[self.projectCode]['tb_sleeper_flatten']
-        self.tb_sleeper_psi = json_data[self.projectCode]['tb_sleeper_psi']
+        self.tb_sleeper_psi     = json_data[self.projectCode]['tb_sleeper_psi']
         self.tb_sleeper_product = json_data[self.projectCode]['tb_sleeper_product']
+        self.tb_media           = json_data[self.projectCode]['tb_media']
+
         self._bqstorage = BigQueryReadClient(credentials=self.credentialPath)
 
         # -- Date Option
@@ -104,6 +109,7 @@ class BigQuery():
     #     return data
 
 
+
     def get_data(self, tb_name):
 
         credentials = service_account.Credentials.from_service_account_file(self.credentialPath)
@@ -127,5 +133,76 @@ class BigQuery():
         end   = datetime.now().date() - pd.Timedelta(days=self.endDate)
         df = df[(df["event_date"].dt.date >= start) & (df["event_date"].dt.date <= end)]
         
+        
+        # df_bigquery 전처리 (mask_invalid_domains)
+        def mask_invalid_domains(df, cols_to_clean, invalid_patterns):
+            pattern = re.compile("|".join(invalid_patterns))
+
+            for c in cols_to_clean:
+                # 문자열 "None"을 NaN 으로
+                df[c] = df[c].replace({'None': np.nan})
+                # 패턴에 매칭되는 값만 NaN 처리
+                mask = df[c].astype(str).str.contains(pattern, na=False)
+                df.loc[mask, c] = np.nan
+
+        try:
+            invalid_patterns = [
+                r'safeframe\.googlesyndication\.com',
+                r'syndicatedsearch',
+                r'googleads\.g\.doubleclick\.net']
+
+            cols_to_clean = [
+                'source',
+                'traffic_source__source',
+                'collected_traffic_source__manual_source',
+                'campaign',
+                'traffic_source__name',
+                'collected_traffic_source__manual_campaign_name']
+
+            mask_invalid_domains(df, cols_to_clean, invalid_patterns)
+            
+        except:
+            pass
+        
         print('호출완료!')
         return df
+    
+    
+    def append_data(self, df: pd.DataFrame, tb_name: str, if_exists: str = 'append'):
+        """
+        df DataFrame 을 tb_name 으로 지정된 BigQuery 테이블에 append 합니다.
+        
+        :param df: 업로드할 pandas.DataFrame
+        :param tb_name: 클래스 초기화 시 읽어온 속성 이름 (예: 'tb_sleeper_flatten')
+        :param if_exists: 'fail'|'replace'|'append' 중 하나 (기본 'append')
+        """
+        # 1) 자격증명 로드
+        credentials = service_account.Credentials.from_service_account_file(self.credentialPath)
+        client = bigquery.Client(credentials=credentials, project=self.projectName)
+                
+        # 테이블 참조
+        table_ref = getattr(self, tb_name)  # 예: "project.dataset.table"
+        table     = client.get_table(table_ref)
+
+        # 3) 로드 설정
+        job_config = bigquery.LoadJobConfig()
+        if if_exists == 'append':
+            job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
+        elif if_exists == 'replace':
+            job_config.write_disposition = bigquery.WriteDisposition.WRITE_TRUNCATE
+        else:  # fail
+            job_config.write_disposition = bigquery.WriteDisposition.WRITE_EMPTY
+
+        # (필요에 따라 스키마 자동 감지)
+        job_config.autodetect = True
+
+        # 4) DataFrame → BigQuery 로드
+        load_job = client.load_table_from_dataframe(
+            dataframe    = df,
+            destination  = table,
+            job_config   = job_config,
+            # create_bqstorage_client=self._bqstorage  # 필요시
+        )
+        print(f"Appending to `{table}` ... job {load_job.job_id} started.")
+        load_job.result()  # 완료 대기
+        print(f"Loaded {load_job.output_rows} rows into {table}.")
