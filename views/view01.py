@@ -11,6 +11,9 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import JsCode
 import io
 
+from google.oauth2.service_account import Credentials
+import gspread
+
 
 def main():
         
@@ -914,3 +917,167 @@ def main():
     #     allow_unsafe_jscode=True,
     #     # enable_enterprise_modules=True
     # )
+
+
+
+    # 1) 스프레드시트 로드
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    json_path = "C:/_code/auth/sleeper-461005-c74c5cd91818.json"
+    creds = Credentials.from_service_account_file(json_path, scopes=scope)
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_url('https://docs.google.com/spreadsheets/d/1chXeCek1UZPyCr18zLe7lV-8tmv6YPWK6cEqAJcDPqs/edit?gid=695160982#gid=695160982')
+    ws = sh.worksheet('raw_매출_테이블') # 시트 명
+    df = pd.DataFrame(ws.get_all_records())
+
+
+    # 1) 슬립퍼·누어 중 온라인·오프라인 × 주문 수·주문 금액 필터
+    mask = (
+        df['카테고리'].isin(['온라인', '오프라인']) &
+        df['구분'].isin(['주문 수', '주문 금액']) &
+        df['브랜드'].isin(['슬립퍼', '누어'])
+    )
+    df_target = df.loc[mask, ['카테고리', '구분', '값']]
+
+    # 2) 카테고리·구분별 합계 계산
+    df_agg = (
+        df_target
+        .groupby(['카테고리', '구분'], as_index=False)['값']
+        .sum()
+    )
+    # 브랜드 컬럼 추가
+    df_agg['브랜드'] = 'TOTAL'
+
+    # 3) 원본 df 컬럼 순서에 맞추기
+    for col in df.columns:
+        if col not in df_agg.columns:
+            df_agg[col] = None  # 또는 적절한 기본값
+
+    df_agg = df_agg[df.columns]  # 컬럼 순서 정렬
+
+    # 4) 원본 df 뒤에 추가
+    df = pd.concat([df, df_agg], ignore_index=True)
+
+    # ────────────────────────────────────────────────
+    # 2) 주문 수 · 주문 금액 집계 & 주문당 금액 계산
+    # ────────────────────────────────────────────────
+    # pivot으로 “주문 수”와 “주문 금액” 합계
+    df_metrics = (
+        df
+        .query("구분 in ['주문 수','주문 금액']")
+        .pivot_table(
+            index=["일자","브랜드","카테고리"],
+            columns="구분",
+            values="값",
+            aggfunc="sum",
+            fill_value=0
+        )
+    )
+    # 주문당 금액 생성
+    df_metrics["주문당 금액"] = (
+        df_metrics["주문 금액"] / df_metrics["주문 수"]
+    ).replace([np.inf, -np.inf], 0).round(2)
+
+    # ────────────────────────────────────────────────
+    # 3) 브랜드×카테고리로 다시 pivot → 멀티인덱스 컬럼
+    # ────────────────────────────────────────────────
+    df_wide = df_metrics.pivot_table(
+        index="일자",
+        columns=["브랜드","카테고리"],
+        values=["주문 수","주문 금액","주문당 금액"],
+        aggfunc="sum",
+        fill_value=0
+    )
+
+    # ────────────────────────────────────────────────
+    # 4) reset_index → 단일 레벨 DataFrame, 컬럼명 flatten
+    # ────────────────────────────────────────────────
+    df_flat = df_wide.reset_index()
+    # 컬럼명을 "브랜드_카테고리_지표" 형식으로 평탄화
+    flat_cols = ["일자"] + [
+        f"{brand}_{category}_{metric}"
+        for metric, brand, category in df_wide.columns
+    ]
+    df_flat.columns = flat_cols
+
+    # ────────────────────────────────────────────────
+    # 5) 합계행 계산
+    # ────────────────────────────────────────────────
+    bottom = {"일자": "합계"}
+    for col in flat_cols:
+        if col == "일자":
+            continue
+        bottom[col] = (
+            int(df_flat[col].sum())
+            if np.issubdtype(df_flat[col].dtype, np.number)
+            else ""
+        )
+
+    # ────────────────────────────────────────────────
+    # 6) AgGrid ColumnDefs 직접 생성 (Parent > Child 구조)
+    # ────────────────────────────────────────────────
+    # 최상위 헤더: 브랜드 | 카테고리
+    brands     = df_wide.columns.levels[1].tolist()
+    categories = df_wide.columns.levels[2].tolist()
+    metrics    = ["주문 수","주문 금액","주문당 금액"]
+
+    column_defs = [{
+        "headerName": "일자",
+        "field": "일자",
+        "pinned": "left",
+        "cellStyle": {"textAlign": "left"},
+        "width": 110
+    }]
+
+    for brand in brands:
+        children_by_cat = []
+        for cat in categories:
+            metric_children = []
+            for m in metrics:
+                field_name = f"{brand}_{cat}_{m}"
+                metric_children.append({
+                    "headerName": m,
+                    "field": field_name,
+                    "type": ["numericColumn","customNumericFormat"],
+                    "valueFormatter": JsCode("""
+                        function(params){
+                            return params.value.toLocaleString();
+                        }
+                    """),
+                    "cellStyle": JsCode("params => ({ textAlign: 'right' })")
+                })
+            children_by_cat.append({
+                "headerName": cat,
+                "children": metric_children
+            })
+        column_defs.append({
+            "headerName": f"{brand} | {cat}",  # 이후에는 cat 루프 마지막 값이지만, 실제 AgGrid는 children 구조로 인식
+            "children": children_by_cat
+        })
+
+    # ────────────────────────────────────────────────
+    # 7) GridOptions 조립 & 렌더링
+    # ────────────────────────────────────────────────
+    grid_options = {
+        "columnDefs": column_defs,
+        "defaultColDef": {
+            "sortable": True,
+            "filter": True,
+            "resizable": True
+        },
+        "pinnedBottomRowData": [bottom],
+        "headerHeight": 30,
+        "groupHeaderHeight": 30
+    }
+
+    st.divider()
+    st.markdown("<h5 style='margin:0'>주문수 및 매출</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ브랜드×카테고리별 주문 현황")
+
+    AgGrid(
+        df_flat,
+        gridOptions=grid_options,
+        height=500,
+        fit_columns_on_grid_load=True,
+        theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
+        allow_unsafe_jscode=True
+    )
