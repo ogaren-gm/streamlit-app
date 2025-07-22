@@ -15,6 +15,8 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정 (반드시 최상단)
     # ──────────────────────────────────
+
+
     st.set_page_config(layout="wide", page_title="SLPR 대시보드 | 제품 대시보드")
     st.markdown(
         """
@@ -29,7 +31,9 @@ def main():
         """,
         unsafe_allow_html=True,
     )
+
     st.subheader("제품 대시보드")
+    # st.markdown('### <i class="bi bi-tags-fill"></i> 제품 대시보드',unsafe_allow_html=True)
     st.markdown("설명")
     st.markdown(":primary-badge[:material/Cached: Update]ㅤD-1 데이터는 오전 중 예비 처리된 후, **15:30 이후** 매체 분류가 완료되어 최종 업데이트됩니다.")
 

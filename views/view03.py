@@ -15,6 +15,7 @@ import math
 import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+import re
 
 
 
@@ -166,17 +167,17 @@ def main():
     )
     df_daily["날짜_표시"] = df_daily["event_date"].dt.strftime("%m월 %d일")
 
-    st.markdown("<h5 style='margin:0'>CPA 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **광고비(Gross) 당 전체 방문수** 현황을 확인할 수 있습니다.")
+    st.markdown("<h5 style='margin:0'>유입단가 추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **광고비(Gross)당 방문수**에 따른 유입단가를 확인할 수 있습니다.")
     # st.markdown(" ")
 
     col1, col2, col3 = st.columns([6.0, 0.2, 3.8])
     
     with col1:
         df_daily["날짜"] = df_daily["event_date"]
-        df_daily["CPA"] = df_daily["cost_gross_sum"] / df_daily["psi_sum"]
+        df_daily["유입단가"] = df_daily["cost_gross_sum"] / df_daily["psi_sum"]
         df_daily["날짜_표시"] = df_daily["날짜"].dt.strftime("%m월 %d일")
-        fig = px.line(df_daily, x="날짜", y=["CPA"], markers=True, labels={"variable":""})
+        fig = px.line(df_daily, x="날짜", y=["유입단가"], markers=True, labels={"variable":""})
         for d in df_daily["날짜"]:
             start, end = d - timedelta(hours=12), d + timedelta(hours=12)
             color = "blue" if d.weekday()==5 else "red" if d.weekday()==6 else None
@@ -184,7 +185,7 @@ def main():
                 fig.add_vrect(x0=start, x1=end, fillcolor=color,
                             opacity=0.2, layer="below", line_width=0)
         fig.update_xaxes(tickvals=df_daily["날짜"], ticktext=df_daily["날짜_표시"])
-        fig.update_yaxes(range=[500, df_daily["CPA"].max()+200]) # y 축 고정
+        fig.update_yaxes(range=[500, df_daily["유입단가"].max()+200]) # y 축 고정
         fig.update_layout(
             xaxis_title=None,
             yaxis_title=None,
@@ -210,14 +211,14 @@ def main():
         }, inplace=True)
 
         # NA를 0으로 채우고 반올림
-        for col in ["방문수", "광고비", "광고비(G)", "CPA"]:
+        for col in ["방문수", "광고비", "광고비(G)", "유입단가"]:
             df_disp[col] = df_disp[col].fillna(0).round(0)
 
         # 파이썬 int로 변환
-        for col in ["방문수", "광고비", "광고비(G)", "CPA"]:
+        for col in ["방문수", "광고비", "광고비(G)", "유입단가"]:
             df_disp[col] = df_disp[col].apply(lambda x: int(x))
 
-        table_cols = ["방문수", "광고비", "광고비(G)", "CPA"]
+        table_cols = ["방문수", "광고비", "광고비(G)", "유입단가"]
         df_grid = df_disp[["날짜"] + table_cols]
 
         bottom = {
@@ -231,6 +232,7 @@ def main():
             gb.configure_column(
                 col,
                 type=["numericColumn", "customNumericFormat"],
+                aggFunc = "sum",  # <- 합계자동변환~~
                 valueFormatter=JsCode("""
                     function(params) {
                         return params.value.toLocaleString();
@@ -246,6 +248,12 @@ def main():
             }
         """))
         grid_options = gb.build()
+        
+        grid_options["statusBar"] = {        # 합계자동변환~~ / 합계 footer 표시용 statusBar 설정
+                "statusPanels": [
+                    {"panel": "agAggregationComponent"}
+                ]
+            }
 
         base_theme = st.get_option("theme.base")
         ag_theme = "streamlit-dark" if base_theme == "dark" else "streamlit"
@@ -575,6 +583,33 @@ def main():
     for col in agg.columns:
         if col in sel_rows:
             continue
+
+        # CTR
+        if col == "CTR":
+            # CTR_raw 컬럼이 이미 숫자형(0~1)으로 남아 있으니, 평균 내고 % 포맷
+            avg_ctr = agg["CTR_raw"].mean() * 100
+            bottom["CTR"] = f"{avg_ctr.round(2)}%"
+            continue
+
+        # 평균세션시간
+        if col == "평균세션시간":
+            # 표시된 "HH:MM:SS" 문자열을 초 단위로 파싱 → 평균 → 다시 "HH:MM:SS"
+            secs = []
+            for t in agg["평균세션시간"]:
+                if isinstance(t, str) and re.match(r"^\d{2}:\d{2}:\d{2}$", t):
+                    hh, mm, ss = map(int, t.split(":"))
+                    secs.append(hh * 3600 + mm * 60 + ss)
+            if secs:
+                avg_sec = sum(secs) / len(secs)
+                hh = int(avg_sec // 3600)
+                mm = int((avg_sec % 3600) // 60)
+                ss = int(avg_sec % 60)
+                bottom["평균세션시간"] = f"{hh:02d}:{mm:02d}:{ss:02d}"
+            else:
+                bottom["평균세션시간"] = ""
+            continue
+        
+        # 나머지 숫자형은 합계, 비숫자형은 빈 문자열로 
         if pd.api.types.is_numeric_dtype(agg[col]):
             s = agg[col].sum()
             bottom[col] = s.item() if hasattr(s, "item") else s
@@ -626,32 +661,6 @@ def main():
         make_num_child("CTR",          "CTR"),
     ]
 
-    # # 5) columnDefs 구성 (headerClass 추가)
-    # column_defs = [
-    #     {
-    #         "headerName": "구분",
-    #         "children": [
-    #             {
-    #                 "headerName": r,
-    #                 "field": r,
-    #                 "cellStyle": JsCode("function(params){ return {'textAlign':'left'}; }")
-    #             }
-    #             for r in sel_rows
-    #         ]
-    #     },
-    #     {
-    #         "headerName": "MEDIA",
-    #         "headerClass": "media-header",        # ← 여기
-    #         "children": media_children
-    #     },
-    #     {
-    #         "headerName": "GA",
-    #         "headerClass": "ga-header",           # ← 여기
-    #         "children": ga_children
-    #     }
-    # ]
-        
-
     # 5) columnDefs 구성: “구분” 그룹에 period(기간) 추가  -  show_period=True 면 “기간” 을, 아니면 sel_rows 만
     group0_children = []
 
@@ -660,6 +669,7 @@ def main():
         group0_children.append({
             "headerName": "기간",
             "field": "period",
+            "pinned": "left",           # 스크롤해도 땡겨지지 않도록 고정
             "cellStyle": JsCode("function(params){ return {'textAlign':'left'}; }")
         })
 
@@ -668,12 +678,14 @@ def main():
         group0_children.append({
             "headerName": r,
             "field": r,
+            "pinned": "left",       # 스크롤해도 땡겨지지 않도록 고정
             "cellStyle": JsCode("function(params){ return {'textAlign':'left'}; }")
         })
 
     column_defs = [
         {
             "headerName": "구분",
+            "pinned": "left",            # 스크롤해도 땡겨지지 않도록 고정
             "children": group0_children
         },
         {
@@ -711,7 +723,394 @@ def main():
         agg,
         gridOptions=grid_options,
         fit_columns_on_grid_load=False,
-        height=510,
+        height=440,
         theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
         allow_unsafe_jscode=True
     )
+    
+
+    # ————————————————————————
+    # 8. 하단: 액션별 CPA 차트 3개
+    # ————————————————————————
+
+    # (1) date 필터만 빼고, 나머지 필터 그대로 적용
+    df_act = df[
+        (df.media_name.isin(filt_mn)    | df.media_name.isna()) &
+        (df.utm_source.isin(filt_src)   | df.utm_source.isna()) &
+        (df.utm_medium.isin(filt_med)   | df.utm_medium.isna()) &
+        (df.campaign_name.isin(filt_camp)| df.campaign_name.isna()) &
+        (df.adgroup_name.isin(filt_adgroup)| df.adgroup_name.isna()) &
+        (df.ad_name.isin(filt_ad)       | df.ad_name.isna()) &
+        (df.keyword_name.isin(filt_kw)  | df.keyword_name.isna()) &
+        (df.brand_type.isin(filt_brand)   | df.brand_type.isna()) &
+        (df.funnel_type.isin(filt_funnel)| df.funnel_type.isna()) &
+        (df.product_type.isin(filt_product)| df.product_type.isna())
+    ].copy()
+
+    # (2) 액션 플래그 집계 & CPA 계산
+    df_act["flag_PDP조회"]  = (df_act.view_item > 0).astype(int)
+    df_act["flag_PDPscr50"] = (df_act.product_page_scroll_50 > 0).astype(int)
+    df_act["flag_가격표시"]  = (df_act.product_option_price > 0).astype(int)
+    df_act["flag_쇼룸찾기"] = (df_act.find_nearby_showroom > 0).astype(int)
+    df_act["flag_쇼룸10초"] = (df_act.showroom_10s > 0).astype(int)
+    df_act["flag_장바구니"]  = (df_act.add_to_cart > 0).astype(int)
+    df_act["flag_쇼룸예약"] = (df_act.showroom_leads > 0).astype(int)
+
+    metrics_df = (
+        df_act
+        .groupby("event_date", as_index=False)
+        .agg(
+            PDP조회_세션수   = ("flag_PDP조회",      "sum"),
+            PDPscr50_세션수 = ("flag_PDPscr50",     "sum"),
+            가격표시_세션수  = ("flag_가격표시",      "sum"),
+            쇼룸찾기_세션수 = ("flag_쇼룸찾기",     "sum"),
+            쇼룸10초_세션수 = ("flag_쇼룸10초",     "sum"),
+            장바구니_세션수  = ("flag_장바구니",      "sum"),
+            쇼룸예약_세션수 = ("flag_쇼룸예약",     "sum"),
+            광고비_gross    = ("cost_gross",        "sum")
+        )
+    )
+
+    # CPA 컬럼 추가
+    action_cols = [
+        "PDP조회_세션수", "PDPscr50_세션수",
+        "가격표시_세션수","쇼룸찾기_세션수","쇼룸10초_세션수",
+        "장바구니_세션수","쇼룸예약_세션수"
+    ]
+    for col in action_cols:
+        metrics_df[f"{col}_CPA"] = metrics_df.apply(
+            lambda r: (r["광고비_gross"]/r[col]) if r[col] > 0 else 0,
+            axis=1
+        )
+
+    # 날짜 표시용 컬럼
+    metrics_df["날짜"] = metrics_df["event_date"].dt.strftime("%m월 %d일")
+
+    # (3) 컬럼 순서 재정렬
+    metrics_df = metrics_df.sort_values("event_date")
+
+    col_a, col_b, col_c = st.columns([1,1,1])
+    
+    # (A) 제품탐색 Action CPA
+    with col_a:
+        m1 = metrics_df.rename(columns={
+            "PDP조회_세션수_CPA": "PDP조회_CPA",
+            "PDPscr50_세션수_CPA": "PDPscr50_CPA"
+        })
+        fig1 = px.line(
+            m1, x="날짜",
+            y=["PDP조회_CPA","PDPscr50_CPA"],
+            markers=True, labels={"variable":""},
+            title="🔍 제품탐색 CPA"
+        )
+        fig1.update_layout(
+            height=400,
+            xaxis_title=None,
+            yaxis_title=None,
+            legend=dict(orientation="h", y=1.02, x=1,
+                        xanchor="right", yanchor="bottom")
+        )
+        st.plotly_chart(fig1, use_container_width=True)
+
+
+    # (B) 관심표현 Action CPA
+    with col_b:
+        m2 = metrics_df.rename(columns={
+            "가격표시_세션수_CPA":"가격표시_CPA",
+            "쇼룸찾기_세션수_CPA":"쇼룸찾기_CPA",
+            "쇼룸10초_세션수_CPA":"쇼룸10초_CPA"
+        })
+        fig2 = px.line(
+            m2, x="날짜",
+            y=["가격표시_CPA","쇼룸찾기_CPA","쇼룸10초_CPA"],
+            markers=True, labels={"variable":""},
+            title="❤️ 관심표현 CPA"
+        )
+        fig2.update_layout(
+            height=400,
+            xaxis_title=None,
+            yaxis_title=None,
+            legend=dict(orientation="h", y=1.02, x=1,
+                        xanchor="right", yanchor="bottom")
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+
+    # (C) 전환의도 Action CPA
+    with col_c:
+        m3 = metrics_df.rename(columns={
+            "장바구니_세션수_CPA":"장바구니_CPA",
+            "쇼룸예약_세션수_CPA":"쇼룸예약_CPA"
+        })
+        fig3 = px.line(
+            m3, x="날짜",
+            y=["장바구니_CPA","쇼룸예약_CPA"],
+            markers=True, labels={"variable":""},
+            title="🛒 전환의도 CPA"
+        )
+        fig3.update_layout(
+            height=400,
+            xaxis_title=None,
+            yaxis_title=None,
+            legend=dict(orientation="h", y=1.02, x=1,
+                        xanchor="right", yanchor="bottom")
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+
+
+    # ──────────────────────────────────
+    # 9‑0. 신규 시각화 전용 필터 (멀티셀렉트 + 라디오)
+    # ──────────────────────────────────
+    st.divider()
+    st.markdown("<h5>퍼포먼스 추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
+    st.markdown(" ")
+
+    # (A) 누적 기준 선택
+    sel_stack = st.radio(
+        "막대차트 누적 기준",
+        options=["없음", "매체", "브랜드", "품목", "퍼널"],
+        horizontal=True
+    )
+    stack_col = {
+        "매체":   "media_name",
+        "브랜드": "brand_type",
+        "품목":   "product_type",
+        "퍼널":   "funnel_type"
+    }.get(sel_stack, None)
+    show_legend = stack_col is not None
+
+    # (B) 필터 멀티셀렉트
+    f1, f2, f3, f4, f5, f6, f7 = st.columns(7)
+    with f1:
+        sel_viz_mn = st.multiselect("매체 선택", mn_opts, placeholder="전체", key="viz_mn")
+    with f2:
+        sel_viz_src = st.multiselect("소스 선택", src_opts, placeholder="전체", key="viz_src")
+    with f3:
+        sel_viz_med = st.multiselect("미디엄 선택", med_opts, placeholder="전체", key="viz_med")
+    with f4:
+        sel_viz_camp = st.multiselect("캠페인 선택", camp_opts, placeholder="전체", key="viz_camp")
+    with f5:
+        sel_viz_brand = st.multiselect("브랜드 구분 선택", brand_opts, placeholder="전체", key="viz_brand")
+    with f6:
+        sel_viz_product = st.multiselect("품목 유형 선택", product_opts, placeholder="전체", key="viz_product")
+    with f7:
+        sel_viz_funnel = st.multiselect("퍼널 구분 선택", funnel_opts, placeholder="전체", key="viz_funnel")
+
+    filt_viz_mn      = mn_opts      if not sel_viz_mn      else sel_viz_mn
+    filt_viz_src     = src_opts     if not sel_viz_src     else sel_viz_src
+    filt_viz_med     = med_opts     if not sel_viz_med     else sel_viz_med
+    filt_viz_camp    = camp_opts    if not sel_viz_camp    else sel_viz_camp
+    filt_viz_brand   = brand_opts   if not sel_viz_brand   else sel_viz_brand
+    filt_viz_product = product_opts if not sel_viz_product else sel_viz_product
+    filt_viz_funnel  = funnel_opts  if not sel_viz_funnel  else sel_viz_funnel
+
+    # (C) 필터 적용된 df_viz 정의
+    df_viz = df[
+        (df.media_name.isin(filt_viz_mn)    | df.media_name.isna()) &
+        (df.utm_source.isin(filt_viz_src)   | df.utm_source.isna()) &
+        (df.utm_medium.isin(filt_viz_med)   | df.utm_medium.isna()) &
+        (df.campaign_name.isin(filt_viz_camp)| df.campaign_name.isna()) &
+        (df.brand_type.isin(filt_viz_brand) | df.brand_type.isna()) &
+        (df.product_type.isin(filt_viz_product)| df.product_type.isna()) &
+        (df.funnel_type.isin(filt_viz_funnel)| df.funnel_type.isna())
+    ].copy()
+
+    # ──────────────────────────────────
+    # 9‑1. 일별 전체 집계 for CTR/CPC
+    # ──────────────────────────────────
+    daily_tot = (
+        df_viz
+        .groupby("event_date", as_index=False)
+        .agg(
+            광고비_gross=("cost_gross", "sum"),
+            노출수      =("impressions", "sum"),
+            클릭수      =("clicks",      "sum")
+        )
+    )
+    daily_tot["CTR"] = (
+        (daily_tot["클릭수"] / daily_tot["노출수"] * 100)
+        .round(2).astype(str) + "%"
+    )
+    daily_tot["CPC"] = daily_tot.apply(
+        lambda r: int(round(r["광고비_gross"] / r["클릭수"])) if r["클릭수"] > 0 else 0,
+        axis=1
+    )
+    daily_tot["날짜"] = daily_tot["event_date"].dt.strftime("%Y-%m-%d")
+
+    # ──────────────────────────────────
+    # 9‑2. 일별 스택 집계 for 막대차트
+    # ──────────────────────────────────
+    if stack_col:
+        df_bar = (
+            df_viz
+            .groupby(["event_date", stack_col], as_index=False)
+            .agg(
+                광고비_gross=("cost_gross","sum"),
+                노출수      =("impressions","sum"),
+                클릭수      =("clicks",     "sum")
+            )
+        )
+        color_arg, barmode = stack_col, "stack"
+    else:
+        df_bar = daily_tot[["event_date","광고비_gross","노출수","클릭수"]].copy()
+        color_arg, barmode = None, "group"
+
+    df_bar["날짜"] = df_bar["event_date"].dt.strftime("%Y-%m-%d")
+
+    # ──────────────────────────────────
+    # 9‑3. 차트 출력
+    # ──────────────────────────────────
+    c1, c2, c3 = st.columns([1,1,1])
+
+    with c1:
+        fig_cost = px.bar(
+            df_bar, x="날짜", y="광고비_gross",
+            color=color_arg, barmode=barmode, opacity=0.6,
+            labels={"광고비_gross":"광고비(G)"}
+        )
+        fig_cost.update_layout(title="💰 일별 광고비(G)", height=350,
+                               xaxis_title=None, yaxis_title=None,
+                               legend_title_text="", showlegend=show_legend)
+        st.plotly_chart(fig_cost, use_container_width=True)
+
+    with c2:
+        fig_imp = px.bar(
+            df_bar, x="날짜", y="노출수",
+            color=color_arg, barmode=barmode, opacity=0.6
+        )
+        fig_imp.update_layout(title="👁️ 일별 노출수", height=350,
+                              xaxis_title=None, yaxis_title=None,
+                              legend_title_text="", showlegend=show_legend)
+        st.plotly_chart(fig_imp, use_container_width=True)
+
+    with c3:
+        fig_ctr = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_ctr.add_trace(
+            go.Scatter(x=daily_tot["날짜"], y=daily_tot["CTR"],
+                       mode="lines+markers", name="CTR"),
+            secondary_y=False
+        )
+        fig_ctr.add_trace(
+            go.Scatter(x=daily_tot["날짜"], y=daily_tot["CPC"],
+                       mode="lines+markers", name="CPC"),
+            secondary_y=True
+        )
+        fig_ctr.update_layout(title="🖱️ 일별 CTR/CPC", height=350,
+                              xaxis_title=None,
+                              legend=dict(orientation="h", y=1.02, x=1,
+                                          xanchor="right", yanchor="bottom"),
+                              legend_title_text="")
+        fig_ctr.update_yaxes(title_text="CTR (%)", secondary_y=False)
+        fig_ctr.update_yaxes(title_text="CPC", secondary_y=True)
+        st.plotly_chart(fig_ctr, use_container_width=True)
+
+    # ──────────────────────────────────
+    # 9‑4. 피벗 테이블 with Parent→Child 헤더
+    # ──────────────────────────────────
+    if stack_col:
+        # df_viz에서 직접 집계 후 pivot
+        df_pivot = (
+            df_viz
+            .groupby(["event_date", stack_col], as_index=False)
+            .agg(
+                광고비_gross=("cost_gross","sum"),
+                노출수      =("impressions","sum"),
+                클릭수      =("clicks",     "sum")
+            )
+            .pivot(index="event_date", columns=stack_col)
+        )
+        # 컬럼 레벨 → 문자열
+        df_pivot.columns = [
+            f"{parent} | {'광고비(G)' if metric=='광고비_gross' else 
+                         '노출수' if metric=='노출수' else '클릭수'}"
+            for metric, parent in df_pivot.columns
+        ]
+        df_display = df_pivot.reset_index()
+        df_display["날짜"] = df_display["event_date"].dt.strftime("%Y-%m-%d")
+        df_display.drop(columns="event_date", inplace=True)
+
+        # CTR, CPC 계산
+        parents = sorted({c.split(" | ")[0] for c in df_display.columns if " | " in c})
+        for p in parents:
+            cost_col  = f"{p} | 광고비(G)"
+            imp_col   = f"{p} | 노출수"
+            click_col = f"{p} | 클릭수"
+            df_display[f"{p} | CTR"] = (
+                (df_display[click_col] / df_display[imp_col] * 100)
+                .round(2).astype(str) + "%"
+            )
+            df_display[f"{p} | CPC"] = (
+                (df_display[cost_col] / df_display[click_col])
+                .round(0).fillna(0).astype(int)
+            )
+            df_display.drop(columns=[click_col], inplace=True)
+
+        # 숫자형 반올림
+        for col in df_display.columns:
+            if col.endswith(" | 광고비(G)") or col.endswith(" | 노출수"):
+                df_display[col] = df_display[col].astype(int)
+
+        # AgGrid 렌더링 (원래 columnDefs 빌드 로직 사용)
+        columnDefs = [{
+            "headerName": "날짜", "field": "날짜", "pinned": "left",
+            "cellStyle": JsCode("params => ({ textAlign:'left' })"),
+            "width": 95
+        }]
+        metrics = ["광고비(G)", "노출수", "CTR", "CPC"]
+        for p in parents:
+            children = []
+            for m in metrics:
+                fld = f"{p} | {m}"
+                children.append({
+                    "headerName": m, "field": fld,
+                    "type": ["numericColumn","customNumericFormat"],
+                    "valueFormatter": JsCode(
+                        "function(params){return params.value.toLocaleString();}"
+                    ),
+                    "cellStyle": JsCode("params => ({ textAlign:'right' })"),
+                    "width": 95
+                })
+            columnDefs.append({"headerName": p, "children": children})
+
+        AgGrid(
+            df_display,
+            gridOptions={"columnDefs": columnDefs,
+                         "defaultColDef": {"sortable":True, "filter":True,
+                                           "resizable":True,
+                                           "wrapHeaderText":True,
+                                           "autoHeaderHeight":True,
+                                           "width":95}},
+            height=350,
+            fit_columns_on_grid_load=True,
+            theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
+            allow_unsafe_jscode=True
+        )
+
+    else:
+        df_display = daily_tot[["날짜","광고비_gross","노출수","CTR","CPC"]].copy()
+        df_display.rename(columns={"광고비_gross":"광고비(G)"}, inplace=True)
+        df_display["광고비(G)"] = df_display["광고비(G)"].astype(int)
+        df_display["노출수"]        = df_display["노출수"].astype(int)
+
+        gb = GridOptionsBuilder.from_dataframe(df_display)
+        gb.configure_default_column(flex=1, sortable=True, filter=True, width=95)
+        for field in ["광고비(G)","노출수","CPC"]:
+            gb.configure_column(
+                field=field,
+                type=["numericColumn","customNumericFormat"],
+                valueFormatter=JsCode("function(params){return params.value.toLocaleString();}")
+            )
+        gb.configure_column(
+            field="CTR",
+            cellStyle=JsCode("params => ({ textAlign:'right' })")
+        )
+
+        AgGrid(
+            df_display,
+            gridOptions=gb.build(),
+            height=350,
+            fit_columns_on_grid_load=True,
+            theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
+            allow_unsafe_jscode=True
+        )
