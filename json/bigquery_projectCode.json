@@ -5,6 +5,7 @@
         "tb_sleeper_flatten" : "tb_sleeper.tb_sleeper_flatten",
         "tb_sleeper_psi" : "tb_sleeper.tb_sleeper_psi",
         "tb_sleeper_product" : "tb_sleeper.tb_sleeper_product",
-        "tb_media" : "tb_sleeper.tb_media"
+        "tb_media" : "tb_sleeper.tb_media",
+        "tb_sleeper_product_report" : "tb_sleeper.tb_sleeper_product_report"
     }
 }

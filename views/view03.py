@@ -173,350 +173,350 @@ def main():
 
 
 
-    # ──────────────────────────────────
-    # 3. 일자별 전체 GA데이터 기준의 CPA 표
-    # ──────────────────────────────────
-    df_daily = df_daily.copy()
-    df_daily["CPA"] = df_daily.apply(
-        lambda r: r["cost_gross_sum"] / r["psi_sum"] if r["psi_sum"] > 0 else 0,
-        axis=1
-    )
-    df_daily["날짜_표시"] = df_daily["event_date"].dt.strftime("%m월 %d일")
-
-    st.markdown("<h5 style='margin:0'>종합 CPA (GA Total)</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
-    # st.markdown(" ")
-
-
-    # df_daily["날짜"] = df_daily["event_date"]
-    # df_daily["유입단가"] = df_daily["cost_gross_sum"] / df_daily["psi_sum"]
-    # df_daily["날짜_표시"] = df_daily["날짜"].dt.strftime("%m월 %d일")
-    # fig = px.line(df_daily, x="날짜", y=["유입단가"], markers=True, labels={"variable":""})
-    # for d in df_daily["날짜"]:
-    #     start, end = d - timedelta(hours=12), d + timedelta(hours=12)
-    #     color = "blue" if d.weekday()==5 else "red" if d.weekday()==6 else None
-    #     if color:
-    #         fig.add_vrect(x0=start, x1=end, fillcolor=color,
-    #                     opacity=0.2, layer="below", line_width=0)
-    # fig.update_xaxes(tickvals=df_daily["날짜"], ticktext=df_daily["날짜_표시"])
-    # fig.update_yaxes(range=[500, df_daily["유입단가"].max()+200]) # y 축 고정
-    # fig.update_layout(
-    #     xaxis_title=None,
-    #     yaxis_title=None,
-    #     legend=dict(orientation="h", y=1.02, x=1,
-    #                 xanchor="right", yanchor="bottom")
+    # # ──────────────────────────────────
+    # # 3. 일자별 전체 GA데이터 기준의 CPA 표
+    # # ──────────────────────────────────
+    # df_daily = df_daily.copy()
+    # df_daily["CPA"] = df_daily.apply(
+    #     lambda r: r["cost_gross_sum"] / r["psi_sum"] if r["psi_sum"] > 0 else 0,
+    #     axis=1
     # )
-    # st.plotly_chart(fig, use_container_width=True)
-    # # CPA는 유지, 날짜 표시용 컬럼만 제거
-    # df_daily.drop(columns=["날짜", "날짜_표시"], inplace=True)
+    # df_daily["날짜_표시"] = df_daily["event_date"].dt.strftime("%m월 %d일")
+
+    # st.markdown("<h5 style='margin:0'>종합 CPA (GA Total)</h5>", unsafe_allow_html=True)
+    # st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
+    # # st.markdown(" ")
 
 
-    # with col2:
-    #     pass
+    # # df_daily["날짜"] = df_daily["event_date"]
+    # # df_daily["유입단가"] = df_daily["cost_gross_sum"] / df_daily["psi_sum"]
+    # # df_daily["날짜_표시"] = df_daily["날짜"].dt.strftime("%m월 %d일")
+    # # fig = px.line(df_daily, x="날짜", y=["유입단가"], markers=True, labels={"variable":""})
+    # # for d in df_daily["날짜"]:
+    # #     start, end = d - timedelta(hours=12), d + timedelta(hours=12)
+    # #     color = "blue" if d.weekday()==5 else "red" if d.weekday()==6 else None
+    # #     if color:
+    # #         fig.add_vrect(x0=start, x1=end, fillcolor=color,
+    # #                     opacity=0.2, layer="below", line_width=0)
+    # # fig.update_xaxes(tickvals=df_daily["날짜"], ticktext=df_daily["날짜_표시"])
+    # # fig.update_yaxes(range=[500, df_daily["유입단가"].max()+200]) # y 축 고정
+    # # fig.update_layout(
+    # #     xaxis_title=None,
+    # #     yaxis_title=None,
+    # #     legend=dict(orientation="h", y=1.02, x=1,
+    # #                 xanchor="right", yanchor="bottom")
+    # # )
+    # # st.plotly_chart(fig, use_container_width=True)
+    # # # CPA는 유지, 날짜 표시용 컬럼만 제거
+    # # df_daily.drop(columns=["날짜", "날짜_표시"], inplace=True)
+
+
+    # # with col2:
+    # #     pass
     
-    # with col3:
-    #     st.markdown("")
-    #     df_disp = df_daily.copy()
-    #     df_disp["날짜"] = df_disp["event_date"].dt.strftime("%m월 %d일 (%a)")
-    #     df_disp.rename(columns={
-    #         "psi_sum": "방문수",
-    #         "cost_sum": "광고비",
-    #         "cost_gross_sum": "광고비(G)"
-    #     }, inplace=True)
+    # # with col3:
+    # #     st.markdown("")
+    # #     df_disp = df_daily.copy()
+    # #     df_disp["날짜"] = df_disp["event_date"].dt.strftime("%m월 %d일 (%a)")
+    # #     df_disp.rename(columns={
+    # #         "psi_sum": "방문수",
+    # #         "cost_sum": "광고비",
+    # #         "cost_gross_sum": "광고비(G)"
+    # #     }, inplace=True)
 
-    #     # NA를 0으로 채우고 반올림
-    #     for col in ["방문수", "광고비", "광고비(G)", "유입단가"]:
-    #         df_disp[col] = df_disp[col].fillna(0).round(0)
+    # #     # NA를 0으로 채우고 반올림
+    # #     for col in ["방문수", "광고비", "광고비(G)", "유입단가"]:
+    # #         df_disp[col] = df_disp[col].fillna(0).round(0)
 
-    #     # 파이썬 int로 변환
-    #     for col in ["방문수", "광고비", "광고비(G)", "유입단가"]:
-    #         df_disp[col] = df_disp[col].apply(lambda x: int(x))
+    # #     # 파이썬 int로 변환
+    # #     for col in ["방문수", "광고비", "광고비(G)", "유입단가"]:
+    # #         df_disp[col] = df_disp[col].apply(lambda x: int(x))
 
-    #     table_cols = ["방문수", "광고비", "광고비(G)", "유입단가"]
-    #     df_grid = df_disp[["날짜"] + table_cols]
+    # #     table_cols = ["방문수", "광고비", "광고비(G)", "유입단가"]
+    # #     df_grid = df_disp[["날짜"] + table_cols]
 
-    #     bottom = {
-    #         col: ("합계" if col == "날짜" else sum(df_grid[col]))
-    #         for col in df_grid.columns
-    #     }
+    # #     bottom = {
+    # #         col: ("합계" if col == "날짜" else sum(df_grid[col]))
+    # #         for col in df_grid.columns
+    # #     }
 
-    #     gb = GridOptionsBuilder.from_dataframe(df_grid)
-    #     gb.configure_default_column(flex=1, sortable=True, filter=True)
-    #     for col in table_cols:
-    #         gb.configure_column(
-    #             col,
-    #             type=["numericColumn", "customNumericFormat"],
-    #             aggFunc = "sum",  # <- 합계자동변환~~
-    #             valueFormatter=JsCode("""
-    #                 function(params) {
-    #                     return params.value.toLocaleString();
-    #                 }
-    #             """),
-    #             cellStyle=JsCode("function(params){ return { textAlign:'right' }; }")
-    #         )
+    # #     gb = GridOptionsBuilder.from_dataframe(df_grid)
+    # #     gb.configure_default_column(flex=1, sortable=True, filter=True)
+    # #     for col in table_cols:
+    # #         gb.configure_column(
+    # #             col,
+    # #             type=["numericColumn", "customNumericFormat"],
+    # #             aggFunc = "sum",  # <- 합계자동변환~~
+    # #             valueFormatter=JsCode("""
+    # #                 function(params) {
+    # #                     return params.value.toLocaleString();
+    # #                 }
+    # #             """),
+    # #             cellStyle=JsCode("function(params){ return { textAlign:'right' }; }")
+    # #         )
 
-    #     gb.configure_grid_options(pinnedBottomRowData=[bottom])
-    #     gb.configure_grid_options(onGridReady=JsCode("""
-    #         function(params) {
-    #             params.api.sizeColumnsToFit();
-    #         }
-    #     """))
-    #     grid_options = gb.build()
+    # #     gb.configure_grid_options(pinnedBottomRowData=[bottom])
+    # #     gb.configure_grid_options(onGridReady=JsCode("""
+    # #         function(params) {
+    # #             params.api.sizeColumnsToFit();
+    # #         }
+    # #     """))
+    # #     grid_options = gb.build()
         
-    #     grid_options["statusBar"] = {        # 합계자동변환~~ / 합계 footer 표시용 statusBar 설정
-    #             "statusPanels": [
-    #                 {"panel": "agAggregationComponent"}
-    #             ]
-    #         }
+    # #     grid_options["statusBar"] = {        # 합계자동변환~~ / 합계 footer 표시용 statusBar 설정
+    # #             "statusPanels": [
+    # #                 {"panel": "agAggregationComponent"}
+    # #             ]
+    # #         }
 
-    #     base_theme = st.get_option("theme.base")
-    #     ag_theme = "streamlit-dark" if base_theme == "dark" else "streamlit"
+    # #     base_theme = st.get_option("theme.base")
+    # #     ag_theme = "streamlit-dark" if base_theme == "dark" else "streamlit"
 
-    #     AgGrid(
-    #         df_grid,
-    #         gridOptions=grid_options,
-    #         height=380,
-    #         theme=ag_theme,
-    #         fit_columns_on_grid_load=True,  # 사이즈 콜백을 사용하므로 여기선 False 권장
-    #         allow_unsafe_jscode=True
+    # #     AgGrid(
+    # #         df_grid,
+    # #         gridOptions=grid_options,
+    # #         height=380,
+    # #         theme=ag_theme,
+    # #         fit_columns_on_grid_load=True,  # 사이즈 콜백을 사용하므로 여기선 False 권장
+    # #         allow_unsafe_jscode=True
+    # #     )
+
+
+
+    # # ─── 1) 이벤트 리스트 및 유입단가/CPA 계산 ───
+    # events = ["PDP조회","PDPscr50","가격표시","쇼룸찾기","쇼룸10초","장바구니","쇼룸예약"]
+
+    # # (1) 유입단가, CPA 계산
+    # df_daily["유입단가"] = df_daily.apply(
+    #     lambda r: round(r["cost_gross_sum"] / r["psi_sum"], 2) if r["psi_sum"] > 0 else 0,
+    #     axis=1
+    # )
+    # for ev in events:
+    #     df_daily[f"CPA_{ev}"] = df_daily.apply(
+    #         lambda r: round(r["cost_gross_sum"] / r[ev], 2) if r[ev] > 0 else 0,
+    #         axis=1
     #     )
 
+    # # ─── 2) 테이블용 DataFrame 구성 및 한글 컬럼명 적용 ───
+    # df_cpa2 = df_daily[
+    #     ["event_date", "psi_sum", "cost_sum", "cost_gross_sum", "유입단가"]
+    #     + events
+    #     + [f"CPA_{ev}" for ev in events]
+    # ].copy()
+    # df_cpa2.rename(columns={
+    #     "psi_sum": "방문수",
+    #     "cost_sum": "광고비",
+    #     "cost_gross_sum": "광고비(G)"
+    # }, inplace=True)
 
+    # # 1) 날짜 포맷을 yyyy-mm-dd 포맷으로 적용  ← 수정 반영 위치
+    # df_cpa2["날짜"] = df_cpa2["event_date"].dt.strftime("%Y-%m-%d")  # 수정1
+    # # df_cpa2.drop(columns="event_date", inplace=True)
 
-    # ─── 1) 이벤트 리스트 및 유입단가/CPA 계산 ───
-    events = ["PDP조회","PDPscr50","가격표시","쇼룸찾기","쇼룸10초","장바구니","쇼룸예약"]
+    # # ─── 3) 전체 값 NumPy → 파이썬 기본형 변환 ───
+    # def to_py(val):
+    #     if pd.isna(val):
+    #         return None
+    #     if isinstance(val, np.generic):
+    #         return val.item()
+    #     return val
 
-    # (1) 유입단가, CPA 계산
-    df_daily["유입단가"] = df_daily.apply(
-        lambda r: round(r["cost_gross_sum"] / r["psi_sum"], 2) if r["psi_sum"] > 0 else 0,
-        axis=1
-    )
-    for ev in events:
-        df_daily[f"CPA_{ev}"] = df_daily.apply(
-            lambda r: round(r["cost_gross_sum"] / r[ev], 2) if r[ev] > 0 else 0,
-            axis=1
-        )
+    # df_cpa2 = df_cpa2.applymap(to_py)
+    # # (수정2) 값이 없는(NA/None) 곳은 모두 0 으로 채우기
+    # df_cpa2.fillna(0, inplace=True)
 
-    # ─── 2) 테이블용 DataFrame 구성 및 한글 컬럼명 적용 ───
-    df_cpa2 = df_daily[
-        ["event_date", "psi_sum", "cost_sum", "cost_gross_sum", "유입단가"]
-        + events
-        + [f"CPA_{ev}" for ev in events]
-    ].copy()
-    df_cpa2.rename(columns={
-        "psi_sum": "방문수",
-        "cost_sum": "광고비",
-        "cost_gross_sum": "광고비(G)"
-    }, inplace=True)
+    # # ─── 4) 합계행 계산 ───
+    # bottom = {"날짜": "합계"}
 
-    # 1) 날짜 포맷을 yyyy-mm-dd 포맷으로 적용  ← 수정 반영 위치
-    df_cpa2["날짜"] = df_cpa2["event_date"].dt.strftime("%Y-%m-%d")  # 수정1
-    # df_cpa2.drop(columns="event_date", inplace=True)
+    # # (2) 기본 지표 합계(정수) 및 소수점 제거
+    # for col in ["방문수", "광고비", "광고비(G)"]:
+    #     s = sum(df_cpa2[col])
+    #     # NaN 방어: s가 NaN이면 0으로
+    #     if pd.isna(s):
+    #         s = 0
+    #     bottom[col] = int(s)  # 수정: NaN 방지를 위해 미리 처리
 
-    # ─── 3) 전체 값 NumPy → 파이썬 기본형 변환 ───
-    def to_py(val):
-        if pd.isna(val):
-            return None
-        if isinstance(val, np.generic):
-            return val.item()
-        return val
+    # # (3) 유입단가와 CPA는 평균으로 계산
+    # #    평균값이 NaN일 경우 0으로 대체
+    # avg = df_cpa2["유입단가"].mean()
+    # bottom["유입단가"] = int( round(avg if not pd.isna(avg) else 0, 0) )
 
-    df_cpa2 = df_cpa2.applymap(to_py)
-    # (수정2) 값이 없는(NA/None) 곳은 모두 0 으로 채우기
-    df_cpa2.fillna(0, inplace=True)
+    # for ev in events:
+    #     # Actual 합계
+    #     s_ev = sum(df_cpa2[ev])
+    #     if pd.isna(s_ev):
+    #         s_ev = 0
+    #     bottom[ev] = int(s_ev)
 
-    # ─── 4) 합계행 계산 ───
-    bottom = {"날짜": "합계"}
+    #     # CPA 평균
+    #     avg_ev = df_cpa2[f"CPA_{ev}"].mean()
+    #     bottom[f"CPA_{ev}"] = int( round(avg_ev if not pd.isna(avg_ev) else 0, 0) )
 
-    # (2) 기본 지표 합계(정수) 및 소수점 제거
-    for col in ["방문수", "광고비", "광고비(G)"]:
-        s = sum(df_cpa2[col])
-        # NaN 방어: s가 NaN이면 0으로
-        if pd.isna(s):
-            s = 0
-        bottom[col] = int(s)  # 수정: NaN 방지를 위해 미리 처리
+    # # NaN 혹은 None을 빈 문자열로
+    # for k, v in bottom.items():
+    #     if pd.isna(v) or v is None:
+    #         bottom[k] = ""
 
-    # (3) 유입단가와 CPA는 평균으로 계산
-    #    평균값이 NaN일 경우 0으로 대체
-    avg = df_cpa2["유입단가"].mean()
-    bottom["유입단가"] = int( round(avg if not pd.isna(avg) else 0, 0) )
+    # # ─── 5) 숫자형 자식 컬럼 헬퍼 (소수점 모두 제거) ← 수정 반영 위치
+    # def make_num_child(header, field):
+    #     return {
+    #         "headerName": header,
+    #         "field": field,
+    #         "type": ["numericColumn","customNumericFormat"],
+    #         "valueFormatter": JsCode(f"""
+    #             function(params){{
+    #                 return params.value != null
+    #                     ? params.value.toLocaleString(undefined,{{maximumFractionDigits:0}})
+    #                     : "";
+    #             }}
+    #         """),  # 수정2: 소수점 제거
+    #         "cellStyle": JsCode("params => ({ textAlign:'right' })")
+    #     }
 
-    for ev in events:
-        # Actual 합계
-        s_ev = sum(df_cpa2[ev])
-        if pd.isna(s_ev):
-            s_ev = 0
-        bottom[ev] = int(s_ev)
+    # # ─── 6) columnDefs 구성 ───
+    # column_defs = [{
+    #     "headerName": "날짜", "field": "날짜",
+    #     "pinned": "left", "width": 100,
+    #     "cellStyle": JsCode("params => ({ textAlign:'left' })")
+    # }]
+    # # 기본 지표
+    # column_defs += [
+    #     make_num_child("방문수",    "방문수"),
+    #     make_num_child("광고비",    "광고비"),
+    #     make_num_child("광고비(G)", "광고비(G)"),
+    #     make_num_child("유입단가",  "유입단가"),
+    # ]
+    # # 이벤트별 Actual/CPA 그룹
+    # for ev in events:
+    #     column_defs.append({
+    #         "headerName": ev,
+    #         "children": [
+    #             make_num_child("Actual", ev),
+    #             make_num_child("CPA",    f"CPA_{ev}"),
+    #         ]
+    #     })
 
-        # CPA 평균
-        avg_ev = df_cpa2[f"CPA_{ev}"].mean()
-        bottom[f"CPA_{ev}"] = int( round(avg_ev if not pd.isna(avg_ev) else 0, 0) )
-
-    # NaN 혹은 None을 빈 문자열로
-    for k, v in bottom.items():
-        if pd.isna(v) or v is None:
-            bottom[k] = ""
-
-    # ─── 5) 숫자형 자식 컬럼 헬퍼 (소수점 모두 제거) ← 수정 반영 위치
-    def make_num_child(header, field):
-        return {
-            "headerName": header,
-            "field": field,
-            "type": ["numericColumn","customNumericFormat"],
-            "valueFormatter": JsCode(f"""
-                function(params){{
-                    return params.value != null
-                        ? params.value.toLocaleString(undefined,{{maximumFractionDigits:0}})
-                        : "";
-                }}
-            """),  # 수정2: 소수점 제거
-            "cellStyle": JsCode("params => ({ textAlign:'right' })")
-        }
-
-    # ─── 6) columnDefs 구성 ───
-    column_defs = [{
-        "headerName": "날짜", "field": "날짜",
-        "pinned": "left", "width": 100,
-        "cellStyle": JsCode("params => ({ textAlign:'left' })")
-    }]
-    # 기본 지표
-    column_defs += [
-        make_num_child("방문수",    "방문수"),
-        make_num_child("광고비",    "광고비"),
-        make_num_child("광고비(G)", "광고비(G)"),
-        make_num_child("유입단가",  "유입단가"),
-    ]
-    # 이벤트별 Actual/CPA 그룹
-    for ev in events:
-        column_defs.append({
-            "headerName": ev,
-            "children": [
-                make_num_child("Actual", ev),
-                make_num_child("CPA",    f"CPA_{ev}"),
-            ]
-        })
-
-    # ─── 7) gridOptions 설정 및 렌더링 ───
-    grid_options = {
-        "columnDefs": column_defs,
-        "defaultColDef": {
-            "sortable": True, "filter": True,
-            "resizable": True, "wrapHeaderText": True,
-            "autoHeaderHeight": True,
-            "width" : 95
-        },
-        "pinnedBottomRowData": [bottom],
-        "headerHeight": 30,
-        "groupHeaderHeight": 30
-    }
+    # # ─── 7) gridOptions 설정 및 렌더링 ───
+    # grid_options = {
+    #     "columnDefs": column_defs,
+    #     "defaultColDef": {
+    #         "sortable": True, "filter": True,
+    #         "resizable": True, "wrapHeaderText": True,
+    #         "autoHeaderHeight": True,
+    #         "width" : 95
+    #     },
+    #     "pinnedBottomRowData": [bottom],
+    #     "headerHeight": 30,
+    #     "groupHeaderHeight": 30
+    # }
     
+    # # AgGrid(
+    # #     df_cpa2,
+    # #     gridOptions=grid_options,
+    # #     height=460,
+    # #     fit_columns_on_grid_load=False,
+    # #     theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
+    # #     allow_unsafe_jscode=True
+    # # )
+
+
+    # # 날짜 표시용 컬럼
+    # df_cpa2["날짜"] = df_cpa2["event_date"].dt.strftime("%m월 %d일")
+
+    # # (3) 컬럼 순서 재정렬
+    # df_cpa2 = df_cpa2.sort_values("event_date")
+
+    # col_a, col_b, col_c = st.columns([1,1,1])
+
+    # # (A) 제품탐색 Action CPA
+    # with col_a:
+    #     m1 = df_cpa2.rename(columns={
+    #         "CPA_PDP조회":  "PDP조회_CPA",
+    #         "CPA_PDPscr50": "PDPscr50_CPA"
+    #     })
+    #     fig1 = px.line(
+    #         m1,
+    #         x="날짜",
+    #         y=["PDP조회_CPA","PDPscr50_CPA"],
+    #         markers=True,
+    #         labels={"variable": ""},
+    #         title="🔍 제품탐색 CPA"
+    #     )
+    #     fig1.update_layout(
+    #         height=400,
+    #         xaxis_title=None,
+    #         yaxis_title=None,
+    #         legend=dict(
+    #             orientation="h",
+    #             y=1.02, x=1,
+    #             xanchor="right", yanchor="bottom"
+    #         )
+    #     )
+    #     st.plotly_chart(fig1, use_container_width=True)
+
+
+    # # (B) 관심표현 Action CPA
+    # with col_b:
+    #     m2 = df_cpa2.rename(columns={
+    #         "CPA_가격표시":  "가격표시_CPA",
+    #         "CPA_쇼룸찾기":  "쇼룸찾기_CPA",
+    #         "CPA_쇼룸10초":  "쇼룸10초_CPA"
+    #     })
+    #     fig2 = px.line(
+    #         m2,
+    #         x="날짜",
+    #         y=["가격표시_CPA","쇼룸찾기_CPA","쇼룸10초_CPA"],
+    #         markers=True,
+    #         labels={"variable": ""},
+    #         title="❤️ 관심표현 CPA"
+    #     )
+    #     fig2.update_layout(
+    #         height=400,
+    #         xaxis_title=None,
+    #         yaxis_title=None,
+    #         legend=dict(
+    #             orientation="h",
+    #             y=1.02, x=1,
+    #             xanchor="right", yanchor="bottom"
+    #         )
+    #     )
+    #     st.plotly_chart(fig2, use_container_width=True)
+
+
+    # # (C) 전환의도 Action CPA
+    # with col_c:
+    #     m3 = df_cpa2.rename(columns={
+    #         "CPA_장바구니":  "장바구니_CPA",
+    #         "CPA_쇼룸예약":  "쇼룸예약_CPA"
+    #     })
+    #     fig3 = px.line(
+    #         m3,
+    #         x="날짜",
+    #         y=["장바구니_CPA","쇼룸예약_CPA"],
+    #         markers=True,
+    #         labels={"variable": ""},
+    #         title="🛒 전환의도 CPA"
+    #     )
+    #     fig3.update_layout(
+    #         height=400,
+    #         xaxis_title=None,
+    #         yaxis_title=None,
+    #         legend=dict(
+    #             orientation="h",
+    #             y=1.02, x=1,
+    #             xanchor="right", yanchor="bottom"
+    #         )
+    #     )
+    #     st.plotly_chart(fig3, use_container_width=True)
+
     # AgGrid(
     #     df_cpa2,
     #     gridOptions=grid_options,
-    #     height=460,
+    #     height=450,
     #     fit_columns_on_grid_load=False,
     #     theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
     #     allow_unsafe_jscode=True
     # )
-
-
-    # 날짜 표시용 컬럼
-    df_cpa2["날짜"] = df_cpa2["event_date"].dt.strftime("%m월 %d일")
-
-    # (3) 컬럼 순서 재정렬
-    df_cpa2 = df_cpa2.sort_values("event_date")
-
-    col_a, col_b, col_c = st.columns([1,1,1])
-
-    # (A) 제품탐색 Action CPA
-    with col_a:
-        m1 = df_cpa2.rename(columns={
-            "CPA_PDP조회":  "PDP조회_CPA",
-            "CPA_PDPscr50": "PDPscr50_CPA"
-        })
-        fig1 = px.line(
-            m1,
-            x="날짜",
-            y=["PDP조회_CPA","PDPscr50_CPA"],
-            markers=True,
-            labels={"variable": ""},
-            title="🔍 제품탐색 CPA"
-        )
-        fig1.update_layout(
-            height=400,
-            xaxis_title=None,
-            yaxis_title=None,
-            legend=dict(
-                orientation="h",
-                y=1.02, x=1,
-                xanchor="right", yanchor="bottom"
-            )
-        )
-        st.plotly_chart(fig1, use_container_width=True)
-
-
-    # (B) 관심표현 Action CPA
-    with col_b:
-        m2 = df_cpa2.rename(columns={
-            "CPA_가격표시":  "가격표시_CPA",
-            "CPA_쇼룸찾기":  "쇼룸찾기_CPA",
-            "CPA_쇼룸10초":  "쇼룸10초_CPA"
-        })
-        fig2 = px.line(
-            m2,
-            x="날짜",
-            y=["가격표시_CPA","쇼룸찾기_CPA","쇼룸10초_CPA"],
-            markers=True,
-            labels={"variable": ""},
-            title="❤️ 관심표현 CPA"
-        )
-        fig2.update_layout(
-            height=400,
-            xaxis_title=None,
-            yaxis_title=None,
-            legend=dict(
-                orientation="h",
-                y=1.02, x=1,
-                xanchor="right", yanchor="bottom"
-            )
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-
-
-    # (C) 전환의도 Action CPA
-    with col_c:
-        m3 = df_cpa2.rename(columns={
-            "CPA_장바구니":  "장바구니_CPA",
-            "CPA_쇼룸예약":  "쇼룸예약_CPA"
-        })
-        fig3 = px.line(
-            m3,
-            x="날짜",
-            y=["장바구니_CPA","쇼룸예약_CPA"],
-            markers=True,
-            labels={"variable": ""},
-            title="🛒 전환의도 CPA"
-        )
-        fig3.update_layout(
-            height=400,
-            xaxis_title=None,
-            yaxis_title=None,
-            legend=dict(
-                orientation="h",
-                y=1.02, x=1,
-                xanchor="right", yanchor="bottom"
-            )
-        )
-        st.plotly_chart(fig3, use_container_width=True)
-
-    AgGrid(
-        df_cpa2,
-        gridOptions=grid_options,
-        height=450,
-        fit_columns_on_grid_load=False,
-        theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
-        allow_unsafe_jscode=True
-    )
 
 
 
@@ -530,7 +530,6 @@ def main():
     # ──────────────────────────────────
     # 4. 표 영역: 기간 비교 + PSI 집계
     # ──────────────────────────────────
-    st.divider()
     st.markdown("<h5>퍼포먼스 CPA (GA Matched)</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
     st.markdown(" ")

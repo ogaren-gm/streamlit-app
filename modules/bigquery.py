@@ -44,10 +44,11 @@ class BigQuery():
         self.credentialPath = json_data[self.projectCode]['credentialPath']
         
         # 테이블 추가
-        self.tb_sleeper_flatten = json_data[self.projectCode]['tb_sleeper_flatten']
-        self.tb_sleeper_psi     = json_data[self.projectCode]['tb_sleeper_psi']
-        self.tb_sleeper_product = json_data[self.projectCode]['tb_sleeper_product']
-        self.tb_media           = json_data[self.projectCode]['tb_media']
+        self.tb_sleeper_flatten        = json_data[self.projectCode]['tb_sleeper_flatten']
+        self.tb_sleeper_psi            = json_data[self.projectCode]['tb_sleeper_psi']
+        self.tb_sleeper_product        = json_data[self.projectCode]['tb_sleeper_product']
+        self.tb_media                  = json_data[self.projectCode]['tb_media']
+        self.tb_sleeper_product_report = json_data[self.projectCode]['tb_sleeper_product_report']
 
         self._bqstorage = BigQueryReadClient(credentials=self.credentialPath)
 
