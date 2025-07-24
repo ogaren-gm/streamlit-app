@@ -1,3 +1,5 @@
+# 서희_최신수정일_25-07-24
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,14 +14,15 @@ from st_aggrid.shared import JsCode
 import io
 from google.oauth2.service_account import Credentials
 import gspread
-
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-    st.set_page_config(layout="wide", page_title="SLPR 대시보드 | 카테고리별 액션 리포트")
+    st.set_page_config(layout="wide", page_title="SLPR 대시보드 | 액션 종합 리포트")
     st.markdown(
         """
         <style>
@@ -32,7 +35,7 @@ def main():
         """,
         unsafe_allow_html=True,
     )
-    st.subheader('카테고리별 액션 리포트')
+    st.subheader('액션 종합 리포트')
     st.markdown("설명")
     st.markdown(":primary-badge[:material/Cached: Update]ㅤ-")
     st.divider()
@@ -42,6 +45,7 @@ def main():
     # 사이드바 필터 설정
     # ────────────────────────────────────────────────────────────────
     st.sidebar.header("Filter")
+    
     today = datetime.now().date()
     default_end = today - timedelta(days=1)
     default_start = today - timedelta(days=14)
@@ -50,20 +54,13 @@ def main():
         value=[default_start, default_end],
         max_value=default_end
     )
-    if st.sidebar.button("초기화"):
-        st.experimental_rerun()
-
     cs = start_date.strftime("%Y%m%d")
     ce = end_date.strftime("%Y%m%d")
 
-
-    # ────────────────────────────────────────────────────────────────
-    # 데이터 로드
-    # ────────────────────────────────────────────────────────────────
     @st.cache_data(ttl=3600)
-    def load_data(cs: str, ce: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def load_data(cs: str, ce: str) -> pd.DataFrame:
         
-        # tb_media
+        # 1) tb_media
         bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
         df_bq = bq.get_data("tb_media")
         df_bq["event_date"] = pd.to_datetime(df_bq["event_date"], format="%Y%m%d")
@@ -74,19 +71,20 @@ def main():
             parts.loc[mask, :4].apply(lambda r: '_'.join(r.dropna().astype(str)), axis=1)
         )
         
-        # GS
+        # 2) Google Sheet
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         creds = Credentials.from_service_account_file("C:/_code/auth/sleeper-461005-c74c5cd91818.json", scopes=scope)
         gc = gspread.authorize(creds)
         sh = gc.open_by_url('https://docs.google.com/spreadsheets/d/11ov-_o6Lv5HcuZo1QxrKOZnLtnxEKTiV78OFBZzVmWA/edit')
-        ws = sh.worksheet('parse')
-        df_sheet = pd.DataFrame(ws.get_all_records())
+        df_sheet = pd.DataFrame(sh.worksheet('parse').get_all_records())
         
-        # merged
+        # merge (1+2)
         merged = df_bq.merge(df_sheet, how='left', on='campaign_name_short')
+        # cost_gross
         merged['cost_gross'] = np.where(
             merged['media_name'].isin(['GOOGLE','META']), merged['cost']*1.1/0.98, merged['cost']
         )
+        # handle NSA
         cond = (
             (merged['media_name']=='NSA') &
             merged['utm_source'].isna() & merged['utm_medium'].isna() &
@@ -94,442 +92,458 @@ def main():
         )
         merged.loc[cond, ['utm_source','utm_medium']] = ['naver','search-nonmatch']
         
-        # tb_sleeper_psi
+        # 3) tb_sleeper_product_report (tb_sleeper_psi를 이미 가공한 빅쿼리 테이블)
+        df_prod_rep = bq.get_data("tb_sleeper_product_report")
+        df_prod_rep["event_date"] = pd.to_datetime(df_prod_rep["event_date"], format="%Y%m%d")
+
+        # 4) tb_sleeper_psi, 넓게 이벤트까지 피벗해옴    
         df_psi = bq.get_data("tb_sleeper_psi")
         df_psi["event_date"] = pd.to_datetime(df_psi["event_date"], format="%Y%m%d")
-        df_daily_psi = df_psi.groupby("event_date", as_index=False).agg(
-            psi_sum=("pseudo_session_id","nunique"),
-            PDP조회=("view_item","sum"), PDPscr50=("product_page_scroll_50","sum"),
-            가격표시=("product_option_price","sum"), 쇼룸찾기=("find_nearby_showroom","sum"),
-            쇼룸10초=("showroom_10s","sum"), 장바구니=("add_to_cart","sum"),
-            쇼룸예약=("showroom_leads","sum"), 구매=("purchase","sum")
-        ).sort_values("event_date")
-        df_cost = merged.groupby("event_date", as_index=False).agg(
-            cost_sum=("cost","sum"), cost_gross_sum=("cost_gross","sum")
-        ).sort_values("event_date")
-        df_daily = df_daily_psi.merge(df_cost, on="event_date", how="left")
-        
-        # tb_sleeper_product_report
-        df_prod_rep = bq.get_data("tb_sleeper_product_report")
-        # df_prod_rep["event_date"] = pd.to_datetime(df_prod_rep["event_date"], format="%Y%m%d")
-        
-        return merged, df_daily, df_prod_rep
-
-    # 데이터 로드
-    merged, df_daily, df_prod_rep = load_data(cs, ce)
-
-
-    # # ────────────────────────────────────────────────────────────────
-    # # 1. 종합 액션 CPA/CVR
-    # # ────────────────────────────────────────────────────────────────
-    # df = df_daily.copy()
-    # df["CPA"] = df.apply(lambda r: r["cost_gross_sum"]/r["psi_sum"] if r["psi_sum"]>0 else 0, axis=1)
-    # df["날짜_표시"] = df["event_date"].dt.strftime("%m월 %d일")
-
-    # st.markdown("<h5 style='margin:0'>종합 CPA (GA Total)</h5>", unsafe_allow_html=True)
-    # st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
-
-    # # 이벤트별 CPA 계산 및 테이블 구성
-    # events = ["PDP조회","PDPscr50","가격표시","쇼룸찾기","쇼룸10초","장바구니","쇼룸예약","구매"]
-    # for ev in events:
-    #     df[f"CPA_{ev}"] = df.apply(lambda r: round(r["cost_gross_sum"]/r[ev],2) if r[ev]>0 else 0, axis=1)
-    # df_cpa = df[["event_date","psi_sum","cost_sum","cost_gross_sum","CPA"]+events+[f"CPA_{ev}" for ev in events]].copy()
-    # df_cpa.rename(columns={"psi_sum":"방문수","cost_sum":"광고비","cost_gross_sum":"광고비(G)","CPA":"유입단가"}, inplace=True)
-    # df_cpa["날짜"] = df_cpa["event_date"].dt.strftime("%Y-%m-%d")
-    # df_cpa.fillna(0, inplace=True)
-
-    # # 합계행
-    # bottom = {"날짜":"합계"}
-    # for col in ["방문수","광고비","광고비(G)"]:
-    #     bottom[col] = int(df_cpa[col].sum())
-    # bottom["유입단가"] = int(round(df_cpa["유입단가"].mean(),0))
-    # for ev in events:
-    #     bottom[ev] = int(df_cpa[ev].sum())
-    #     bottom[f"CPA_{ev}"] = int(round(df_cpa[f"CPA_{ev}"].mean(),0))
-    
-    # def make_num_child(header, field):
-    #     return {"headerName":header,"field":field,"type":["numericColumn","customNumericFormat"],
-    #             "valueFormatter":JsCode("function(params){return params.value!=null?params.value.toLocaleString(undefined,{maximumFractionDigits:0}):'';}"),
-    #             "cellStyle":JsCode("params=>({textAlign:'right'})")}
-    
-    # column_defs = [{"headerName":"날짜","field":"날짜","pinned":"left","width":100,
-    #                 "cellStyle":JsCode("params=>({textAlign:'left'})")}]
-    # for col in ["방문수","광고비","광고비(G)","유입단가"]:
-    #     column_defs.append(make_num_child(col,col))
-    # for ev in events:
-    #     column_defs.append({"headerName":ev,"children":[make_num_child("Actual",ev),make_num_child("CPA",f"CPA_{ev}")]} )
-    
-    # grid_options = {"columnDefs":column_defs,"defaultColDef":{"sortable":True,"filter":True,"resizable":True},
-    #                 "pinnedBottomRowData":[bottom],"headerHeight":30,"groupHeaderHeight":30}
-    
-    # AgGrid(df_cpa, gridOptions=grid_options, height=450, fit_columns_on_grid_load=False,
-    #         theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
-    #         allow_unsafe_jscode=True)
-
-
-
-    # ────────────────────────────────────────────────────────────────
-    # 1. 종합 액션 CPA/CVR
-    # ────────────────────────────────────────────────────────────────
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>GA 종합</span> 액션 리포트</h5>", unsafe_allow_html=True)   
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
-    df = df_daily.copy()
-
-    # 전체세션수, CPA, CVR 계산
-    df["전체세션수"] = df["psi_sum"]
-    df["CPA"]         = df.apply(lambda r: r["cost_gross_sum"]/r["psi_sum"] if r["psi_sum"]>0 else 0, axis=1)
-    df["CVR"]         = (df["psi_sum"] / df["psi_sum"] * 100).round(2)
-
-    # 이벤트별 CPA/CVR
-    events = ["PDP조회","PDPscr50","가격표시","쇼룸찾기","쇼룸10초","장바구니","쇼룸예약","구매"]
-    for ev in events:
-        df[f"CPA_{ev}"] = df.apply(lambda r: round(r["cost_gross_sum"]/r[ev],2) if r[ev]>0 else 0, axis=1)
-        df[f"CVR_{ev}"] = df.apply(lambda r: round(r[ev]/r["psi_sum"]*100,2) if r["psi_sum"]>0 else 0, axis=1)
-
-    # 테이블용 DataFrame 준비
-    df_cpa = df[
-        ["event_date","전체세션수","cost_sum","cost_gross_sum","CPA","CVR"]
-        + events
-        + [f"CPA_{ev}" for ev in events]
-        + [f"CVR_{ev}" for ev in events]
-    ].copy()
-    df_cpa.rename(columns={
-        "cost_sum":       "광고비",
-        "cost_gross_sum": "광고비(G)"
-    }, inplace=True)
-    df_cpa["날짜"] = df_cpa["event_date"].dt.strftime("%Y-%m-%d")
-    df_cpa.fillna(0, inplace=True)
-
-    # 합계행
-    bottom = {"날짜": "합계"}
-    for col in ["전체세션수","광고비","광고비(G)"]:
-        bottom[col] = int(df_cpa[col].sum())
-    bottom["CPA"]   = int(round(df_cpa["CPA"].mean(),0))
-    bottom["CVR"]   = ""  # 전체 CVR은 비워두기
-    for ev in events:
-        bottom[ev]            = int(df_cpa[ev].sum())
-        bottom[f"CPA_{ev}"]   = int(round(df_cpa[f"CPA_{ev}"].mean(),0))
-        bottom[f"CVR_{ev}"]   = ""  # 이벤트별 CVR 합계 생략
-
-    # 숫자 셀 포맷 헬퍼 (CPA 소수 0자리, CVR 소수 2자리 + %)
-    def make_num_child(header, field, width=90, fmt_digits=0, suffix=""):
-        return {
-            "headerName": header,
-            "field": field,
-            "width": width,
-            "type": ["numericColumn","customNumericFormat"],
-            "valueFormatter": JsCode(
-                f"function(params){{"
-                f"  return params.value!=null"
-                f"    ? params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits}, maximumFractionDigits:{fmt_digits}}}) + '{suffix}'"
-                f"    : '';"
-                f"}}"
-            ),
-            "cellStyle": JsCode("params=>({textAlign:'right'})")
-        }
-
-    # columnDefs 구성
-    column_defs = [
-        # 날짜
-        {"headerName":"날짜","field":"날짜","pinned":"left","width":100,
-         "cellStyle":JsCode("params=>({textAlign:'left'})")},
-
-        # 광고비, 광고비(G)
-        # make_num_child("광고비",    "광고비",    fmt_digits=0),
-        make_num_child("광고비(G)", "광고비(G)", fmt_digits=0),
-
-        # 전체세션수 parent → Actual/CPA/CVR
-        {"headerName":"전체세션수","children":[
-            make_num_child("Actual","전체세션수", fmt_digits=0),
-            make_num_child("CPA",   "CPA",          fmt_digits=0),
-            make_num_child("CVR",   "CVR",          fmt_digits=2, suffix="%")
-        ]}
-    ]
-    # 이벤트별 그룹
-    for ev in events:
-        column_defs.append({
-            "headerName": ev,
-            "children": [
-                make_num_child("Actual", ev,            fmt_digits=0),
-                make_num_child("CPA",    f"CPA_{ev}",   fmt_digits=0),
-                make_num_child("CVR",    f"CVR_{ev}",   fmt_digits=2, suffix="%")
-            ]
-        })
-
-    grid_options = {
-        "columnDefs": column_defs,
-        "defaultColDef": {"sortable":True,"filter":True,"resizable":True},
-        "pinnedBottomRowData": [bottom],
-        "headerHeight":30, "groupHeaderHeight":30
-    }
-
-    AgGrid(
-        df_cpa,
-        gridOptions=grid_options,
-        height=450,
-        fit_columns_on_grid_load=False,
-        theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
-        allow_unsafe_jscode=True
-    )
-
-
-    # ────────────────────────────────────────────────────────────────
-    # 2. 카테고리별 액션 CPA/CVR (최적화 버전)
-    # ────────────────────────────────────────────────────────────────
-    st.divider()
-    df_prod_rep['event_date'] = df_prod_rep['event_date'].astype(str)
-    merged['event_date']      = merged['event_date'].astype(str)
-
-    
-    # 1) 피벗 및 메트릭 계산 함수 (벡터화 + 누락 컬럼 채우기)
-    def pivot_and_calc(df_rep: pd.DataFrame, df_cost: pd.DataFrame) -> pd.DataFrame:
-        # a) 일별 전체 세션 수
-        sessions = (
-            df_rep
-            .groupby("event_date")["pseudo_session_id"]
-            .nunique()
-            .rename("session_start")
+        df_psi = (
+            df_psi
+            .groupby("event_date", as_index=False)
+            .agg(
+                session_count            = ("pseudo_session_id",       "nunique"),
+                view_item                = ("view_item",               "sum"),
+                product_page_scroll_50   = ("product_page_scroll_50",  "sum"),
+                product_option_price     = ("product_option_price",    "sum"),
+                find_nearby_showroom     = ("find_nearby_showroom",    "sum"),
+                showroom_10s             = ("showroom_10s",            "sum"),
+                add_to_cart              = ("add_to_cart",             "sum"),
+                showroom_leads           = ("showroom_leads",          "sum"),
+                purchase                 = ("purchase",                "sum"),
+            )
+            .sort_values("event_date")
         )
+        df_psi['event_date'] = pd.to_datetime(df_psi['event_date'], errors='coerce')
+        df_psi['event_date'] = df_psi['event_date'].dt.strftime('%Y-%m-%d')
 
-        # b) 이벤트별 세션 피벗
-        evt = (
-            df_rep
-            .groupby(["event_date","event_name"])["pseudo_session_id"]
+    
+        return merged, df_prod_rep, df_psi
+    
+    # ────────────────────────────────────────────────────────────────
+    # 데이터 불러오기
+    # ────────────────────────────────────────────────────────────────
+    df_merged, df_prodRep, df_psi = load_data(cs, ce)
+
+    # 공통합수 (1) 일자별 광고비, 세션수 (파생변수는 해당 함수가 계산하지 않음)
+    def pivot_cstSes(
+        df: pd.DataFrame,
+        brand_type: str | None = None,
+        product_type: str | None = None
+        ) -> pd.DataFrame:
+        """
+        1) 함수 작성
+        :  pivot_cstSes(df, brand_type="슬립퍼", product_type="매트리스")
+        2) 결과 컬럼
+        :  ['event_date', 'session_count', 'cost_gross_sum']
+        """
+        df_f = df.copy()
+
+        if brand_type:
+            df_f = df_f[df_f['brand_type'].astype(str).str.contains(brand_type, regex=True, na=False)]
+        if product_type:
+            df_f = df_f[df_f['product_type'].astype(str).str.contains(product_type, regex=True, na=False)]
+
+        df_f['event_date'] = pd.to_datetime(df_f['event_date'], errors='coerce')
+        df_f['event_date'] = df_f['event_date'].dt.strftime('%Y-%m-%d')
+
+        pivot = (
+            df_f
+            .groupby('event_date', as_index=False) # 반드시 False로 유지 (그래야 컬럼에 살아있음)
+            .agg(
+                session_count=('pseudo_session_id', 'sum'),
+                cost_gross_sum=('cost_gross', 'sum')
+            )
+            .reset_index(drop=True)
+        )
+        return pivot
+
+    # 공통함수 (2) 일자별 이벤트수 (파생변수는 해당 함수가 계산하지 않음)
+    def pivot_prdRep(
+        df: pd.DataFrame,
+        brand_type: str | None = None,
+        product_type: str | None = None,
+        is_paid: str | None = None
+        ) -> pd.DataFrame:
+        """
+        1) 함수 작성
+        :  pivot_prdRep(df, brand_type="슬립퍼", product_type="매트리스", is_paid="y")
+        2) 결과 컬럼
+        :  ['event_date', 'session_start', 'view_item', ..., 'purchase']
+        """
+        df_f = df.copy()
+        
+        if is_paid is not None:
+            df_f = df_f[df_f['is_paid'].astype(str) == is_paid]
+        if brand_type:
+            df_f = df_f[df_f['product_cat_a'].astype(str).str.contains(brand_type, regex=True, na=False)]
+        if product_type:
+            df_f = df_f[df_f['product_cat_b'].astype(str).str.contains(product_type, regex=True, na=False)]
+        
+        df_f['event_date'] = pd.to_datetime(df_f['event_date'], errors='coerce')
+        df_f['event_date'] = df_f['event_date'].dt.strftime('%Y-%m-%d')
+
+        pivot = (
+            df_f
+            .groupby(['event_date', 'event_name'])['pseudo_session_id']
             .nunique()
             .unstack(fill_value=0)
+            .reset_index()
         )
-        # 필요한 컬럼 순서 지정 & 없으면 0 채우기
-        cols = [
-            "view_item",
-            "product_page_scroll_50",
-            "product_option_price",
-            "find_nearby_showroom",
-            "showroom_10s",
-            "add_to_cart",
-            "showroom_leads",
-            "purchase"
-        ]
-        evt = evt.reindex(columns=cols, fill_value=0)
+        return pivot
 
-        # c) 일별 광고비 집계
-        cost = (
-            df_cost
-            .groupby("event_date")["cost_gross"]
-            .sum()
-            .rename("cost_gross_sum")
-        )
 
-        # d) 합치기
-        df2 = pd.concat([sessions, evt, cost], axis=1).reset_index()
-
-        # e) 한글 컬럼명 매핑
-        df2.rename(columns={
-            "view_item": "PDP조회",
-            "product_page_scroll_50": "PDPscr50",
-            "product_option_price": "가격표시",
-            "find_nearby_showroom": "쇼룸찾기",
-            "showroom_10s": "쇼룸10초",
-            "add_to_cart": "장바구니",
-            "showroom_leads": "쇼룸예약",
-            "purchase": "구매",
-        }, inplace=True)
-
-        # f) CPA, CVR 벡터 계산
-        events = ["PDP조회","PDPscr50","가격표시","쇼룸찾기","쇼룸10초","장바구니","쇼룸예약","구매"]
-        for ev in events:
-            df2[f"CPA_{ev}"] = (
-                df2["cost_gross_sum"] / df2[ev]
-            ).replace([np.inf, -np.inf, np.nan], 0).round(2)
-            df2[f"CVR_{ev}"] = (
-                df2[ev] / df2["session_start"] * 100
-            ).fillna(0).round(2)
-            
-        #  세션수 CPA/CVR 계산 추가
-        df2["CPA_session_start"] = (df2["cost_gross_sum"] / df2["session_start"]).replace([np.inf, -np.inf, np.nan], 0).round(2)
-        df2["CVR_session_start"] = 100.0
-
-        return df2
-
-    # 2) 필터별 DataFrame 생성
-    def make_filtered_df(cat_a=None, is_paid=None, cat_b_pattern=None):
-        # 1) product_report 필터
-        df_f = df_prod_rep
-        if cat_a:
-            df_f = df_f[df_f['product_cat_a'] == cat_a]
-        if is_paid:
-            df_f = df_f[df_f['is_paid'] == is_paid]
-        if cat_b_pattern:
-            df_f = df_f[df_f['product_cat_b'].str.contains(cat_b_pattern)]
-
-        # 2) merged 필터 (같은 cat_a, is_paid, cat_b_pattern) -- 신규 ... 
-        df_cost = merged
-        if cat_a:
-            df_cost = df_cost[df_cost['brand_type'] == cat_a]
-        if cat_b_pattern:
-            df_cost = df_cost[df_cost['product_type'].str.contains(cat_b_pattern)]
-
-        return pivot_and_calc(df_f, df_cost)
-
-    # 3) 각 탭 데이터 준비
-    df_sleeper_paid     = make_filtered_df(cat_a="슬립퍼", is_paid="y")
-    df_sleeper_mat      = make_filtered_df(cat_a="슬립퍼", cat_b_pattern="매트리스")
-    df_sleeper_paid_mat = make_filtered_df(cat_a="슬립퍼", is_paid="y", cat_b_pattern="매트리스")
-    df_sleeper_frm      = make_filtered_df(cat_a="슬립퍼", cat_b_pattern="원목 침대|패브릭 침대|프레임")
-    df_sleeper_paid_frm = make_filtered_df(cat_a="슬립퍼", is_paid="y", cat_b_pattern="원목 침대|패브릭 침대|프레임")
+    # ────────────────────────────────────────────────────────────────
+    # 데이터프레임 생성 
+    # ────────────────────────────────────────────────────────────────
+    # 1-1) 슬립퍼
+    _sctSes_slp        = pivot_cstSes(df_merged,  brand_type="슬립퍼")
+    _prdRep_slp        = pivot_prdRep(df_prodRep, brand_type="슬립퍼")
+    df_slp             = _sctSes_slp.merge(_prdRep_slp, on='event_date', how='left')
     
-    df_nooer = make_filtered_df(cat_a="누어")
-    df_nooer_mat = make_filtered_df(cat_a="누어", cat_b_pattern="매트리스")
-    df_nooer_frm = make_filtered_df(cat_a="누어", cat_b_pattern="프레임")
+    # 1-2) 슬립퍼 & PAID
+    _sctSes_slp_y        = pivot_cstSes(df_merged,  brand_type="슬립퍼")
+    _prdRep_slp_y        = pivot_prdRep(df_prodRep, brand_type="슬립퍼", is_paid="y")
+    df_slp_y             = _sctSes_slp_y.merge(_prdRep_slp_y, on='event_date', how='left')
     
+    # 1-3) 슬립퍼 & 매트리스
+    _sctSes_slp_mat        = pivot_cstSes(df_merged,  brand_type="슬립퍼", product_type="매트리스")
+    _prdRep_slp_mat        = pivot_prdRep(df_prodRep, brand_type="슬립퍼", product_type="매트리스")
+    df_slp_mat             = _sctSes_slp_mat.merge(_prdRep_slp_mat, on='event_date', how='left')
+    
+    # 1-4) 슬립퍼 & 매트리스 & PAID
+    _sctSes_slp_mat_y        = pivot_cstSes(df_merged,  brand_type="슬립퍼", product_type="매트리스")
+    _prdRep_slp_mat_y        = pivot_prdRep(df_prodRep, brand_type="슬립퍼", product_type="매트리스", is_paid="y")
+    df_slp_mat_y             = _sctSes_slp_mat_y.merge(_prdRep_slp_mat_y, on='event_date', how='left')
+    
+    # 1-5) 슬립퍼 & 프레임 - 매우 주의, Regex 사용 필수 
+    _sctSes_slp_frm        = pivot_cstSes(df_merged,  brand_type="슬립퍼", product_type="원목 침대|패브릭 침대|프레임")
+    _prdRep_slp_frm        = pivot_prdRep(df_prodRep, brand_type="슬립퍼", product_type="원목 침대|패브릭 침대|프레임")
+    df_slp_frm             = _sctSes_slp_frm.merge(_prdRep_slp_frm, on='event_date', how='left')
+    
+    # 1-6) 슬립퍼 & 프레임 & PAID - 매우 주의, Regex 사용 필수 
+    _sctSes_slp_frm_y        = pivot_cstSes(df_merged,  brand_type="슬립퍼", product_type="원목 침대|패브릭 침대|프레임")
+    _prdRep_slp_frm_y        = pivot_prdRep(df_prodRep, brand_type="슬립퍼", product_type="원목 침대|패브릭 침대|프레임", is_paid="y")
+    df_slp_frm_y             = _sctSes_slp_frm_y.merge(_prdRep_slp_frm_y, on='event_date', how='left')
+    
+    # 2-1) 누어
+    _sctSes_nor        = pivot_cstSes(df_merged,  brand_type="누어")
+    _prdRep_nor        = pivot_prdRep(df_prodRep, brand_type="누어")
+    df_nor             = _sctSes_nor.merge(_prdRep_nor, on='event_date', how='left')
+    
+    # 2-2) 누어 & 매트리스
+    _sctSes_nor_mat        = pivot_cstSes(df_merged,  brand_type="누어", product_type="매트리스")
+    _prdRep_nor_mat        = pivot_prdRep(df_prodRep, brand_type="누어", product_type="매트리스")
+    df_nor_mat             = _sctSes_nor_mat.merge(_prdRep_nor_mat, on='event_date', how='left')
+    
+    # 2-3) 누어 & 프레임
+    _sctSes_nor_frm        = pivot_cstSes(df_merged,  brand_type="누어", product_type="원목 침대|패브릭 침대|프레임")
+    _prdRep_nor_frm        = pivot_prdRep(df_prodRep, brand_type="누어", product_type="원목 침대|패브릭 침대|프레임")
+    df_nor_frm             = _sctSes_nor_frm.merge(_prdRep_nor_frm, on='event_date', how='left')
+    
+    # 3) 통합 데이터 (3번 이지만, 위치상 최상위에 위치함 주의)
+    _df_psi_total        = df_psi  # 이미 날짜별로 세션수와 이벤트수가 피벗되어 있는 데이터프레임
+    _sctSes_total        = pivot_cstSes(df_merged)
+    _sctSes_total        = _sctSes_total[['event_date', 'cost_gross_sum']] # cost_gross_sum 만
+    df_total             = _df_psi_total.merge(_sctSes_total, on='event_date', how='left')
 
-    # 4) AgGrid 렌더링 함수
-    def render_performance_aggrid(
+
+    # ────────────────────────────────────────────────────────────────
+    # 시각화
+    # ────────────────────────────────────────────────────────────────
+    # 공통함수 (3) render_aggrid 
+    def render_aggrid(
         df: pd.DataFrame,
-        date_field: str = "event_date",
-        cost_field: str = "cost_gross_sum",
-        height: int = 400
-    ):
-        df = df.copy()
-        # 날짜 문자열
-        if pd.api.types.is_datetime64_any_dtype(df[date_field]):
-            df[date_field] = df[date_field].dt.strftime("%Y-%m-%d")
+        height: int = 410,
+        use_parent: bool = True
+        ) -> None:
+        """
+        use_parent: False / True
+        """
+        df2 = df.copy()
+        
+        # (주의) 누락됱 컬럼히 당연히 있을수 있음, 그래서 fillna만 해주는게 아니라 컬럼 자리를 만들어서 fillna 해야함.
+        expected_cols = ['session_count','view_item','product_page_scroll_50','product_option_price','find_nearby_showroom','showroom_10s','add_to_cart','showroom_leads','purchase']
+        for col in expected_cols:
+            df2[col] = df2.get(col, 0)
+        df2.fillna(0, inplace=True)     # (기존과 동일) 값이 없는 경우 일단 0으로 치환
+        
+        # 전처리 영역 (파생지표 생성) - CPA
+        df2['session_count_CPA']               = (df2['cost_gross_sum']               / df2['session_count']             ).round(0)
+        df2['view_item_CPA']                   = (df2['cost_gross_sum']               / df2['view_item']                 ).round(0)
+        df2['product_page_scroll_50_CPA']      = (df2['cost_gross_sum']                   / df2['product_page_scroll_50']).round(0)
+        df2['product_option_price_CPA']        = (df2['cost_gross_sum']                   / df2['product_option_price']  ).round(0)
+        df2['find_nearby_showroom_CPA']        = (df2['cost_gross_sum']                   / df2['find_nearby_showroom']  ).round(0)
+        df2['showroom_10s_CPA']                = (df2['cost_gross_sum']                   / df2['showroom_10s']          ).round(0)
+        df2['add_to_cart_CPA']                 = (df2['cost_gross_sum']                   / df2['add_to_cart']           ).round(0)
+        df2['showroom_leads_CPA']              = (df2['cost_gross_sum']                   / df2['showroom_leads']        ).round(0)
+        df2['purchase_CPA']                    = (df2['cost_gross_sum']                   / df2['purchase']              ).round(0)
+        
+        # 전처리 영역 (파생지표 생성) - CVR
+        df2['session_count_CVR']          = (df2['session_count']               / df2['session_count']              * 100).round(2)
+        df2['view_item_CVR']              = (df2['view_item']                   / df2['session_count']              * 100).round(2)
+        df2['product_page_scroll_50_CVR'] = (df2['product_page_scroll_50']      / df2['view_item']                  * 100).round(2)
+        df2['product_option_price_CVR']   = (df2['product_option_price']        / df2['view_item']                  * 100).round(2)
+        df2['find_nearby_showroom_CVR']   = (df2['find_nearby_showroom']        / df2['view_item']                  * 100).round(2)
+        df2['showroom_10s_CVR']           = (df2['showroom_10s']                / df2['view_item']                  * 100).round(2)
+        df2['add_to_cart_CVR']            = (df2['add_to_cart']                 / df2['view_item']                  * 100).round(2)
+        df2['showroom_leads_CVR']         = (df2['showroom_leads']              / df2['view_item']                  * 100).round(2)
+        df2['purchase_CVR1']              = (df2['purchase']                    / df2['view_item']                  * 100).round(2)
+        df2['purchase_CVR2']              = (df2['purchase']                    / df2['showroom_leads']             * 100).round(2)
+        
 
-        def make_num_child(header, field, width: int = 90):
+        # 컬럼순서 지정
+        df2 = df2[['event_date',
+                    'cost_gross_sum',
+                    'session_count','session_count_CPA','session_count_CVR',
+                    'view_item','view_item_CPA','view_item_CVR',
+                    'product_page_scroll_50','product_page_scroll_50_CPA','product_page_scroll_50_CVR',
+                    'product_option_price','product_option_price_CPA','product_option_price_CVR',
+                    'find_nearby_showroom','find_nearby_showroom_CPA','find_nearby_showroom_CVR',
+                    'showroom_10s','showroom_10s_CPA','showroom_10s_CVR',
+                    'add_to_cart','add_to_cart_CPA','add_to_cart_CVR',
+                    'showroom_leads','showroom_leads_CPA','showroom_leads_CVR',
+                    'purchase','purchase_CPA','purchase_CVR1','purchase_CVR2'
+                ]]
+
+        # (필수함수) make_num_child
+        def make_num_child(header, field, fmt_digits=0, suffix=''):
             return {
-                "headerName": header,
-                "field": field,
-                "width": width,
+                "headerName": header, "field": field,
                 "type": ["numericColumn","customNumericFormat"],
                 "valueFormatter": JsCode(
-                    "function(params){"
-                    "  return params.value != null && params.value !== ''"
-                    "    ? params.value.toLocaleString(undefined,{maximumFractionDigits:0})"
-                    "    : '';"
-                    "}"
+                    f"function(params){{"
+                    f"  return params.value!=null?"
+                    f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
+                    f"}}"
                 ),
-                "cellStyle": JsCode("params => ({ textAlign:'right' })")
+                "cellStyle": JsCode("params=>({textAlign:'right'})")
             }
-
-        # CVR 전용 포맷터 (소수점 둘째자리까지)
-        def make_cvr_child(header, field, width: int = 90):
-            return {
-                "headerName": header,
-                "field": field,
-                "width": width,
-                "type": ["numericColumn","customNumericFormat"],
-                "valueFormatter": JsCode(
-                    "function(params){"
-                    "  return params.value != null && params.value !== ''"
-                    "    ? params.value.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + '%'"
-                    "    : '';"
-                    "}"
-                ),
-                "cellStyle": JsCode("params => ({ textAlign:'right' })")
-            }
-
-
-        column_defs = [{
+        
+        # (필수함수) add_summary
+        def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
+            summary: dict[str, float] = {}
+            for col, op in agg_map.items():
+                if op == 'sum':
+                    summary[col] = int(df[col].sum())
+                elif op == 'avg':
+                    summary[col] = float(df[col].mean())
+                elif op == 'mid':
+                    summary[col] = float(df[col].median())
+                else:
+                    summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
+            grid_options['pinnedBottomRowData'] = [summary]
+            return grid_options
+        
+        # date_col
+        date_col = {
             "headerName": "날짜",
-            "field": date_field,
+            "field": "event_date",
             "pinned": "left",
             "width": 100,
-            "cellStyle": JsCode("params => ({ textAlign:'left' })")
-        }, {
-            "headerName": "광고비(G)",
-            "field": cost_field,
-            "width": 100,
-            "type": ["numericColumn","customNumericFormat"],
-            "valueFormatter": JsCode(
-                "function(params){"
-                "  return params.value != null"
-                "    ? params.value.toLocaleString(undefined,{maximumFractionDigits:0})"
-                "    : '';"
-                "}"
-            ),
-            "cellStyle": JsCode("params => ({ textAlign:'right' })")
-        }, {
-            "headerName": "세션수",
-            "children": [
-                make_num_child("Actual", "session_start"),
-                make_num_child("CPA",     "CPA_session_start"),
-                make_cvr_child("CVR",     "CVR_session_start"),
-            ]
-        }]
-
-        for ev in ["PDP조회","PDPscr50","가격표시","쇼룸찾기","쇼룸10초","장바구니","쇼룸예약","구매"]:
-            column_defs.append({
-                "headerName": ev,
-                "children": [
-                    make_num_child("Actual", ev),
-                    make_num_child("CPA",    f"CPA_{ev}"),
-                    make_cvr_child("CVR",    f"CVR_{ev}")
-                ]
-            })
-
-        grid_options = {
-            "columnDefs": column_defs,
-            "defaultColDef": {
-                "sortable": True, "filter": True, "resizable": True,
-                "wrapHeaderText": True, "autoHeaderHeight": True
-            },
-            "headerHeight": 30,
-            "groupHeaderHeight": 30,
+            "cellStyle": JsCode("params=>({textAlign:'left'})")
         }
+        
+        flat_cols = [
+            date_col,
+            make_num_child("광고비",                         "cost_gross_sum"),
+            make_num_child("세션수",                         "session_count"),
+            make_num_child("세션수 CPA",                     "session_count_CPA"),
+            make_num_child("세션수 CVR",                     "session_count_CVR", fmt_digits=2, suffix="%"),
+            make_num_child("PDP조회",                       "view_item"),
+            make_num_child("PDP조회 CPA",                   "view_item_CPA"),
+            make_num_child("PDP조회 CVR",                   "view_item_CVR", fmt_digits=2, suffix="%"),
+            make_num_child("PDP스크롤50",                   "product_page_scroll_50"),
+            make_num_child("PDP스크롤50 CPA",               "product_page_scroll_50_CPA"),
+            make_num_child("PDP스크롤50 CVR",               "product_page_scroll_50_CVR", fmt_digits=2, suffix="%"),
+            make_num_child("가격표시",                       "product_option_price"),
+            make_num_child("가격표시 CPA",                   "product_option_price_CPA"),
+            make_num_child("가격표시 CVR",                   "product_option_price_CVR", fmt_digits=2, suffix="%"),
+            make_num_child("쇼룸찾기",                       "find_nearby_showroom"),
+            make_num_child("쇼룸찾기 CPA",                   "find_nearby_showroom_CPA"),
+            make_num_child("쇼룸찾기 CVR",                   "find_nearby_showroom_CVR", fmt_digits=2, suffix="%"),
+            make_num_child("쇼룸10초",                       "showroom_10s"),
+            make_num_child("쇼룸10초 CPA",                   "showroom_10s_CPA"),
+            make_num_child("쇼룸10초 CVR",                   "showroom_10s_CVR", fmt_digits=2, suffix="%"),
+            make_num_child("장바구니",                       "add_to_cart"),
+            make_num_child("장바구니 CPA",                   "add_to_cart_CPA"),
+            make_num_child("장바구니 CVR",                   "add_to_cart_CVR", fmt_digits=2, suffix="%"),
+            make_num_child("쇼룸예약",                       "showroom_leads"),
+            make_num_child("쇼룸예약 CPA",                   "showroom_leads_CPA"),
+            make_num_child("쇼룸예약 CVR",                   "showroom_leads_CVR", fmt_digits=2, suffix="%"),
+            make_num_child("구매완료",                       "purchase"),
+            make_num_child("구매완료 CPA",                   "purchase_CPA"),
+            make_num_child("구매완료 CVR1",                  "purchase_CVR1", fmt_digits=2, suffix="%"),
+            make_num_child("구매완료 CVR2",                  "purchase_CVR2", fmt_digits=2, suffix="%"),
+        ]
 
+        
+        # (use_parent) grouped_cols
+        grouped_cols = [
+            date_col,
+            make_num_child("광고비", "cost_gross_sum"),
+            # 세션수
+            {
+                "headerName": "세션수",
+                "children": [
+                    make_num_child("세션수",           "session_count"),
+                    make_num_child("CPA",             "session_count_CPA"),
+                    make_num_child("CVR",             "session_count_CVR", fmt_digits=2, suffix="%"),
+                ]
+            },
+            # PDP 조회
+            {
+                "headerName": "PDP조회",
+                "children": [
+                    make_num_child("Actual",         "view_item"),
+                    make_num_child("CPA",             "view_item_CPA"),
+                    make_num_child("CVR",             "view_item_CVR", fmt_digits=2, suffix="%"),
+                ]
+            },
+            # PDP스크롤50
+            {
+                "headerName": "PDPscr50",
+                "children": [
+                    make_num_child("Actual",         "product_page_scroll_50"),
+                    make_num_child("CPA",             "product_page_scroll_50_CPA"),
+                    make_num_child("CVR",             "product_page_scroll_50_CVR", fmt_digits=2, suffix="%"),
+                ]
+            },
+            # 가격표시
+            {
+                "headerName": "가격표시",
+                "children": [
+                    make_num_child("Actual",         "product_option_price"),
+                    make_num_child("CPA",             "product_option_price_CPA"),
+                    make_num_child("CVR",             "product_option_price_CVR", fmt_digits=2, suffix="%"),
+                ]
+            },
+            # 쇼룸찾기
+            {
+                "headerName": "쇼룸찾기",
+                "children": [
+                    make_num_child("Actual",         "find_nearby_showroom"),
+                    make_num_child("CPA",             "find_nearby_showroom_CPA"),
+                    make_num_child("CVR",             "find_nearby_showroom_CVR", fmt_digits=2, suffix="%"),
+                ]
+            },
+            # 쇼룸10초
+            {
+                "headerName": "쇼룸10초",
+                "children": [
+                    make_num_child("Actual",         "showroom_10s"),
+                    make_num_child("CPA",             "showroom_10s_CPA"),
+                    make_num_child("CVR",             "showroom_10s_CVR", fmt_digits=2, suffix="%"),
+                ]
+            },
+            # 장바구니
+            {
+                "headerName": "장바구니",
+                "children": [
+                    make_num_child("Actual",         "add_to_cart"),
+                    make_num_child("CPA",             "add_to_cart_CPA"),
+                    make_num_child("CVR",             "add_to_cart_CVR", fmt_digits=2, suffix="%"),
+                ]
+            },
+            # 쇼룸예약
+            {
+                "headerName": "쇼룸예약",
+                "children": [
+                    make_num_child("Actual",         "showroom_leads"),
+                    make_num_child("CPA",             "showroom_leads_CPA"),
+                    make_num_child("CVR",             "showroom_leads_CVR", fmt_digits=2, suffix="%"),
+                ]
+            },
+            # 구매완료 (CVR1 & CVR2)
+            {
+                "headerName": "구매완료",
+                "children": [
+                    make_num_child("Actual",         "purchase"),
+                    make_num_child("CPA",             "purchase_CPA"),
+                    make_num_child("CVR1",            "purchase_CVR1", fmt_digits=2, suffix="%"),
+                    make_num_child("CVR2",            "purchase_CVR2", fmt_digits=2, suffix="%"),
+                ]
+            },
+        ]
+
+        # (use_parent)
+        column_defs = grouped_cols if use_parent else flat_cols
+    
+        # grid_options & 렌더링
+        grid_options = {
+        "columnDefs": column_defs,
+        "defaultColDef": {
+            "sortable": True,
+            "filter": True,
+            "resizable": True,
+            "flex": 1,       # flex:1 이면 나머지 공간을 컬럼 개수만큼 균등 분배
+            "minWidth": 90   # 최소 너비
+        },
+        "onGridReady": JsCode(
+            "function(params){ params.api.sizeColumnsToFit(); }"
+        ),
+        "headerHeight": 30,
+        "groupHeaderHeight": 30,
+        }        
+
+        # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
+        # pass
+        
         AgGrid(
-            df,
+            df2,
             gridOptions=grid_options,
             height=height,
-            fit_columns_on_grid_load=False,
-            theme="streamlit-dark" if st.get_option("theme.base")=="dark" else "streamlit",
+            fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
+            theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
             allow_unsafe_jscode=True
         )
-
-    # 5) 탭 간격 CSS
+    
+    
+    # 탭 간격 CSS
     st.markdown("""
         <style>
           [role="tablist"] [role="tab"] { margin-right: 1rem; }
         </style>
     """, unsafe_allow_html=True)
-
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>슬립퍼</span> 액션 리포트</h5>", unsafe_allow_html=True)  
+    
+    
+    # 1) 통합 영역 (탭 X)
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 액션 리포트</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
-
-    # 6) 탭별 출력
-    tabs = st.tabs([
-        "Paid",
-        "매트리스",
-        "매트리스(Paid)",
-        "프레임",
-        "프레임(Paid)"
-    ])
+    render_aggrid(df_total)
+    
+    # 2) 슬립퍼 영역 (탭 구성)
+    st.header(" ") # 공백용
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>슬립퍼</span> 액션 리포트</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
+    
+    tabs = st.tabs(["슬립퍼 통합", "슬립퍼 PAID", "슬립퍼 매트리스", "슬립퍼 매트리스 PAID", "슬립퍼 프레임", "슬립퍼 프레임 PAID"])
     with tabs[0]:
-        render_performance_aggrid(df_sleeper_paid)
+        render_aggrid(df_slp)
     with tabs[1]:
-        render_performance_aggrid(df_sleeper_mat)
+        render_aggrid(df_slp_y)
     with tabs[2]:
-        render_performance_aggrid(df_sleeper_paid_mat)
+        render_aggrid(df_slp_mat)
     with tabs[3]:
-        render_performance_aggrid(df_sleeper_frm)
+        render_aggrid(df_slp_mat_y)
     with tabs[4]:
-        render_performance_aggrid(df_sleeper_paid_frm)
+        render_aggrid(df_slp_frm)
+    with tabs[5]:
+        render_aggrid(df_slp_frm_y)
 
-    st.divider()
+    # 3) 누어 영역 (탭 구성)
+    st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>누어</span> 액션 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
 
-    # 6) 탭별 출력
-    tabs = st.tabs([
-        "누어",
-        "매트리스",
-        "프레임"
-    ])
+    tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
     with tabs[0]:
-        render_performance_aggrid(df_nooer)
+        render_aggrid(df_nor)
     with tabs[1]:
-        render_performance_aggrid(df_nooer_mat)
+        render_aggrid(df_nor_mat)
     with tabs[2]:
-        render_performance_aggrid(df_nooer_frm)
+        render_aggrid(df_nor_frm)    
 
 
 if __name__ == '__main__':

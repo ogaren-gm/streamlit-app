@@ -530,7 +530,7 @@ def main():
     # ──────────────────────────────────
     # 4. 표 영역: 기간 비교 + PSI 집계
     # ──────────────────────────────────
-    st.markdown("<h5>퍼포먼스 CPA (GA Matched)</h5>", unsafe_allow_html=True)
+    st.markdown("<h5>퍼포먼스 커스텀 리포트</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
     st.markdown(" ")
 

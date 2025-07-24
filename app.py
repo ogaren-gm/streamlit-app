@@ -27,10 +27,10 @@ st.set_page_config(layout="wide", page_title="SLPR Analytics")
 
 
 view01_name = "GA | 트래픽 대시보드"
-view03_name = "WV | 퍼포먼스 리포트"
+view03_name = "WV | 퍼포먼스 대시보드"
 view02_name = "GA | 제품 대시보드"
 view04_name = "WV | 매출 종합 리포트"
-view05_name = "WV | 카테고리별 액션 리포트"
+view05_name = "WV | 액션 종합 리포트"
 
 with st.sidebar:
     st.sidebar.header("Menu")
