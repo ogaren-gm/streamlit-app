@@ -16,6 +16,7 @@ from google.oauth2.service_account import Credentials
 import gspread
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import math
 
 
 def main():
@@ -141,17 +142,42 @@ def main():
         return pivot
 
 
-    # ---------- 가라 데이터 생성 ---------------------
-    dates = pd.date_range("2025-07-01", "2025-07-21")
-    n = 200
-    df_order = pd.DataFrame({
-        "주문일": np.random.choice(dates, size=n),
-        "실결제금액": np.random.randint(100_000, 1_000_001, size=n),
-        "카테고리": np.random.choice(["매트리스", "프레임"], size=n),
-        "브랜드": np.random.choice(["슬립퍼", "누어"], size=n),
-        "주문수": np.random.randint(1, 4, size=n)  # 1~3 랜덤
-    })
-    # ----------------------------------------------
+    # df_order
+    
+    # dates = pd.date_range("2025-07-01", "2025-07-21")
+    # n = 200
+    # df_order = pd.DataFrame({
+    #     "주문일": np.random.choice(dates, size=n),
+    #     "실결제금액": np.random.randint(100_000, 1_000_001, size=n),
+    #     "카테고리": np.random.choice(["매트리스", "프레임"], size=n),
+    #     "브랜드": np.random.choice(["슬립퍼", "누어"], size=n),
+    #     "주문수": np.random.randint(1, 4, size=n)  # 1~3 랜덤
+    # })
+    
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    creds = Credentials.from_service_account_file("C:/_code/auth/sleeper-461005-c74c5cd91818.json", scopes=scope)
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_url('https://docs.google.com/spreadsheets/d/1chXeCek1UZPyCr18zLe7lV-8tmv6YPWK6cEqAJcDPqs/edit')
+    df_order = pd.DataFrame(sh.worksheet('온오프라인_종합').get_all_records())
+    df_order = df_order.rename(columns={"판매수량": "주문수"})  # 컬럼 이름 치환
+    def convert_dot_date(x):
+        try:
+            # 1. 문자열로 변환 + 공백 제거
+            s = str(x).replace(" ", "")
+            # 2. 마침표 기준 split
+            parts = s.split(".")
+            if len(parts) == 3:
+                y = parts[0]
+                m = parts[1].zfill(2)
+                d = parts[2].zfill(2)
+                return pd.to_datetime(f"{y}-{m}-{d}", format="%Y-%m-%d", errors="coerce")
+            return pd.NaT
+        except:
+            return pd.NaT
+    df_order["주문일"] = pd.to_datetime(df_order["주문일"].apply(convert_dot_date), format="%Y-%m-%d", errors="coerce")
+    df_order["실결제금액"] = pd.to_numeric(df_order["실결제금액"], errors='coerce')
+    df_order["주문수"] = pd.to_numeric(df_order["주문수"], errors='coerce')
+    df_order = df_order.dropna(subset=["주문일"])
 
 
     # 공통합수 (2) 일자별 매출, 주문수 (파생변수는 해당 함수가 계산하지 않음)
@@ -269,18 +295,49 @@ def main():
                 "cellStyle": JsCode("params=>({textAlign:'right'})")
             }
 
+        # (필수함수) add_summary - deprecated !!
+        # def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
+        #     summary: dict[str, float] = {}
+        #     for col, op in agg_map.items():
+        #         if op == 'sum':
+        #             summary[col] = int(df[col].sum())
+        #         elif op == 'avg':
+        #             summary[col] = float(df[col].mean())
+        #         elif op == 'mid':
+        #             summary[col] = float(df[col].median())
+        #         else:
+        #             summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
+                    
+        #     grid_options['pinnedBottomRowData'] = [summary]
+        #     return grid_options
+
         # (필수함수) add_summary
-        def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
-            summary: dict[str, float] = {}
+        def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
+            summary: dict[str, float | str] = {}
             for col, op in agg_map.items():
-                if op == 'sum':
-                    summary[col] = int(df[col].sum())
-                elif op == 'avg':
-                    summary[col] = float(df[col].mean())
-                elif op == 'mid':
-                    summary[col] = float(df[col].median())
+                val = None
+                try:
+                    if op == 'sum':
+                        val = df[col].sum()
+                    elif op == 'avg':
+                        val = df[col].mean()
+                    elif op == 'mid':
+                        val = df[col].median()
+                except:
+                    val = None
+
+                # NaN / Inf / numpy 타입 → None or native 타입으로 처리
+                if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+                    summary[col] = None
                 else:
-                    summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
+                    # numpy 타입 제거
+                    if isinstance(val, (np.integer, np.int64, np.int32)):
+                        summary[col] = int(val)
+                    elif isinstance(val, (np.floating, np.float64, np.float32)):
+                        summary[col] = float(round(val, 2))
+                    else:
+                        summary[col] = val
+
             grid_options['pinnedBottomRowData'] = [summary]
             return grid_options
 
@@ -379,18 +436,7 @@ def main():
     # 1) 통합 영역 (탭 X)
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 매출 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
-    # --------------------------------    
-    # metricCard_temp = df_total.assign(
-    #     AOV=lambda x: x.ord_amount_sum / x.ord_count_sum,
-    #     ROAS=lambda x: x.ord_amount_sum / x.cost_gross_sum * 100,
-    #     CVR=lambda x: x.ord_count_sum / x.session_count * 100
-    # )
-    # aov, roas, cvr = metricCard_temp.AOV.mean(), metricCard_temp.ROAS.mean(), metricCard_temp.CVR.mean()
-    # c1, c2, c3, c4 = st.columns([1,1,1,3])
-    # c1.metric("평균 AOV (원)",  f"{aov:,.0f}")
-    # c2.metric("평균 ROAS (%)", f"{roas:.2f}%")
-    # c3.metric("평균 CVR (%)",  f"{cvr:.2f}%")
-    # --------------------------------    
+
     render_aggrid(df_total)
     
     # 2) 슬립퍼 영역 (탭 구성)
