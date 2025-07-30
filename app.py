@@ -21,6 +21,10 @@ import views.view05
 importlib.reload(views.view05)
 from views.view05 import main as view05_main
 
+import views.test
+importlib.reload(views.test)
+from views.test import main as test_main
+
 from streamlit_option_menu import option_menu
 
 st.set_page_config(layout="wide", page_title="SLPR Analytics")
@@ -31,6 +35,7 @@ view03_name = "WV | 퍼포먼스 대시보드"
 view02_name = "GA | 제품 대시보드"
 view04_name = "WV | 매출 종합 리포트"
 view05_name = "WV | 액션 종합 리포트"
+viewTest_name = "테스트 페이지"
 
 with st.sidebar:
     st.sidebar.header("Menu")
@@ -42,7 +47,8 @@ with st.sidebar:
         view05_name,
         view03_name,
         view01_name,
-        view02_name
+        view02_name,
+        viewTest_name
     ],
     # icons=[
     #             # https://icons.getbootstrap.com
@@ -80,4 +86,7 @@ elif selected == view04_name:
     view04_main()
 elif selected == view05_name:
     view05_main()
+elif selected == viewTest_name:
+    test_main()
+
 
