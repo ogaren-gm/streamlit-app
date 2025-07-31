@@ -21,34 +21,37 @@ import views.view05
 importlib.reload(views.view05)
 from views.view05 import main as view05_main
 
-import views.test
-importlib.reload(views.test)
-from views.test import main as test_main
+import views.view06
+importlib.reload(views.view06)
+from views.view06 import main as view06_main
 
 from streamlit_option_menu import option_menu
 
-st.set_page_config(layout="wide", page_title="SLPR Analytics")
+st.set_page_config(layout="wide", page_title="SLPR Dashboard")
 
 
-view01_name = "GA | 트래픽 대시보드"
+
+view01_name = "WV | 매출 종합 리포트"
+view02_name = "WV | 액션 종합 리포트"
 view03_name = "WV | 퍼포먼스 대시보드"
-view02_name = "GA | 제품 대시보드"
-view04_name = "WV | 매출 종합 리포트"
-view05_name = "WV | 액션 종합 리포트"
-viewTest_name = "테스트 페이지"
+view04_name = "WV | 언드 대시보드"
+view05_name = "GA | 트래픽 대시보드"
+view06_name = "GA | 제품 대시보드"
 
 with st.sidebar:
     st.sidebar.header("Menu")
     
+    
     selected = option_menu(
     menu_title="",
     options=[
-        view04_name,
-        view05_name,
-        view03_name,
         view01_name,
         view02_name,
-        viewTest_name
+        view03_name,
+        view04_name,
+        view05_name,
+        view06_name,
+        # view_notion_name  
     ],
     # icons=[
     #             # https://icons.getbootstrap.com
@@ -74,7 +77,7 @@ with st.sidebar:
     }
     )
     st.markdown("---")
-    # (필터가 필요하면 이 아래에 st.date_input, st.selectbox 등 추가)
+
 
 if selected == view01_name:
     view01_main()
@@ -86,7 +89,5 @@ elif selected == view04_name:
     view04_main()
 elif selected == view05_name:
     view05_main()
-elif selected == viewTest_name:
-    test_main()
-
-
+elif selected == view06_name:
+    view06_main()

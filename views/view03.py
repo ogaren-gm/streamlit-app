@@ -24,7 +24,7 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-    st.set_page_config(layout="wide", page_title="SLPR 대시보드 | 퍼포먼스 대시보드")
+    st.set_page_config(layout="wide", page_title="SLPR | 퍼포먼스 대시보드")
     st.markdown(
         """
         <style>
@@ -39,10 +39,17 @@ def main():
         unsafe_allow_html=True,
     )
     st.subheader('퍼포먼스 대시보드')
-    st.markdown("설명")
-    st.markdown(":primary-badge[:material/Cached: Update]ㅤD-1 데이터는 오전 중 예비 처리된 후, **15:00 이후** 매체 분류가 완료되어 최종 업데이트됩니다.")
+    st.markdown("""
+    이 대시보드는 **GA와 광고 데이터를 연결**해서, 광고비부터 유입, 전환까지 **주요 마케팅 성과**를 한눈에 확인할 수 있는 맞춤 대시보드입니다.  
+    여기서는 **기간, 매체, 브랜드, 품목 등 원하는 조건을 선택해서**, 광고 성과 지표들을 자유롭게 비교 · 분석할 수 있습니다.
+    """)
+    # st.markdown(":primary-badge[:material/Cached: Update]ㅤD-1 데이터는 오전 중 예비 처리된 후, **15:00 이후** 매체 분류가 완료되어 최종 업데이트됩니다.")
+    st.markdown(
+        '<a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af#241521e07c7680048fc9f2244b732720" target="_blank">'
+        'Dashboard Guide</a>',
+        unsafe_allow_html=True
+    )
     st.divider()
-
 
 
     # ────────────────────────────────────────────────────────────────
@@ -117,6 +124,7 @@ def main():
     # ────────────────────────────────────────────────────────────────
     # 데이터 불러오기
     # ────────────────────────────────────────────────────────────────
+    st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
     # df_merged = load_data(cs, ce)
     # df_filtered = df_merged.copy()
     
@@ -125,6 +133,8 @@ def main():
         # cs~ce, cs_cmp~ce_cmp 한 번에 로드
         cs_cmp = comp_start.strftime("%Y%m%d")
         df_merged = load_data(cs_cmp, ce)
+        df_merged['event_date'] = pd.to_datetime(df_merged['event_date'])  # ← 추가
+        
         df_primary = df_merged[
             (df_merged.event_date >= pd.to_datetime(start_date)) &
             (df_merged.event_date <= pd.to_datetime(end_date))
@@ -135,6 +145,7 @@ def main():
         ]
     else:
         df_merged  = load_data(cs, ce)
+        df_merged['event_date'] = pd.to_datetime(df_merged['event_date'])  # ← 추가
         df_primary = df_merged
     
     df_filtered     = df_primary.copy()
@@ -368,7 +379,17 @@ def main():
     # ──────────────────────────────────
     # 1. 퍼포먼스 커스텀 리포트
     # ──────────────────────────────────
-    st.markdown("<h5>퍼포먼스 커스텀 리포트</h5>", unsafe_allow_html=True)
+    # 탭 간격 CSS
+    st.markdown("""
+        <style>
+          [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    
+    st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> 커스텀 </span>리포트 생성</h5>", unsafe_allow_html=True)
+
+    # st.markdown("<h5>퍼포먼스 커스텀 리포트</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
     st.markdown(" ")
 
@@ -390,7 +411,7 @@ def main():
         pivot_cols.remove("event_date")
         
     # 공통 서치필터 및 상세 서치필터 정렬
-    with st.expander("✔ㅤ기본 멀티셀렉 필터", expanded=False):
+    with st.expander("기본 멀티셀렉 필터", expanded=False):
         ft1, ft2, ft3, ft4, ft5, ft6 = st.columns(6)
         with ft1:
             df_filtered, df_filtered_cmp = apply_filter_pair(df_filtered, df_filtered_cmp, "media_name", text_filter=False)
@@ -405,7 +426,7 @@ def main():
         with ft6:
             df_filtered, df_filtered_cmp = apply_filter_pair(df_filtered, df_filtered_cmp, "product_type", text_filter=False)
     
-    with st.expander("✔ㅤ고급 멀티셀렉 필터", expanded=False):
+    with st.expander("고급 멀티셀렉 필터", expanded=False):
         ft7, ft8, ft9, ft10 = st.columns([2,1,2,1])
         with ft7:
             df_filtered, df_filtered_cmp = apply_filter_pair(df_filtered, df_filtered_cmp, "campaign_name", text_filter=False)
@@ -436,8 +457,6 @@ def main():
         with ft18:
             df_filtered, df_filtered_cmp = apply_filter_pair(df_filtered, df_filtered_cmp, "utm_term", text_filter=True)
 
-    st.subheader(" ")
-    
     # 표 표시 영역
     if pivot_cols or show_totals:
 
@@ -539,11 +558,187 @@ def main():
 
 
     # ──────────────────────────────────
-    # 2. 일자별 광고비, 노출수, 클릭수, CTR, CPC 시각화 분석
+    # 2. 광고비, 노출수, 클릭수, CTR, CPC
     # ──────────────────────────────────
-    st.divider()
-    st.markdown("<h5>일자별 광고비, 노출수, 클릭수, CTR, CPC 분석</h5>", unsafe_allow_html=True)
-    
-    # 날짜 필터만 적용된 데이터 복사
-    df_daily = df_filtered.copy()
-    st.dataframe(df_pivot)
+
+    df3 = df_filtered.copy()
+
+    def pivot_ctr(
+        df: pd.DataFrame, 
+        group_col: str = None,
+        value_map: dict = None
+    ) -> pd.DataFrame:
+        """
+        일자별(또는 그룹별을 추가하여) 피벗 테이블 생성.
+        group_col: None이면 전체 일자별, 아니면 그룹별 피벗 
+        value_map: {"광고비": "cost_gross", ...} 커스텀 가능
+        """
+        if value_map is None:
+            value_map = {
+                "광고비(G)": "cost_gross",
+                "노출수"   : "impressions",
+                "클릭수"   : "clicks"
+            }
+        if group_col:
+            agg_dict = {k: (v, "sum") for k, v in value_map.items()}
+            by_grp = (
+                df.groupby(["event_date", group_col], as_index=False)
+                .agg(**agg_dict)
+            )
+            by_grp["CPC"] = 0.0
+            by_grp["CTR"] = 0.0
+            mask_impr = by_grp["노출수"] > 0
+            mask_click = by_grp["클릭수"] > 0
+            by_grp.loc[mask_impr, "CTR"] = (by_grp.loc[mask_impr, "클릭수"] / by_grp.loc[mask_impr, "노출수"] * 100).round(2)
+            by_grp.loc[mask_click, "CPC"] = (by_grp.loc[mask_click, "광고비(G)"] / by_grp.loc[mask_click, "클릭수"]).round(0)
+            all_keys = list(value_map.keys()) + ["CPC", "CTR"]
+            pivot = by_grp.pivot(index="event_date", columns=group_col, values=all_keys)
+            pivot.columns = [f"{g}_{k}" for k, g in pivot.columns]
+            pivot = pivot.reset_index()
+            return pivot
+        else:
+            agg_dict = {k: (v, "sum") for k, v in value_map.items()}
+            df_total = (
+                df.groupby("event_date", as_index=False)
+                .agg(**agg_dict)
+            )
+            df_total["CPC"] = 0.0
+            df_total["CTR"] = 0.0
+            mask_impr = df_total["노출수"] > 0
+            mask_click = df_total["클릭수"] > 0
+            df_total.loc[mask_impr, "CTR"] = (df_total.loc[mask_impr, "클릭수"] / df_total.loc[mask_impr, "노출수"] * 100).round(2)
+            df_total.loc[mask_click, "CPC"] = (df_total.loc[mask_click, "광고비(G)"] / df_total.loc[mask_click, "클릭수"]).round(0)
+            return df_total
+
+    def render_ctr_charts(df: pd.DataFrame, date_col: str = "event_date", key_prefix: str = ""):
+        c1, c2, c3 = st.columns(3)
+        df_plot = df.copy()
+        df_plot[date_col] = pd.to_datetime(df_plot[date_col])
+
+        with c1:
+            fig1 = go.Figure()
+            y1 = df_plot.columns[df_plot.columns.str.contains("광고비")]
+            y2 = df_plot.columns[df_plot.columns.str.contains("노출수")]
+            fig1.add_trace(go.Bar(
+                x=df_plot[date_col], y=df_plot[y1[0]], name=y1[0], yaxis="y1"
+            ))
+            fig1.add_trace(go.Scatter(
+                x=df_plot[date_col], y=df_plot[y2[0]], name=y2[0], yaxis="y2", mode="lines+markers"
+            ))
+            fig1.update_layout(
+                title="광고비 대비 노출수",
+                xaxis_title="일자", yaxis_title=y1[0],
+                yaxis2=dict(title=y2[0], overlaying="y", side="right"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                height=340
+            )
+            st.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1")
+
+        with c2:
+            fig2 = go.Figure()
+            y1 = df_plot.columns[df_plot.columns.str.contains("노출수")]
+            y2 = df_plot.columns[df_plot.columns.str.contains("클릭수")]
+            fig2.add_trace(go.Bar(
+                x=df_plot[date_col], y=df_plot[y1[0]], name=y1[0], yaxis="y1"
+            ))
+            fig2.add_trace(go.Scatter(
+                x=df_plot[date_col], y=df_plot[y2[0]], name=y2[0], yaxis="y2", mode="lines+markers"
+            ))
+            fig2.update_layout(
+                title="노출수 대비 클릭수",
+                xaxis_title="일자", yaxis_title=y1[0],
+                yaxis2=dict(title=y2[0], overlaying="y", side="right"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                height=340
+            )
+            st.plotly_chart(fig2, use_container_width=True, key=f"{key_prefix}_fig2")
+
+        with c3:
+            fig3 = go.Figure()
+            y1 = df_plot.columns[df_plot.columns.str.contains("CTR")]
+            y2 = df_plot.columns[df_plot.columns.str.contains("CPC")]
+            if len(y1) and len(y2):
+                fig3.add_trace(go.Scatter(
+                    x=df_plot[date_col], y=df_plot[y1[0]], name=y1[0], mode="lines+markers", yaxis="y1"
+                ))
+                fig3.add_trace(go.Scatter(
+                    x=df_plot[date_col], y=df_plot[y2[0]], name=y2[0], mode="lines+markers", yaxis="y2"
+                ))
+            fig3.update_layout(
+                title="CTR, CPC 추이",
+                xaxis_title="일자", yaxis=dict(title="CTR"),
+                yaxis2=dict(title="CPC", overlaying="y", side="right"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                height=340
+            )
+            st.plotly_chart(fig3, use_container_width=True, key=f"{key_prefix}_fig3")
+
+
+
+
+
+
+    st.header(" ") # 공백용
+    st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> CTR/CPC </span>리포트 확인</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
+    st.markdown(" ")
+
+    pivot_total = pivot_ctr(df3, group_col=None)
+
+    tabs = st.tabs(["일자별", "매체별", "브랜드별", "품목별", "퍼널별"])
+
+    with tabs[0]:
+        st.dataframe(pivot_total)
+        render_ctr_charts(pivot_total, key_prefix="total")
+
+    with tabs[1]:
+        media_values = df3["media_name"].dropna().unique()
+        media_sel = st.selectbox("매체 선택", ["(전체)"] + list(media_values), key="media_tab_select")
+        if media_sel == "(전체)" or media_sel is None:
+            pivot_media = pivot_ctr(df3, group_col="media_name")
+            st.dataframe(pivot_media)
+            render_ctr_charts(pivot_media, key_prefix="media")
+        else:
+            df3_media = df3[df3["media_name"] == media_sel]
+            pivot_media = pivot_ctr(df3_media, group_col="media_name")
+            st.dataframe(pivot_media)
+            render_ctr_charts(pivot_media, key_prefix="media")
+
+    with tabs[2]:
+        brand_values = df3["brand_type"].dropna().unique()
+        brand_sel = st.selectbox("브랜드 선택", ["(전체)"] + list(brand_values), key="brand_tab_select")
+        if brand_sel == "(전체)" or brand_sel is None:
+            pivot_brand = pivot_ctr(df3, group_col="brand_type")
+            st.dataframe(pivot_brand)
+            render_ctr_charts(pivot_brand, key_prefix="brand")
+        else:
+            df3_brand = df3[df3["brand_type"] == brand_sel]
+            pivot_brand = pivot_ctr(df3_brand, group_col="brand_type")
+            st.dataframe(pivot_brand)
+            render_ctr_charts(pivot_brand, key_prefix="brand")
+
+    with tabs[3]:
+        prod_values = df3["product_type"].dropna().unique()
+        prod_sel = st.selectbox("품목 선택", ["(전체)"] + list(prod_values), key="prod_tab_select")
+        if prod_sel == "(전체)" or prod_sel is None:
+            pivot_product = pivot_ctr(df3, group_col="product_type")
+            st.dataframe(pivot_product)
+            render_ctr_charts(pivot_product, key_prefix="product")
+        else:
+            df3_prod = df3[df3["product_type"] == prod_sel]
+            pivot_product = pivot_ctr(df3_prod, group_col="product_type")
+            st.dataframe(pivot_product)
+            render_ctr_charts(pivot_product, key_prefix="product")
+
+    with tabs[4]:
+        funnel_values = df3["funnel_type"].dropna().unique()
+        funnel_sel = st.selectbox("퍼널 선택", ["(전체)"] + list(funnel_values), key="funnel_tab_select")
+        if funnel_sel == "(전체)" or funnel_sel is None:
+            pivot_funnel = pivot_ctr(df3, group_col="funnel_type")
+            st.dataframe(pivot_funnel, use_container_width=True)
+            render_ctr_charts(pivot_funnel, key_prefix="funnel")
+        else:
+            df3_funnel = df3[df3["funnel_type"] == funnel_sel]
+            pivot_funnel = pivot_ctr(df3_funnel, group_col="funnel_type")
+            st.dataframe(pivot_funnel, use_container_width=True)
+            render_ctr_charts(pivot_funnel, key_prefix="funnel")
