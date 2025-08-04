@@ -46,7 +46,7 @@ def main():
     # st.markdown(":primary-badge[:material/Cached: Update]ㅤ설명.")
     st.markdown(
         '<a href="https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb" target="_blank">'
-        'Dashboard Guide</a>',
+        '지표설명 & 가이드</a>',
         unsafe_allow_html=True
     )
     st.divider()
@@ -59,7 +59,7 @@ def main():
     
     today = datetime.now().date()
     default_end = today - timedelta(days=1)
-    default_start = today - timedelta(days=14)
+    default_start = today - timedelta(days=9)
     start_date, end_date = st.sidebar.date_input(
         "기간 선택",
         value=[default_start, default_end],
@@ -116,7 +116,10 @@ def main():
     # 데이터 불러오기
     # ────────────────────────────────────────────────────────────────
     st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
-    df_merged, df_psi = load_data(cs, ce)
+
+    with st.spinner("데이터가 많아 로딩에 조금 시간이 소요됩니다. 조금만 기다려 주세요 😊"):
+        df_merged, df_psi = load_data(cs, ce)
+    
 
     # 공통합수 (1) 일자별 광고비, 세션수 (파생변수는 해당 함수가 계산하지 않음)
     def pivot_cstSes(
@@ -276,7 +279,7 @@ def main():
     # 공통함수 (3) render_aggrid 
     def render_aggrid(
         df: pd.DataFrame,
-        height: int = 410,
+        height: int = 323,
         use_parent: bool = True
         ) -> None:
         """
@@ -357,7 +360,8 @@ def main():
             "field": "event_date",
             "pinned": "left",
             "width": 100,
-            "cellStyle": JsCode("params=>({textAlign:'left'})")
+            "cellStyle": JsCode("params=>({textAlign:'left'})"),
+            "sort": "desc"
         }
 
         # (use_parent) flat_cols
@@ -365,11 +369,11 @@ def main():
             date_col,
             make_num_child("매출",   "ord_amount_sum"),
             make_num_child("주문수", "ord_count_sum"),
-            make_num_child("AOV",    "AOV"),
+            make_num_child("AOV(평균주문금액)",    "AOV"),
             make_num_child("광고비", "cost_gross_sum"),
-            make_num_child("ROAS",   "ROAS", fmt_digits=2, suffix='%'),
+            make_num_child("ROAS(광고수익률)",   "ROAS", fmt_digits=2, suffix='%'),
             make_num_child("세션수", "session_count"),
-            make_num_child("CVR",    "CVR", fmt_digits=2, suffix='%'),
+            make_num_child("CVR(전환율)",    "CVR", fmt_digits=2, suffix='%'),
         ]
 
         # (use_parent) grouped_cols
@@ -380,21 +384,21 @@ def main():
                 "children": [
                     make_num_child("매출",   "ord_amount_sum"),
                     make_num_child("주문수", "ord_count_sum"),
-                    make_num_child("AOV",    "AOV"),
+                    make_num_child("AOV(평균주문금액)",    "AOV"),
                 ]
             },
             {
                 "headerName": "PERP",
                 "children": [
                     make_num_child("광고비", "cost_gross_sum"),
-                    make_num_child("ROAS",   "ROAS", fmt_digits=2, suffix='%'),
+                    make_num_child("ROAS(광고수익률)",   "ROAS", fmt_digits=2, suffix='%'),
                 ]
             },
             {
                 "headerName": "GA",
                 "children": [
                     make_num_child("세션수", "session_count"),
-                    make_num_child("CVR",    "CVR", fmt_digits=2, suffix='%'),
+                    make_num_child("CVR(전환율)",    "CVR", fmt_digits=2, suffix='%'),
                 ]
             },
         ]
@@ -445,14 +449,13 @@ def main():
 
     # 1) 통합 영역 (탭 X)
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 매출 리포트</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
-
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **COST**(매출), **PREP**(광고비), **GA**(유입) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
     render_aggrid(df_total)
     
     # 2) 슬립퍼 영역 (탭 구성)
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>슬립퍼</span> 매출 리포트</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다. ", unsafe_allow_html=True)
 
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 매트리스", "슬립퍼 프레임"])
     with tabs[0]:
@@ -465,7 +468,7 @@ def main():
     # 3) 누어 영역 (탭 구성)
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>누어</span> 매출 리포트</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
 
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
     with tabs[0]:
@@ -476,12 +479,101 @@ def main():
         render_aggrid(df_nor_frm)
 
 
+    # # ────────────────────────────────────────────────────────────────
+    # # 시각화 차트
+    # # ────────────────────────────────────────────────────────────────
+    # st.header(" ") # 공백용
+    # st.markdown("<h5 style='margin:0'>리포트 시각화</h5>", unsafe_allow_html=True)  
+    # st.markdown(":gray-badge[:material/Info: Info]ㅤ위에서 본 리포트(표) 중 하나를 선택하여, 원하는 컬럼을 시각화할 수 있습니다.", unsafe_allow_html=True)
+    # dfs = {
+    #     "통합 리포트":    df_total,
+    #     "슬립퍼 통합":    df_slp,
+    #     "슬립퍼 매트리스": df_slp_mat,
+    #     "슬립퍼 프레임":   df_slp_frm,
+    #     "누어 통합":     df_nor,
+    #     "누어 매트리스":  df_nor_mat,
+    #     "누어 프레임":    df_nor_frm,
+    # }
+    # metrics = ["매출","주문수","AOV","광고비","ROAS","세션수","CVR"]
+    # col_map = {
+    #     "매출":   "ord_amount_sum",
+    #     "주문수": "ord_count_sum",
+    #     "AOV":    "AOV",
+    #     "광고비": "cost_gross_sum",
+    #     "ROAS":   "ROAS",
+    #     "세션수": "session_count",
+    #     "CVR":    "CVR"
+    # }
+    # left_labels  = {"매출","주문수","AOV","광고비","세션수"}
+    # right_labels = {"ROAS","CVR"}
+
+    # # 1) 선택 UI: 좌우 3:7
+    # col1, col2 = st.columns([3, 7])
+    # with col1:
+    #     df_key = st.selectbox("리포트 선택", list(dfs.keys()))
+    # with col2:
+    #     sel = st.multiselect("컬럼 선택", metrics, default=["AOV", "ROAS"])
+
+    # # 2) 차트 로직
+    # if not sel:
+    #     st.warning("하나 이상의 컬럼을 선택해주세요.")
+    # else:
+    #     df_sel   = dfs[df_key].sort_values("event_date")
+    #     df_chart = df_sel.assign(
+    #         AOV  = lambda x: x.ord_amount_sum / x.ord_count_sum,
+    #         ROAS = lambda x: x.ord_amount_sum / x.cost_gross_sum * 100,
+    #         CVR  = lambda x: x.ord_count_sum  / x.session_count   * 100,
+    #     )
+
+    #     fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    #     for m in sel:
+    #         col = col_map[m]
+    #         is_right = (m in right_labels)
+    #         fig.add_trace(
+    #             go.Scatter(
+    #                 x=df_chart["event_date"],
+    #                 y=df_chart[col],
+    #                 name=m,
+    #                 mode="lines+markers",
+    #                 line=dict(dash="dash" if is_right else "solid")
+    #             ),
+    #             secondary_y=is_right
+    #         )
+
+    #     # 3) 레이아웃
+    #     fig.update_layout(
+    #         title=f"{df_key}  -  {' / '.join(sel)} 추이",
+    #         # xaxis_title="날짜",
+    #         xaxis=dict(tickformat="%m월 %d일"),
+    #         legend=dict(
+    #             orientation="h",
+    #             x=1, y=1.1,
+    #             xanchor="right",
+    #             yanchor="bottom"
+    #         ),
+    #         margin=dict(t=100, b=20, l=20, r=20)
+    #     )
+    #     left_title  = "·".join([m for m in sel if m in left_labels])
+    #     right_title = "·".join([m for m in sel if m in right_labels])
+    #     if left_title:
+    #         fig.update_yaxes(title_text=left_title, secondary_y=False)
+    #     if right_title:
+    #         fig.update_yaxes(title_text=right_title, secondary_y=True)
+
+    #     st.plotly_chart(fig, use_container_width=True)
+
+
     # ────────────────────────────────────────────────────────────────
-    # 시각화 차트
+    # 시각화 차트 (축 선택이랑 디자인 선택 가능하도록 다시 만듦......)
     # ────────────────────────────────────────────────────────────────
-    st.header(" ") # 공백용
-    st.markdown("<h5 style='margin:0'>리포트 시각화</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
+    st.header(" ")
+    st.markdown("<h5 style='margin:0'>리포트 시각화</h5>", unsafe_allow_html=True)
+    st.markdown(
+        ":gray-badge[:material/Info: Info]ㅤ리포트, 지표, 차트 옵션을 자유롭게 선택하여, 원하는 방식으로 데이터를 살펴보세요.",
+        unsafe_allow_html=True,
+    )
+
     dfs = {
         "통합 리포트":    df_total,
         "슬립퍼 통합":    df_slp,
@@ -491,7 +583,9 @@ def main():
         "누어 매트리스":  df_nor_mat,
         "누어 프레임":    df_nor_frm,
     }
+    
     metrics = ["매출","주문수","AOV","광고비","ROAS","세션수","CVR"]
+    
     col_map = {
         "매출":   "ord_amount_sum",
         "주문수": "ord_count_sum",
@@ -501,65 +595,116 @@ def main():
         "세션수": "session_count",
         "CVR":    "CVR"
     }
-    left_labels  = {"매출","주문수","AOV","광고비","세션수"}
-    right_labels = {"ROAS","CVR"}
 
-    # 1) 선택 UI: 좌우 3:7
-    col1, col2 = st.columns([3, 7])
-    with col1:
-        df_key = st.selectbox("리포트 선택", list(dfs.keys()))
-    with col2:
-        sel = st.multiselect("컬럼 선택", metrics, default=["AOV", "ROAS"])
+    default_yaxis = {
+        "매출": "left",
+        "주문수": "left",
+        "AOV": "left",
+        "광고비": "left",
+        "ROAS": "right",
+        "세션수": "left",
+        "CVR": "right"
+    }
+    default_chart = {
+        "매출": "bar",
+        "주문수": "bar",
+        "AOV": "line",
+        "광고비": "bar",
+        "ROAS": "line",
+        "세션수": "bar",
+        "CVR": "line"
+    }
 
-    # 2) 차트 로직
-    if not sel:
-        st.warning("하나 이상의 컬럼을 선택해주세요.")
+
+    # ── 1) 선택 UI
+    c_report, c_metric = st.columns([3, 7])
+    with c_report:
+        sel_report = st.selectbox("리포트 선택", list(dfs.keys()), key="select_report")
+    with c_metric:
+        sel_metrics = st.multiselect("지표 선택", metrics, default=["AOV", "ROAS"], key="select_metrics")
+
+    # ── 2) 컬럼별 옵션 선택 UI (표 형태)
+    with st.expander("지표별 옵션 선택", expanded=False):
+
+        metric_settings = {}
+        for i, metric in enumerate(sel_metrics):
+            c2, c3 = st.columns([2, 2])
+            with c2:
+                yaxis = st.selectbox(
+                    f"Y축 위치: {metric}", ["왼쪽", "오른쪽"],
+                    key=f"y_axis_{metric}_{i}",
+                    index=0 if default_yaxis[metric] == "left" else 1
+                )
+            with c3:
+                chart_type = st.selectbox(
+                    f"차트 유형: {metric}", ["꺾은선", "막대"],
+                    key=f"chart_type_{metric}_{i}",
+                    index=0 if default_chart[metric] == "line" else 1
+                )
+            metric_settings[metric] = {
+                "yaxis": "right" if yaxis == "오른쪽" else "left",
+                "chart": "bar" if chart_type == "막대" else "line"
+            }
+
+    # ── 3) 차트 로직
+    if not sel_metrics:
+        st.warning("하나 이상의 지표를 선택해주세요.")
     else:
-        df_sel   = dfs[df_key].sort_values("event_date")
-        df_chart = df_sel.assign(
-            AOV  = lambda x: x.ord_amount_sum / x.ord_count_sum,
-            ROAS = lambda x: x.ord_amount_sum / x.cost_gross_sum * 100,
-            CVR  = lambda x: x.ord_count_sum  / x.session_count   * 100,
-        )
+        df = dfs[sel_report].sort_values("event_date").copy()
+        # 파생지표 생성 (수식이 필요한 항목만)
+        df["AOV"]  = df["ord_amount_sum"] / df["ord_count_sum"]
+        df["ROAS"] = df["ord_amount_sum"] / df["cost_gross_sum"] * 100
+        df["CVR"]  = df["ord_count_sum"]  / df["session_count"] * 100
 
         fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-        for m in sel:
-            col = col_map[m]
-            is_right = (m in right_labels)
-            fig.add_trace(
-                go.Scatter(
-                    x=df_chart["event_date"],
-                    y=df_chart[col],
-                    name=m,
-                    mode="lines+markers",
-                    line=dict(dash="dash" if is_right else "solid")
-                ),
-                secondary_y=is_right
-            )
+        for metric in sel_metrics:
+            col = col_map[metric]
+            y_axis = metric_settings[metric]["yaxis"] == "right"
+            chart_type = metric_settings[metric]["chart"]
 
-        # 3) 레이아웃
+            if chart_type == "bar":
+                fig.add_trace(
+                    go.Bar(
+                        x=df["event_date"],
+                        y=df[col],
+                        name=metric,
+                        opacity=0.5,
+                        # width=0.9
+                    ),
+                    secondary_y=y_axis
+                )
+            else:  # 꺾은선
+                fig.add_trace(
+                    go.Scatter(
+                        x=df["event_date"],
+                        y=df[col],
+                        name=metric,
+                        mode="lines+markers"
+                    ),
+                    secondary_y=y_axis
+                )
+
+        left_titles  = [m for m in sel_metrics if metric_settings[m]["yaxis"]=="left"]
+        right_titles = [m for m in sel_metrics if metric_settings[m]["yaxis"]=="right"]
+        left_title  = " · ".join(left_titles)  if left_titles  else None
+        right_title = " · ".join(right_titles) if right_titles else None
+
         fig.update_layout(
-            title=f"{df_key}  -  {' / '.join(sel)} 추이",
-            # xaxis_title="날짜",
+            title=f"{sel_report}  -  {' / '.join(sel_metrics)} 추이",
             xaxis=dict(tickformat="%m월 %d일"),
             legend=dict(
                 orientation="h",
-                x=1, y=1.1,
-                xanchor="right",
-                yanchor="bottom"
+                x=1, y=1.1, xanchor="right", yanchor="bottom"
             ),
-            margin=dict(t=100, b=20, l=20, r=20)
+            margin=dict(t=80, b=20, l=20, r=20)
         )
-        left_title  = "·".join([m for m in sel if m in left_labels])
-        right_title = "·".join([m for m in sel if m in right_labels])
         if left_title:
             fig.update_yaxes(title_text=left_title, secondary_y=False)
         if right_title:
             fig.update_yaxes(title_text=right_title, secondary_y=True)
 
         st.plotly_chart(fig, use_container_width=True)
-
 
 
 if __name__ == "__main__":

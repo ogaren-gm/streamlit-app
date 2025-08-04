@@ -16,6 +16,7 @@ from google.oauth2.service_account import Credentials
 import gspread
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import math
 
 
 def main():
@@ -44,7 +45,7 @@ def main():
     # st.markdown(":primary-badge[:material/Cached: Update]ㅤ-")
     st.markdown(
         '<a href="https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c7680d299bee34d617a1626" target="_blank">'
-        'Dashboard Guide</a>',
+        '지표설명 & 가이드</a>',
         unsafe_allow_html=True
     )
     st.divider()
@@ -134,7 +135,8 @@ def main():
     # 데이터 불러오기
     # ────────────────────────────────────────────────────────────────
     st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
-    df_merged, df_prodRep, df_psi = load_data(cs, ce)
+    with st.spinner("데이터가 많아 로딩에 조금 시간이 소요됩니다. 조금만 기다려 주세요 😊"):
+        df_merged, df_prodRep, df_psi = load_data(cs, ce)
 
     # 공통합수 (1) 일자별 광고비, 세션수 (파생변수는 해당 함수가 계산하지 않음)
     def pivot_cstSes(
@@ -265,7 +267,7 @@ def main():
     # 공통함수 (3) render_aggrid 
     def render_aggrid(
         df: pd.DataFrame,
-        height: int = 410,
+        height: int = 401,
         use_parent: bool = True
         ) -> None:
         """
@@ -352,7 +354,8 @@ def main():
             "field": "event_date",
             "pinned": "left",
             "width": 100,
-            "cellStyle": JsCode("params=>({textAlign:'left'})")
+            "cellStyle": JsCode("params=>({textAlign:'left'})"),
+            "sort": "desc"
         }
         
         flat_cols = [
@@ -498,8 +501,81 @@ def main():
         }        
 
         # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-        # pass
+        def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
+            summary: dict[str, float | str] = {}
+            for col, op in agg_map.items():
+                val = None
+                try:
+                    if op == 'sum':
+                        val = df[col].sum()
+                    elif op == 'avg':
+                        val = df[col].mean()
+                    elif op == 'mid':
+                        val = df[col].median()
+                except:
+                    val = None
+
+                # NaN / Inf / numpy 타입 → None or native 타입으로 처리
+                if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+                    summary[col] = None
+                else:
+                    # numpy 타입 제거
+                    if isinstance(val, (np.integer, np.int64, np.int32)):
+                        summary[col] = int(val)
+                    elif isinstance(val, (np.floating, np.float64, np.float32)):
+                        summary[col] = float(round(val, 2))
+                    else:
+                        summary[col] = val
+
+            grid_options['pinnedBottomRowData'] = [summary]
+            return grid_options
         
+        # AgGrid(
+        #     df2,
+        #     gridOptions=grid_options,
+        #     height=height,
+        #     fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
+        #     theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
+        #     allow_unsafe_jscode=True
+        # )
+
+        # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
+        grid_options = add_summary(
+            grid_options,
+            df2,
+            {
+                'cost_gross_sum': 'sum',
+                'session_count': 'sum',
+                'session_count_CPA': 'avg',
+                'session_count_CVR': 'avg',
+                'view_item': 'sum',
+                'view_item_CPA': 'avg',
+                'view_item_CVR': 'avg',
+                'product_page_scroll_50': 'sum',
+                'product_page_scroll_50_CPA': 'avg',
+                'product_page_scroll_50_CVR': 'avg',
+                'product_option_price': 'sum',
+                'product_option_price_CPA': 'avg',
+                'product_option_price_CVR': 'avg',
+                'find_nearby_showroom': 'sum',
+                'find_nearby_showroom_CPA': 'avg',
+                'find_nearby_showroom_CVR': 'avg',
+                'showroom_10s': 'sum',
+                'showroom_10s_CPA': 'avg',
+                'showroom_10s_CVR': 'avg',
+                'add_to_cart': 'sum',
+                'add_to_cart_CPA': 'avg',
+                'add_to_cart_CVR': 'avg',
+                'showroom_leads': 'sum',
+                'showroom_leads_CPA': 'avg',
+                'showroom_leads_CVR': 'avg',
+                'purchase': 'sum',
+                'purchase_CPA': 'avg',
+                'purchase_CVR1': 'avg',
+                'purchase_CVR2': 'avg',
+            }
+        )
+
         AgGrid(
             df2,
             gridOptions=grid_options,
@@ -520,13 +596,13 @@ def main():
     
     # 1) 통합 영역 (탭 X)
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 액션 리포트</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **광고비**, **세션수 및 주요 액션별 효율**(GA) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
     render_aggrid(df_total)
     
     # 2) 슬립퍼 영역 (탭 구성)
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>슬립퍼</span> 액션 리포트</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
     
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 PAID", "슬립퍼 매트리스", "슬립퍼 매트리스 PAID", "슬립퍼 프레임", "슬립퍼 프레임 PAID"])
     with tabs[0]:
@@ -545,7 +621,7 @@ def main():
     # 3) 누어 영역 (탭 구성)
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>누어</span> 액션 리포트</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
 
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
     with tabs[0]:

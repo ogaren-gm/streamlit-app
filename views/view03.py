@@ -46,7 +46,7 @@ def main():
     # st.markdown(":primary-badge[:material/Cached: Update]ㅤD-1 데이터는 오전 중 예비 처리된 후, **15:00 이후** 매체 분류가 완료되어 최종 업데이트됩니다.")
     st.markdown(
         '<a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af#241521e07c7680048fc9f2244b732720" target="_blank">'
-        'Dashboard Guide</a>',
+        '지표설명 & 가이드</a>',
         unsafe_allow_html=True
     )
     st.divider()
@@ -127,41 +127,65 @@ def main():
     st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
     # df_merged = load_data(cs, ce)
     # df_filtered = df_merged.copy()
+
+    header_map = {
+        'event_date':       '날짜',
+        'media_name':       '매체',
+        'utm_source':       '소스',
+        'utm_medium':       '미디엄',
+        'brand_type':       '브랜드',
+        'funnel_type':      '퍼널',
+        'product_type':     '품목',
+        'campaign_name':    '캠페인',
+        'adgroup_name':     '광고그룹',
+        'ad_name':          '광고소재',
+        'keyword_name':     '키워드',
+        'utm_content':      '컨텐츠',
+        'utm_term':         '검색어',
+    }
+
+
     
     ## 수정
-    if use_compare:
-        # cs~ce, cs_cmp~ce_cmp 한 번에 로드
-        cs_cmp = comp_start.strftime("%Y%m%d")
-        df_merged = load_data(cs_cmp, ce)
-        df_merged['event_date'] = pd.to_datetime(df_merged['event_date'])  # ← 추가
+    with st.spinner("데이터를 불러오는 중입니다. ⏳"):
+        if use_compare:
+            # cs~ce, cs_cmp~ce_cmp 한 번에 로드
+            cs_cmp = comp_start.strftime("%Y%m%d")
+            df_merged = load_data(cs_cmp, ce)
+            df_merged['event_date'] = pd.to_datetime(df_merged['event_date'])  # ← 추가
+            
+            df_primary = df_merged[
+                (df_merged.event_date >= pd.to_datetime(start_date)) &
+                (df_merged.event_date <= pd.to_datetime(end_date))
+            ]
+            df_compare = df_merged[
+                (df_merged.event_date >= pd.to_datetime(comp_start)) &
+                (df_merged.event_date <= pd.to_datetime(comp_end))
+            ]
+        else:
+            df_merged  = load_data(cs, ce)
+            df_merged['event_date'] = pd.to_datetime(df_merged['event_date'])  # ← 추가
+            df_primary = df_merged
         
-        df_primary = df_merged[
-            (df_merged.event_date >= pd.to_datetime(start_date)) &
-            (df_merged.event_date <= pd.to_datetime(end_date))
-        ]
-        df_compare = df_merged[
-            (df_merged.event_date >= pd.to_datetime(comp_start)) &
-            (df_merged.event_date <= pd.to_datetime(comp_end))
-        ]
-    else:
-        df_merged  = load_data(cs, ce)
-        df_merged['event_date'] = pd.to_datetime(df_merged['event_date'])  # ← 추가
-        df_primary = df_merged
-    
-    df_filtered     = df_primary.copy()
-    df_filtered_cmp = df_compare.copy() if use_compare else None
+
+        df_filtered     = df_primary.copy()
+        df_filtered_cmp = df_compare.copy() if use_compare else None
 
 
     def render_aggrid(
         df: pd.DataFrame,
         pivot_cols: list[str],
-        height: int = 490,
+        height: int = 480,
         use_parent: bool = True
         ) -> None:
         """
         use_parent: False / True
         """
         df2 = df.copy()
+        
+        if 'event_date' in df2.columns:
+            df2['event_date'] = pd.to_datetime(df2['event_date']).dt.strftime('%Y-%m-%d')
+        
         df2.fillna(0, inplace=True)
         df2 = df2.where(pd.notnull(df2), None)
         df2.replace([np.inf, -np.inf], 0, inplace=True)
@@ -235,7 +259,7 @@ def main():
         # (use_parent) grouped_cols
         dynamic_cols = [ # (추가) pivot_cols (선택한 행필드)를 받아야함
             {
-                "headerName": col,
+                "headerName": header_map.get(col, col),
                 "field": col,
                 "pinned": "left",
                 "width": 100,
@@ -361,14 +385,16 @@ def main():
         """
         key = f"{column}_{'text' if text_filter else 'multi'}"
         if text_filter:
-            term = st.text_input(f"{column} 포함 필터", key=key)
+            # term = st.text_input(f"{column} 포함 필터", key=key)
+            term = st.text_input(f"{header_map.get(column,column)} 포함 검색", key=key)
             if term:
                 df = df[df[column].str.contains(term, na=False)]
                 if df_cmp is not None:
                     df_cmp = df_cmp[df_cmp[column].str.contains(term, na=False)]
         else:
             opts = sorted(df_primary[column].dropna().unique())
-            sel  = st.multiselect(f"{column} 필터", opts, key=key)
+            # sel  = st.multiselect(f"{column} 필터", opts, key=key)
+            sel  = st.multiselect(f"{header_map.get(column,column)} 필터", opts, key=key)
             if sel:
                 df = df[df[column].isin(sel)]
                 if df_cmp is not None:
@@ -387,24 +413,31 @@ def main():
     """, unsafe_allow_html=True)
     
     
-    st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> 커스텀 </span>리포트 생성</h5>", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> 커스텀 </span>리포트</h5>", unsafe_allow_html=True)
 
     # st.markdown("<h5>퍼포먼스 커스텀 리포트</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ필터와 비교기간 기능을 활용하여, **광고 성과부터 GA 액션별 전환 효율까지** 원하는 기준의 데이터를 확인할 수 있습니다.")
     st.markdown(" ")
 
 
     # 피벗할 행 필드 선택
+    # pivot_cols = st.multiselect(
+    #     "행 필드 선택",
+    #     [   "event_date", 
+    #         "media_name", "utm_source", "utm_medium", 
+    #         "brand_type", "funnel_type", "product_type"
+    #         "campaign_name", "adgroup_name", "ad_name", "keyword_name",
+    #         "utm_content", "utm_term"
+    #     ],
+    #     default=["event_date"]
+    #     )
+
     pivot_cols = st.multiselect(
         "행 필드 선택",
-        [   "event_date", 
-            "media_name", "utm_source", "utm_medium", 
-            "brand_type", "funnel_type", "product_type"
-            "campaign_name", "adgroup_name", "ad_name", "keyword_name",
-            "utm_content", "utm_term"
-        ],
-        default=["event_date"]
-        )
+        options=list(header_map.keys()),
+        default=["event_date"],
+        format_func=lambda x: header_map.get(x, x)   # 한글로 표시
+    )
 
     # 기간별 합계 보기 모드라면 event_date 는 무시
     if show_totals and "event_date" in pivot_cols:
@@ -620,14 +653,15 @@ def main():
             y1 = df_plot.columns[df_plot.columns.str.contains("광고비")]
             y2 = df_plot.columns[df_plot.columns.str.contains("노출수")]
             fig1.add_trace(go.Bar(
-                x=df_plot[date_col], y=df_plot[y1[0]], name=y1[0], yaxis="y1"
+                x=df_plot[date_col], y=df_plot[y1[0]], name=y1[0], yaxis="y1", opacity=0.6
             ))
             fig1.add_trace(go.Scatter(
                 x=df_plot[date_col], y=df_plot[y2[0]], name=y2[0], yaxis="y2", mode="lines+markers"
             ))
             fig1.update_layout(
                 title="광고비 대비 노출수",
-                xaxis_title="일자", yaxis_title=y1[0],
+                xaxis=dict(title="", tickformat="%m-%d"),
+                yaxis_title=y1[0],
                 yaxis2=dict(title=y2[0], overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 height=340
@@ -639,14 +673,15 @@ def main():
             y1 = df_plot.columns[df_plot.columns.str.contains("노출수")]
             y2 = df_plot.columns[df_plot.columns.str.contains("클릭수")]
             fig2.add_trace(go.Bar(
-                x=df_plot[date_col], y=df_plot[y1[0]], name=y1[0], yaxis="y1"
+                x=df_plot[date_col], y=df_plot[y1[0]], name=y1[0], yaxis="y1", opacity=0.6
             ))
             fig2.add_trace(go.Scatter(
                 x=df_plot[date_col], y=df_plot[y2[0]], name=y2[0], yaxis="y2", mode="lines+markers"
             ))
             fig2.update_layout(
                 title="노출수 대비 클릭수",
-                xaxis_title="일자", yaxis_title=y1[0],
+                xaxis=dict(title="", tickformat="%m-%d"),
+                yaxis_title=y1[0],
                 yaxis2=dict(title=y2[0], overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 height=340
@@ -666,7 +701,8 @@ def main():
                 ))
             fig3.update_layout(
                 title="CTR, CPC 추이",
-                xaxis_title="일자", yaxis=dict(title="CTR"),
+                xaxis=dict(title="", tickformat="%m-%d"),
+                yaxis=dict(title="CTR"),
                 yaxis2=dict(title="CPC", overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 height=340
@@ -677,11 +713,11 @@ def main():
 
 
 
-
     st.header(" ") # 공백용
-    st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> CTR/CPC </span>리포트 확인</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
-    st.markdown(" ")
+    st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> CTR · CPC </span>리포트</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ매체, 브랜드, 품목, 퍼널별로 **노출과 클릭 효율**을 집중적으로 확인할 수 있습니다. ")
+
+
 
     pivot_total = pivot_ctr(df3, group_col=None)
 
@@ -742,3 +778,5 @@ def main():
             pivot_funnel = pivot_ctr(df3_funnel, group_col="funnel_type")
             st.dataframe(pivot_funnel, use_container_width=True)
             render_ctr_charts(pivot_funnel, key_prefix="funnel")
+
+

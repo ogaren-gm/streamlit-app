@@ -42,7 +42,7 @@ def main():
     """)
     st.markdown(
         '<a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af#241521e07c7680439a57cc45c0fba6f2" target="_blank">'
-        'Dashboard Guide</a>',
+        '지표설명 & 가이드</a>',
         unsafe_allow_html=True
     )
     st.divider()
@@ -79,16 +79,22 @@ def main():
         ]
         for nc, sc in events:
             df[nc] = (df[sc] > 0).astype(int)
+            
         # isPaid_4 벡터화
+        # 25.08.04 변경 내용 (google / sponsored)
+        
         paid_sources   = ['google','naver','meta','meta_adv','mobon','mobion','naver_gfa','DV360','dv360','fb','sns','IGShopping','criteo']
         owned_sources  = ['litt.ly','instagram','l.instagram.com','instagram.com','blog.naver.com','m.blog.naver.com','smartstore.naver.com','m.brand.naver.com']
         earned_sources = ['youtube','youtube.com','m.youtube.com']
         sms_referral   = ['m.facebook.com / referral','l.facebook.com / referral','facebook.com / referral']
         conds = [
             df["_sourceMedium"].isin(['google / organic','naver / organic']),
-            df["collected_traffic_source__manual_source"].isin(paid_sources)   | df["_sourceMedium"].isin(['youtube / demand_gen','kakako / crm']),
+            # df["collected_traffic_source__manual_source"].isin(paid_sources)   | df["_sourceMedium"].isin(['youtube / demand_gen','kakako / crm']),
+            (df["collected_traffic_source__manual_source"].isin(paid_sources) & ~df["_sourceMedium"].eq('google / sponsored')) | df["_sourceMedium"].isin(['youtube / demand_gen','kakako / crm']),
             df["collected_traffic_source__manual_source"].isin(owned_sources)  | (df["_sourceMedium"]=='kakao / channel_message'),
-            df["collected_traffic_source__manual_source"].isin(earned_sources) | df["_sourceMedium"].isin(sms_referral),
+            # df["collected_traffic_source__manual_source"].isin(earned_sources) | df["_sourceMedium"].isin(sms_referral),
+            df["collected_traffic_source__manual_source"].isin(earned_sources) | df["_sourceMedium"].isin(sms_referral + ['google / sponsored'])
+
         ]
         choices = ['ETC','Paid','Owned','Earned']
         df["isPaid_4"] = np.select(conds, choices, default='ETC')
@@ -115,7 +121,7 @@ def main():
     # 3. 데이터 로딩 & 캐시
     # ──────────────────────────────────
     st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
-    with st.spinner("데이터를 가져오는 중입니다. 잠시만 기다려주세요."):
+    with st.spinner("데이터를 불러오는 중입니다. ⏳"):
         df = load_data(cs, ce)
 
     # ──────────────────────────────────
