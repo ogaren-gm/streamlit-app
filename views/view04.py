@@ -386,7 +386,7 @@ def main():
         df2 = df.copy()
         
         # (주의) 누락됱 컬럼히 당연히 있을수 있음, 그래서 fillna만 해주는게 아니라 컬럼 자리를 만들어서 fillna 해야함.
-        expected_cols = ['날짜', '검색량', '검색량차집합', '검색량차집합_비중', '베리엠제이', '베리엠제이_비중', '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중']
+        expected_cols = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중', '베리엠제이', '베리엠제이_비중', '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중']
         
         for col in expected_cols:
             df2[col] = df2.get(col, 0)
@@ -440,10 +440,10 @@ def main():
             make_num_child("전체 검색량", "검색량"),
             # 검색량 차집합
             {
-                "headerName": "일반 검색량",
+                "headerName": "기본 검색량",
                 "children": [
-                    make_num_child("검색량",      "검색량차집합"),
-                    make_num_child("비중(%)",     "검색량차집합_비중", fmt_digits=2, suffix="%"),
+                    make_num_child("검색량",      "기본 검색량"),
+                    make_num_child("비중(%)",     "기본 검색량_비중", fmt_digits=2, suffix="%"),
                 ]
             },
             # 베리엠제이
@@ -530,7 +530,7 @@ def main():
             df2,
             {
                 '검색량': 'sum',
-                '검색량차집합': 'sum',
+                '기본 검색량': 'sum',
                 '베리엠제이': 'sum',
                 '태요미네': 'sum',
                 '노홍철 유튜브': 'sum',
@@ -707,15 +707,15 @@ def main():
                     .astype(int)                      # int 로 캐스팅
     )
     # 신규컬럼 생성 - 검색량차집합
-    df_QueryContribution["검색량차집합"] = df_QueryContribution["검색량"] - df_QueryContribution[['베리엠제이','태요미네','노홍철 유튜브']].sum(axis=1)
+    df_QueryContribution["기본 검색량"] = df_QueryContribution["검색량"] - df_QueryContribution[['베리엠제이','태요미네','노홍철 유튜브']].sum(axis=1)
     # 신규컬럼 생성 - 비중
-    cols = ['노홍철 유튜브', '베리엠제이', '태요미네', '검색량차집합']
+    cols = ['노홍철 유튜브', '베리엠제이', '태요미네', '기본 검색량']
     for col in cols:
         df_QueryContribution[f"{col}_비중"] = (
             df_QueryContribution[col] / df_QueryContribution['검색량'] * 100
         ).round(2)
     df_QueryContribution[[f"{c}_비중" for c in cols]] = df_QueryContribution[[f"{c}_비중" for c in cols]].fillna(0) # 다시 검색량이 0이었던 곳은 0% 처리
-    df_QueryContribution = df_QueryContribution[['날짜', '검색량', '검색량차집합', '검색량차집합_비중', '베리엠제이', '베리엠제이_비중', '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중']]
+    df_QueryContribution = df_QueryContribution[['날짜', '검색량', '기본 검색량', '기본 검색량_비중', '베리엠제이', '베리엠제이_비중', '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중']]
     df_QueryContribution = df_QueryContribution.sort_values("날짜", ascending=True)
         
     # 렌더링 (그래프, 표)
