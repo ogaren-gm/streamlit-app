@@ -106,24 +106,24 @@ def main():
     # ──────────────────────────────────
     # 4. 사이드바: 추가 필터 (캐시된 df 에만 적용)
     # ──────────────────────────────────
-    # (초기화 콜백)
-    def reset_filters():
-        st.session_state.paid_filter   = "전체"
+    # # (초기화 콜백)
+    # def reset_filters():
+    #     st.session_state.paid_filter   = "전체"
 
-    # 광고유무 선택
-    paid_counts = df["isPaid_4"].value_counts()
-    paid_opts   = ["전체"] + paid_counts.index.tolist()
-    paid_filter = st.sidebar.selectbox(
-        "광고유무 선택",
-        paid_opts,
-        key="paid_filter"
-    )
+    # # 광고유무 선택
+    # paid_counts = df["isPaid_4"].value_counts()
+    # paid_opts   = ["전체"] + paid_counts.index.tolist()
+    # paid_filter = st.sidebar.selectbox(
+    #     "광고유무 선택",
+    #     paid_opts,
+    #     key="paid_filter"
+    # )
 
-    # 초기화 버튼 (기간 제외, 나머지 필터만 세션리셋)
-    st.sidebar.button(
-        "🗑️ 필터 초기화",
-        on_click=reset_filters
-    )
+    # # 초기화 버튼 (기간 제외, 나머지 필터만 세션리셋)
+    # st.sidebar.button(
+    #     "🗑️ 필터 초기화",
+    #     on_click=reset_filters
+    # )
     
 
 
