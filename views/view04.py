@@ -66,7 +66,12 @@ def main():
 
         PPL_LIST   = pd.DataFrame(sh.worksheet('PPL_LIST').get_all_records())
         PPL_DATA   = pd.DataFrame(sh.worksheet('PPL_DATA').get_all_records())
-        PPL_ACTION = pd.DataFrame(sh.worksheet('PPL_ACTION').get_all_records())
+        # PPL_ACTION = pd.DataFrame(sh.worksheet('PPL_ACTION').get_all_records())
+        # --------------------------------------------------------------
+        wsa = sh.worksheet('PPL_ACTION')
+        data = wsa.get('A1:P')  # A열~P열까지 전체
+        PPL_ACTION = pd.DataFrame(data[1:], columns=data[0])  # 1행=헤더
+        # --------------------------------------------------------------
         query      = pd.DataFrame(sh.worksheet('query').get_all_records())
         query_sum  = pd.DataFrame(sh.worksheet('query_sum').get_all_records())
         
@@ -813,22 +818,14 @@ def main():
     df_merged_t[numeric_cols] = df_merged_t[numeric_cols].astype(int)
 
     # 채널별 데이터프레임 분리
-    df_taeyomine =  df_merged_t[df_merged_t["채널명"] == "태요미네"].copy()
+    df_taeyomine = df_merged_t[df_merged_t["채널명"] == "태요미네"].copy()
+    df_hongchul  = df_merged_t[df_merged_t["채널명"] == "노홍철 유튜브"].copy()
 
     tab1, tab2 = st.tabs(["태요미네", "노홍철 유튜브"])
     with tab1:
         render_aggrid__engag(df_taeyomine)
     with tab2:    
-        st.markdown(
-            """
-            <div style="
-                height: 410px;
-                background-color: #f0f0f0;
-                border-radius: 4px;
-            "></div>
-            """,
-            unsafe_allow_html=True
-        )
+        render_aggrid__engag(df_hongchul)
 
     # ────────────────────────────────────────────────────────────────
     # 3번 영역
