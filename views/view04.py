@@ -51,7 +51,7 @@ def main():
     # ────────────────────────────────────────────────────────────────
     # 사이드바 필터 설정
     # ────────────────────────────────────────────────────────────────    
-    @st.cache_data(ttl=3600)
+    @st.cache_data(ttl=60)
     def load_data():
         scope = [
             'https://spreadsheets.google.com/feeds',
@@ -104,7 +104,8 @@ def main():
     def render_aggrid__engag(
         df: pd.DataFrame,
         height: int = 410,
-        use_parent: bool = True
+        use_parent: bool = True,
+        select_option: int = 1,
         ) -> None:
         """
         use_parent: False / True
@@ -132,15 +133,12 @@ def main():
                         "sign_up_sessions",
                         "showroom_10s_sessions",
                         "showroom_leads_sessions",
-                        # "SearchVolume_contribution"
         ]
         for col in expected_cols:
             df2[col] = df2.get(col, 0)
         df2.fillna(0, inplace=True)     # (기존과 동일) 값이 없는 경우 일단 0으로 치환
         
-        # 전처리 영역 (파생지표 생성) - CPA
-        # (생략)
-        
+
         # 전처리 영역 (파생지표 생성) - CVR
         df2['view_item_list_CVR']         = (df2['view_item_list_sessions']     / df2['session_count']          * 100).round(2)
         df2['view_item_CVR']              = (df2['view_item_sessions']              / df2['view_item_list_sessions']          * 100).round(2)
@@ -152,6 +150,17 @@ def main():
         df2['showroom_10s_CVR']           = (df2['showroom_10s_sessions']           / df2['view_item_list_sessions']          * 100).round(2)
         df2['showroom_leads_CVR']         = (df2['showroom_leads_sessions']         / df2['view_item_list_sessions']          * 100).round(2)
 
+        # 전처리 영역 (파생지표 생성) - CPA
+        df2['view_item_list_CPA']         = (df2['Cost']     /  df2['view_item_list_sessions']          * 100).round(0)
+        df2['view_item_CPA']              = (df2['Cost']     /  df2['view_item_sessions']               * 100).round(0)
+        df2['scroll_50_CPA']              = (df2['Cost']     /  df2['scroll_50_sessions']               * 100).round(0)
+        df2['product_option_price_CPA']   = (df2['Cost']     /  df2['product_option_price_sessions']    * 100).round(0)
+        df2['find_nearby_showroom_CPA']   = (df2['Cost']     /  df2['find_showroom_sessions']           * 100).round(0)
+        df2['add_to_cart_CPA']            = (df2['Cost']     /  df2['add_to_cart_sessions']             * 100).round(0)
+        df2['sign_up_CPA']                = (df2['Cost']     /  df2['sign_up_sessions']                 * 100).round(0)
+        df2['showroom_10s_CPA']           = (df2['Cost']     /  df2['showroom_10s_sessions']            * 100).round(0)
+        df2['showroom_leads_CPA']         = (df2['Cost']     /  df2['showroom_leads_sessions']          * 100).round(0)
+        
         # 컬럼순서 지정
         # (생략)
 
@@ -257,6 +266,40 @@ def main():
                     make_num_child("세션수",                       "session_count"),
                     make_num_child("평균세션시간(초)",    "avg_session_duration_sec"),
                     make_num_child("PLP조회",                      "view_item_list_sessions"),
+                    make_num_child("PDP조회",                      "view_item_sessions"),
+                    make_num_child("PDPscr50",                    "scroll_50_sessions"),
+                    make_num_child("가격표시",                      "product_option_price_sessions"),
+                    make_num_child("쇼룸찾기",                      "find_showroom_sessions"),
+                    make_num_child("장바구니",                      "add_to_cart_sessions"),
+                    make_num_child("회원가입",                      "sign_up_sessions"),
+                    make_num_child("쇼룸10초",                      "showroom_10s_sessions"),
+                    make_num_child("쇼룸예약",                      "showroom_leads_sessions"),
+                ]
+            },
+        ]
+
+        grouped_cols_CVR = [
+            date_col,
+            channel_col,
+            make_num_child("일할비용", "Cost"),
+            # 인게이지먼트
+            {
+                "headerName": "Engagement",
+                "children": [
+                    make_num_child("조회수",           "조회수"),
+                    make_num_child("좋아요수",         "좋아요수"),
+                    make_num_child("댓글수",           "댓글수"),
+                    make_num_child("브랜드언급량",      "브랜드언급량"),
+                    make_num_child("링크클릭수",        "링크 클릭수"),
+                ]
+            },
+            # GA 후속 액션
+            {
+                "headerName": "GA Actions",
+                "children": [
+                    make_num_child("세션수",                       "session_count"),
+                    make_num_child("평균세션시간(초)",    "avg_session_duration_sec"),
+                    make_num_child("PLP조회",                      "view_item_list_sessions"),
                     make_num_child("PLP조회 CVR",                  "view_item_list_CVR", fmt_digits=2, suffix="%"),
                     make_num_child("PDP조회",                      "view_item_sessions"),
                     make_num_child("PDP조회 CVR",                  "view_item_CVR", fmt_digits=2, suffix="%"),
@@ -278,8 +321,113 @@ def main():
             },
         ]
 
+        grouped_cols_CPA = [
+            date_col,
+            channel_col,
+            make_num_child("일할비용", "Cost"),
+            # 인게이지먼트
+            {
+                "headerName": "Engagement",
+                "children": [
+                    make_num_child("조회수",           "조회수"),
+                    make_num_child("좋아요수",         "좋아요수"),
+                    make_num_child("댓글수",           "댓글수"),
+                    make_num_child("브랜드언급량",      "브랜드언급량"),
+                    make_num_child("링크클릭수",        "링크 클릭수"),
+                ]
+            },
+            # GA 후속 액션
+            {
+                "headerName": "GA Actions",
+                "children": [
+                    make_num_child("세션수",                       "session_count"),
+                    make_num_child("평균세션시간(초)",    "avg_session_duration_sec"),
+                    make_num_child("PLP조회",                      "view_item_list_sessions"),
+                    make_num_child("PLP조회 CPA",                  "view_item_list_CPA", fmt_digits=0),
+                    make_num_child("PDP조회",                      "view_item_sessions"),
+                    make_num_child("PDP조회 CPA",                  "view_item_CPA", fmt_digits=0),
+                    make_num_child("PDPscr50",                    "scroll_50_sessions"),
+                    make_num_child("PDPscr50 CPA",                "scroll_50_CPA", fmt_digits=0),
+                    make_num_child("가격표시",                      "product_option_price_sessions"),
+                    make_num_child("가격표시 CPA",                  "product_option_price_CPA", fmt_digits=0),
+                    make_num_child("쇼룸찾기",                      "find_showroom_sessions"),
+                    make_num_child("쇼룸찾기 CPA",                  "find_nearby_showroom_CPA", fmt_digits=0),
+                    make_num_child("장바구니",                      "add_to_cart_sessions"),
+                    make_num_child("장바구니 CPA",                  "add_to_cart_CPA", fmt_digits=0),
+                    make_num_child("회원가입",                      "sign_up_sessions"),
+                    make_num_child("회원가입 CPA",                  "sign_up_CPA", fmt_digits=0),
+                    make_num_child("쇼룸10초",                      "showroom_10s_sessions"),
+                    make_num_child("쇼룸10초 CPA",                  "showroom_10s_CPA", fmt_digits=0),
+                    make_num_child("쇼룸예약",                      "showroom_leads_sessions"),
+                    make_num_child("쇼룸예약 CPA",                  "showroom_leads_CPA", fmt_digits=0),
+                ]
+            },
+        ]
+
+        grouped_cols_CVRCPA = [
+            date_col,
+            channel_col,
+            make_num_child("일할비용", "Cost"),
+            # 인게이지먼트
+            {
+                "headerName": "Engagement",
+                "children": [
+                    make_num_child("조회수",           "조회수"),
+                    make_num_child("좋아요수",         "좋아요수"),
+                    make_num_child("댓글수",           "댓글수"),
+                    make_num_child("브랜드언급량",      "브랜드언급량"),
+                    make_num_child("링크클릭수",        "링크 클릭수"),
+                ]
+            },
+            # GA 후속 액션
+            {
+                "headerName": "GA Actions",
+                "children": [
+                    make_num_child("세션수",                       "session_count"),
+                    make_num_child("평균세션시간(초)",    "avg_session_duration_sec"),
+                    make_num_child("PLP조회",                      "view_item_list_sessions"),
+                    make_num_child("PLP조회 CVR",                  "view_item_list_CVR", fmt_digits=2, suffix="%"),
+                    make_num_child("PLP조회 CPA",                  "view_item_list_CPA", fmt_digits=0),
+                    make_num_child("PDP조회",                      "view_item_sessions"),
+                    make_num_child("PDP조회 CVR",                  "view_item_CVR", fmt_digits=2, suffix="%"),
+                    make_num_child("PDP조회 CPA",                  "view_item_CPA", fmt_digits=0),
+                    make_num_child("PDPscr50",                    "scroll_50_sessions"),
+                    make_num_child("PDPscr50 CVR",                "scroll_50_CVR", fmt_digits=2, suffix="%"),
+                    make_num_child("PDPscr50 CPA",                "scroll_50_CPA", fmt_digits=0),
+                    make_num_child("가격표시",                      "product_option_price_sessions"),
+                    make_num_child("가격표시 CVR",                  "product_option_price_CVR", fmt_digits=2, suffix="%"),
+                    make_num_child("가격표시 CPA",                  "product_option_price_CPA", fmt_digits=0),
+                    make_num_child("쇼룸찾기",                      "find_showroom_sessions"),
+                    make_num_child("쇼룸찾기 CVR",                  "find_nearby_showroom_CVR", fmt_digits=2, suffix="%"),
+                    make_num_child("쇼룸찾기 CPA",                  "find_nearby_showroom_CPA", fmt_digits=0),
+                    make_num_child("장바구니",                      "add_to_cart_sessions"),
+                    make_num_child("장바구니 CVR",                  "add_to_cart_CVR", fmt_digits=2, suffix="%"),
+                    make_num_child("장바구니 CPA",                  "add_to_cart_CPA", fmt_digits=0),
+                    make_num_child("회원가입",                      "sign_up_sessions"),
+                    make_num_child("회원가입 CVR",                  "sign_up_CVR", fmt_digits=2, suffix="%"),
+                    make_num_child("회원가입 CPA",                  "sign_up_CPA", fmt_digits=0),
+                    make_num_child("쇼룸10초",                      "showroom_10s_sessions"),
+                    make_num_child("쇼룸10초 CVR",                  "showroom_10s_CVR", fmt_digits=2, suffix="%"),
+                    make_num_child("쇼룸10초 CPA",                  "showroom_10s_CPA", fmt_digits=0),
+                    make_num_child("쇼룸예약",                      "showroom_leads_sessions"),
+                    make_num_child("쇼룸예약 CVR",                  "showroom_leads_CVR", fmt_digits=2, suffix="%"),
+                    make_num_child("쇼룸예약 CPA",                  "showroom_leads_CPA", fmt_digits=0),
+                ]
+            },
+        ]
+
         # (use_parent)
-        column_defs = grouped_cols if use_parent else flat_cols
+        if use_parent:
+            if select_option == 1:
+                column_defs = grouped_cols
+            elif select_option == 2:
+                column_defs = grouped_cols_CVR
+            elif select_option == 3:
+                column_defs = grouped_cols_CPA
+            elif select_option == 4:
+                column_defs = grouped_cols_CVRCPA
+        else:
+            column_defs = flat_cols
     
         # grid_options & 렌더링
         grid_options = {
@@ -299,6 +447,16 @@ def main():
         "headerHeight": 60,
         "groupHeaderHeight": 30,
         }        
+
+        AgGrid(
+            df2,
+            gridOptions=grid_options,
+            height=height,
+            fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
+            theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
+            allow_unsafe_jscode=True
+        )
+
 
         # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
         def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
@@ -332,6 +490,41 @@ def main():
             grid_options['pinnedBottomRowData'] = [summary]
             return grid_options
         
+        # # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
+        # grid_options = add_summary(
+        #     grid_options,
+        #     df2,
+        #     {
+        #         '조회수': 'max',
+        #         '좋아요수': 'max',
+        #         '댓글수': 'max',
+        #         '브랜드언급량': 'max',
+        #         '링크 클릭수': 'max',
+        #         'session_count': 'sum',
+        #         'avg_session_duration_sec': 'avg',
+        #         'view_item_list_sessions': 'sum',
+        #         'view_item_list_CVR': 'avg',
+        #         'view_item_sessions': 'sum',
+        #         'view_item_CVR': 'avg',
+        #         'scroll_50_sessions': 'sum',
+        #         'scroll_50_CVR': 'avg',
+        #         'product_option_price_sessions': 'sum',
+        #         'product_option_price_CVR': 'avg',
+        #         'find_showroom_sessions': 'sum',
+        #         'find_nearby_showroom_CVR': 'avg',
+        #         'add_to_cart_sessions': 'sum',
+        #         'add_to_cart_CVR': 'avg',
+        #         'sign_up_sessions': 'sum',
+        #         'sign_up_CVR': 'avg',
+        #         'showroom_10s_sessions': 'sum',
+        #         'showroom_10s_CVR': 'avg',
+        #         'showroom_leads_sessions': 'sum',
+        #         'showroom_leads_CVR': 'avg',
+        #     }
+        # )
+        
+
+        
         # AgGrid(
         #     df2,
         #     gridOptions=grid_options,
@@ -342,47 +535,14 @@ def main():
         # )
 
 
-        # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-        grid_options = add_summary(
-            grid_options,
-            df2,
-            {
-                '조회수': 'max',
-                '좋아요수': 'max',
-                '댓글수': 'max',
-                '브랜드언급량': 'max',
-                '링크 클릭수': 'max',
-                'session_count': 'sum',
-                'avg_session_duration_sec': 'avg',
-                'view_item_list_sessions': 'sum',
-                'view_item_list_CVR': 'avg',
-                'view_item_sessions': 'sum',
-                'view_item_CVR': 'avg',
-                'scroll_50_sessions': 'sum',
-                'scroll_50_CVR': 'avg',
-                'product_option_price_sessions': 'sum',
-                'product_option_price_CVR': 'avg',
-                'find_showroom_sessions': 'sum',
-                'find_nearby_showroom_CVR': 'avg',
-                'add_to_cart_sessions': 'sum',
-                'add_to_cart_CVR': 'avg',
-                'sign_up_sessions': 'sum',
-                'sign_up_CVR': 'avg',
-                'showroom_10s_sessions': 'sum',
-                'showroom_10s_CVR': 'avg',
-                'showroom_leads_sessions': 'sum',
-                'showroom_leads_CVR': 'avg',
-            }
-        )
-        
-        AgGrid(
-            df2,
-            gridOptions=grid_options,
-            height=height,
-            fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
-            theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-            allow_unsafe_jscode=True
-        )
+
+
+
+
+
+
+
+
     
     def render_aggrid__contri(
         df: pd.DataFrame,
@@ -438,7 +598,8 @@ def main():
         ]
 
         if brand == "sleeper":
-            expected_cols = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중', '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중']            
+            expected_cols = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
+                                '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']            
             
             for col in expected_cols:
                 df2[col] = df2.get(col, 0)
@@ -458,6 +619,14 @@ def main():
                         make_num_child("비중(%)",     "기본 검색량_비중", fmt_digits=2, suffix="%"),
                     ]
                 },
+                # 노홍철 유튜브
+                {
+                    "headerName": "노홍철 유튜브",
+                    "children": [
+                        make_num_child("검색량",      "노홍철 유튜브"),
+                        make_num_child("비중(%)",     "노홍철 유튜브_비중", fmt_digits=2, suffix="%"),
+                    ]
+                },
                 # 태요미네
                 {
                     "headerName": "태요미네",
@@ -466,12 +635,20 @@ def main():
                         make_num_child("비중(%)",     "태요미네_비중", fmt_digits=2, suffix="%"),
                     ]
                 },
-                # 노홍철 유튜브
+                # 아울디자인
                 {
-                    "headerName": "노홍철 유튜브",
+                    "headerName": "아울디자인",
                     "children": [
-                        make_num_child("검색량",      "노홍철 유튜브"),
-                        make_num_child("비중(%)",     "노홍철 유튜브_비중", fmt_digits=2, suffix="%"),
+                        make_num_child("검색량",      "아울디자인"),
+                        make_num_child("비중(%)",     "아울디자인_비중", fmt_digits=2, suffix="%"),
+                    ]
+                },
+                # 알쓸물치
+                {
+                    "headerName": "알쓸물치",
+                    "children": [
+                        make_num_child("검색량",      "알쓸물치"),
+                        make_num_child("비중(%)",     "알쓸물치_비중", fmt_digits=2, suffix="%"),
                     ]
                 },
             ]
@@ -569,6 +746,8 @@ def main():
                     '기본 검색량': 'sum',
                     '태요미네': 'sum',
                     '노홍철 유튜브': 'sum',
+                    '아울디자인': 'sum',
+                    '알쓸물치': 'sum',
                 }
             )
         elif brand == "nooer":
@@ -785,54 +964,127 @@ def main():
 
     # 1번 영역
     st.markdown("<h5 style='margin:0'>집행 채널 목록</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 채널별 집행 날짜와 집행 금액을 확인할 수 있습니다.", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 채널별 집행 날짜와 집행 금액을 확인할 수 있습니다. (최신순으로 정렬됩니다.)", unsafe_allow_html=True)
     
     df = PPL_LIST
+    df = df.sort_values(by="order", ascending=False)
     
     # 브랜드별 데이터프레임 분리
-    # df_slp = df[df["브랜드"] == "슬립퍼"].copy()
-    # df_nor = df[df["브랜드"] == "누어"].copy()
+    df_slp = df[df["브랜드"] == "슬립퍼"].copy()
+    df_nor = df[df["브랜드"] == "누어"].copy()
     
-    
-    cols_per_row = 3
-    rows = math.ceil(len(df) / cols_per_row)
-
-    for i in range(rows):
-        # gap="small" 으로 컬럼 간격 최소화
-        cols = st.columns(cols_per_row, gap="medium")
-        for j, col in enumerate(cols):
-            idx = i * cols_per_row + j
-            if idx >= len(df):
-                break
-            row = df.iloc[idx]
-            with col:
-                # 카드 박스 스타일
-                st.markdown(
-                    f"""
-                    <div style="
-                    border:1px solid #e1e1e1;
-                    border-radius:6px;
-                    padding:16px 20px;
-                    margin-bottom:8px;
-                    box-shadow: 0px 1px 3px rgba(0,0,0,0.1);
-                    ">
-                    <strong style="font-size:1.1em;">{row['채널명']}</strong><br>
-                    <small style="color:#555;">{row['업로드 날짜']}</small>
-                    <div style="display:flex; justify-content:space-between; font-size:0.9em;">
-                        <div style="margin:6px 0;">
-                        <div style="color:#333;">집행금액ㅤ<strong>{int(row['금액']):,}원</strong></div>
+    tab1, tab2, tab3 = st.tabs(["전체", "슬립퍼", "누어"])
+    with tab1:
+        cols_per_row = 5
+        rows = math.ceil(len(df) / cols_per_row)
+        for i in range(rows):
+            # gap="small" 으로 컬럼 간격 최소화
+            cols = st.columns(cols_per_row, gap="small")
+            for j, col in enumerate(cols):
+                idx = i * cols_per_row + j
+                if idx >= len(df):
+                    break
+                row = df.iloc[idx]
+                with col:
+                    # 카드 박스 스타일
+                    st.markdown(
+                        f"""
+                        <div style="
+                        border:1px solid #e1e1e1;
+                        border-radius:6px;
+                        padding:16px 20px;
+                        margin-bottom:8px;
+                        box-shadow: 0px 1px 3px rgba(0,0,0,0.1);
+                        ">
+                        <strong style="font-size:1.1em;">{row['채널명']}</strong><br>
+                        <small style="color:#555;">{row['업로드 날짜']}</small>
+                        <div style="display:flex; justify-content:space-between; font-size:0.9em;">
+                            <div style="margin:6px 0;">
+                            <div style="color:#333;">Total <strong>{int(row['금액']):,}원</strong></div>
+                            </div>
+                            <div>
+                            {"🔗 <a href='" + row['컨텐츠 URL'] + "' target='_blank'>컨텐츠 보기</a>" 
+                            if row.get('컨텐츠 URL') else "🔗 링크 없음"}
+                            </div>
                         </div>
-                        <div>
-                        {"🔗 <a href='" + row['컨텐츠 URL'] + "' target='_blank'>컨텐츠 보기</a>" 
-                        if row.get('컨텐츠 URL') else "🔗 링크 없음"}
                         </div>
-                    </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-    
-
+                        """,
+                        unsafe_allow_html=True,
+                    )
+    with tab2:
+        cols_per_row = 5
+        rows = math.ceil(len(df_slp) / cols_per_row)
+        for i in range(rows):
+            # gap="small" 으로 컬럼 간격 최소화
+            cols = st.columns(cols_per_row, gap="small")
+            for j, col in enumerate(cols):
+                idx = i * cols_per_row + j
+                if idx >= len(df_slp):
+                    break
+                row = df_slp.iloc[idx]
+                with col:
+                    # 카드 박스 스타일
+                    st.markdown(
+                        f"""
+                        <div style="
+                        border:1px solid #e1e1e1;
+                        border-radius:6px;
+                        padding:16px 20px;
+                        margin-bottom:8px;
+                        box-shadow: 0px 1px 3px rgba(0,0,0,0.1);
+                        ">
+                        <strong style="font-size:1.1em;">{row['채널명']}</strong><br>
+                        <small style="color:#555;">{row['업로드 날짜']}</small>
+                        <div style="display:flex; justify-content:space-between; font-size:0.9em;">
+                            <div style="margin:6px 0;">
+                            <div style="color:#333;">Total <strong>{int(row['금액']):,}원</strong></div>
+                            </div>
+                            <div>
+                            {"🔗 <a href='" + row['컨텐츠 URL'] + "' target='_blank'>컨텐츠 보기</a>" 
+                            if row.get('컨텐츠 URL') else "🔗 링크 없음"}
+                            </div>
+                        </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+    with tab3:
+        cols_per_row = 5
+        rows = math.ceil(len(df_nor) / cols_per_row)
+        for i in range(rows):
+            # gap="small" 으로 컬럼 간격 최소화
+            cols = st.columns(cols_per_row, gap="small")
+            for j, col in enumerate(cols):
+                idx = i * cols_per_row + j
+                if idx >= len(df_nor):
+                    break
+                row = df_nor.iloc[idx]
+                with col:
+                    # 카드 박스 스타일
+                    st.markdown(
+                        f"""
+                        <div style="
+                        border:1px solid #e1e1e1;
+                        border-radius:6px;
+                        padding:16px 20px;
+                        margin-bottom:8px;
+                        box-shadow: 0px 1px 3px rgba(0,0,0,0.1);
+                        ">
+                        <strong style="font-size:1.1em;">{row['채널명']}</strong><br>
+                        <small style="color:#555;">{row['업로드 날짜']}</small>
+                        <div style="display:flex; justify-content:space-between; font-size:0.9em;">
+                            <div style="margin:6px 0;">
+                            <div style="color:#333;">Total <strong>{int(row['금액']):,}원</strong></div>
+                            </div>
+                            <div>
+                            {"🔗 <a href='" + row['컨텐츠 URL'] + "' target='_blank'>컨텐츠 보기</a>" 
+                            if row.get('컨텐츠 URL') else "🔗 링크 없음"}
+                            </div>
+                        </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
     
     # ────────────────────────────────────────────────────────────────
@@ -874,18 +1126,86 @@ def main():
     df_merged_t[numeric_cols] = df_merged_t[numeric_cols].astype(int)
 
     # 채널별 데이터프레임 분리
+    df_usefulpt  = df_merged_t[df_merged_t["채널명"] == "알쓸물치"].copy()
+    df_owldesign  = df_merged_t[df_merged_t["채널명"] == "아울디자인"].copy()
+    df_verymj  = df_merged_t[df_merged_t["채널명"] == "베리엠제이"].copy()
     df_taeyomine = df_merged_t[df_merged_t["채널명"] == "태요미네"].copy()
     df_hongchul  = df_merged_t[df_merged_t["채널명"] == "노홍철 유튜브"].copy()
-    df_verymj  = df_merged_t[df_merged_t["채널명"] == "베리엠제이"].copy()
 
-
-    tab1, tab2, tab3 = st.tabs(["태요미네", "노홍철 유튜브", "베리엠제이"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["노홍철 유튜브", "태요미네", "베리엠제이", "아울디자인", "알쓸물치"])
+    
+    # check box -> CVR, CPA
     with tab1:
-        render_aggrid__engag(df_taeyomine)
+        c1, c2, _ = st.columns([1,1,11])
+        add_cvr = c1.checkbox("CVR 추가", key="hongchul_cvr", value=False)
+        add_cpa = c2.checkbox("CPA 추가", key="hongchul_cpa", value=False)
+        if add_cvr and add_cpa:
+            opt = 4
+        elif add_cvr:
+            opt = 2
+        elif add_cpa:
+            opt = 3
+        else:
+            opt = 1
+        render_aggrid__engag(df_hongchul, select_option=opt)
+    
     with tab2:    
-        render_aggrid__engag(df_hongchul)
+        c1, c2, _ = st.columns([1,1,11])
+        add_cvr = c1.checkbox("CVR 추가", key="taeyomine_cvr", value=False)
+        add_cpa = c2.checkbox("CPA 추가", key="taeyomine_cpa", value=False)
+        if add_cvr and add_cpa:
+            opt = 4
+        elif add_cvr:
+            opt = 2
+        elif add_cpa:
+            opt = 3
+        else:
+            opt = 1
+        render_aggrid__engag(df_taeyomine, select_option=opt)
+        
     with tab3: 
-        render_aggrid__engag(df_verymj)
+        c1, c2, _ = st.columns([1,1,11])
+        add_cvr = c1.checkbox("CVR 추가", key="verymj_cvr", value=False)
+        add_cpa = c2.checkbox("CPA 추가", key="verymj_cpa", value=False)
+        if add_cvr and add_cpa:
+            opt = 4
+        elif add_cvr:
+            opt = 2
+        elif add_cpa:
+            opt = 3
+        else:
+            opt = 1
+        render_aggrid__engag(df_verymj, select_option=opt)
+        
+    with tab4: 
+        c1, c2, _ = st.columns([1,1,11])
+        add_cvr = c1.checkbox("CVR 추가", key="owldesign_cvr", value=False)
+        add_cpa = c2.checkbox("CPA 추가", key="owldesign_cpa", value=False)
+        if add_cvr and add_cpa:
+            opt = 4
+        elif add_cvr:
+            opt = 2
+        elif add_cpa:
+            opt = 3
+        else:
+            opt = 1
+        render_aggrid__engag(df_owldesign, select_option=opt)
+        
+    with tab5: 
+        c1, c2, _ = st.columns([1,1,11])
+        add_cvr = c1.checkbox("CVR 추가", key="usefulpt_cvr", value=False)
+        add_cpa = c2.checkbox("CPA 추가", key="usefulpt_cpa", value=False)
+        if add_cvr and add_cpa:
+            opt = 4
+        elif add_cvr:
+            opt = 2
+        elif add_cpa:
+            opt = 3
+        else:
+            opt = 1
+        render_aggrid__engag(df_usefulpt, select_option=opt)
+
+
 
 
 
@@ -912,22 +1232,23 @@ def main():
         df_QueryContribution     = ppl_action3.merge(query_sum_slp[['날짜', '검색량']], on='날짜', how='outer')  # 데이터 생성 
         
         # 데이터 전처리 1
-        cols_to_int = ['태요미네', '노홍철 유튜브', '검색량']
+        cols_to_int = ['태요미네', '노홍철 유튜브', '아울디자인', '알쓸물치', '검색량']
         df_QueryContribution[cols_to_int] = df_QueryContribution[cols_to_int].apply(
             lambda s: pd.to_numeric(s, errors='coerce')   # 숫자로 변환, 에러나면 NaN
                         .fillna(0)                        # NaN → 0
                         .astype(int)                      # int 로 캐스팅
         )
         # 신규컬럼 생성 - 기본 검색량
-        df_QueryContribution["기본 검색량"] = df_QueryContribution["검색량"] - df_QueryContribution[['태요미네','노홍철 유튜브']].sum(axis=1)
+        df_QueryContribution["기본 검색량"] = df_QueryContribution["검색량"] - df_QueryContribution[['태요미네','노홍철 유튜브', '아울디자인', '알쓸물치']].sum(axis=1)
         # 신규컬럼 생성 - 비중
-        cols = ['노홍철 유튜브', '태요미네', '기본 검색량']
+        cols = ['노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
         for col in cols:
             df_QueryContribution[f"{col}_비중"] = (
                 df_QueryContribution[col] / df_QueryContribution['검색량'] * 100
             ).round(2)
         df_QueryContribution[[f"{c}_비중" for c in cols]] = df_QueryContribution[[f"{c}_비중" for c in cols]].fillna(0) # 다시 검색량이 0이었던 곳은 0% 처리
-        df_QueryContribution = df_QueryContribution[['날짜', '검색량', '기본 검색량', '기본 검색량_비중', '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중']]
+        df_QueryContribution = df_QueryContribution[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
+                                                        '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중','아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
         df_QueryContribution = df_QueryContribution.sort_values("날짜", ascending=True)
         
         from pandas.tseries.offsets import MonthEnd
@@ -970,7 +1291,7 @@ def main():
         df_filtered["날짜"] = df_filtered["날짜_dt"].dt.strftime("%Y-%m-%d")
 
         # 6) long 포맷 변환 및 렌더링
-        cols    = ['노홍철 유튜브', '태요미네', '기본 검색량']
+        cols    = ['노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
         df_long = df_filtered.melt(
             id_vars='날짜',
             value_vars=cols,
