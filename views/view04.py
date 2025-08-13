@@ -1103,10 +1103,11 @@ def main():
         ft1, _p, ft2 = st.columns([3, 0.3, 1])
         with ft1: 
             keywords     = df['키워드'].unique().tolist()
+            default_kw   = [kw for kw in keywords if ('슬리퍼' in kw) or ('슬립퍼' in kw)]
             sel_keywords = st.multiselect(
                 "키워드 선택", 
                 keywords, 
-                default=['슬립퍼', '슬립퍼침대', '슬리퍼 침대', '슬립퍼매트리스', '슬리퍼 매트리스', '슬립퍼베개', '슬립퍼쇼룸', '슬립퍼프레임'],
+                default=default_kw,
                 key="kw_select_03"
             )       
         with _p: pass
@@ -1228,10 +1229,11 @@ def main():
         ft1, _p, ft2 = st.columns([3, 0.3, 1])
         with ft1: 
             keywords     = df['키워드'].unique().tolist()
+            default_kw   = [kw for kw in keywords if ('누어' in kw) or ('NOOER' in kw)]
             sel_keywords = st.multiselect(
                 "키워드 선택", 
                 keywords, 
-                default=['누어', '누어룬드', '누어매트리스', '누어침대', '누어프레임', '누어침대프레임', 'NOOER', '누어베개'],
+                default=default_kw,
                 key="kw_select_04"
             )       
         with _p: pass
