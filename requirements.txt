@@ -26,12 +26,14 @@
 # streamlit-aggrid==0.3.4.post3
 
 # ────────── Core ──────────
-streamlit==1.37.1
+streamlit==1.33.0
 pandas==2.2.2
 numpy==1.26.4
 scipy==1.11.4
 matplotlib==3.8.4
 plotly==5.23.0
+protobuf<5
+pyarrow<16
 
 # ────────── Streamlit Extras ──────────
 streamlit-aggrid==0.3.4.post3
