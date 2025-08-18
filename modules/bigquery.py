@@ -53,7 +53,14 @@ class BigQuery():
         self.tb_media                  = json_data[self.projectCode]['tb_media']
         self.tb_sleeper_product_report = json_data[self.projectCode]['tb_sleeper_product_report']
 
-        self._bqstorage = BigQueryReadClient(credentials=self.credentialPath)
+        try:
+            self._bqstorage = BigQueryReadClient(credentials=self.credentialPath)
+        except:
+            import streamlit as st
+            sa_info = st.secrets["sleeper-462701-admin"]
+            if isinstance(sa_info, str):  # 혹시 문자열(JSON)로 저장했을 경우
+                sa_info = json.loads(sa_info)
+            self._bqstorage = BigQueryReadClient(credentials=sa_info)
 
         # -- Date Option
         # [default : D-N]       d-"1" ~ d-"14" is set by default.
