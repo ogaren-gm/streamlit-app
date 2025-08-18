@@ -123,8 +123,18 @@ class BigQuery():
 
     def get_data(self, tb_name):
 
-        credentials = service_account.Credentials.from_service_account_file(self.credentialPath)
-        client      = bigquery.Client(credentials=credentials, project=self.projectName)
+        try:
+            credentials = service_account.Credentials.from_service_account_file(self.credentialPath)
+            client      = bigquery.Client(credentials=credentials, project=self.projectName)
+        
+        except:
+            import streamlit as st
+            sa_info = st.secrets["sleeper-462701-admin"]
+            if isinstance(sa_info, str):  # 혹시 문자열(JSON)로 저장했을 경우
+                sa_info = json.loads(sa_info)
+            credentials = service_account.Credentials.from_service_account_file(sa_info)
+            client      = bigquery.Client(credentials=credentials, project=self.projectName)
+            
 
         # 테이블 참조
         table_ref = getattr(self, tb_name)  # 예: "project.dataset.table"
