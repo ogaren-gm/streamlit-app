@@ -58,9 +58,12 @@ class BigQuery():
         except:
             import streamlit as st
             sa_info = st.secrets["sleeper-462701-admin"]
-            if isinstance(sa_info, str):  # 혹시 문자열(JSON)로 저장했을 경우
+            if isinstance(sa_info, str): 
                 sa_info = json.loads(sa_info)
-            self._bqstorage = BigQueryReadClient(credentials=sa_info)
+            # AttrDict → dict 로 보장
+            sa_info = dict(sa_info)
+            _cred = service_account.Credentials.from_service_account_info(sa_info)
+            self._bqstorage = BigQueryReadClient(credentials=_cred)
 
         # -- Date Option
         # [default : D-N]       d-"1" ~ d-"14" is set by default.
@@ -130,11 +133,13 @@ class BigQuery():
         except:
             import streamlit as st
             sa_info = st.secrets["sleeper-462701-admin"]
-            if isinstance(sa_info, str):  # 혹시 문자열(JSON)로 저장했을 경우
+            if isinstance(sa_info, str):  # 문자열(JSON)로 저장된 경우
                 sa_info = json.loads(sa_info)
-            credentials = service_account.Credentials.from_service_account_file(sa_info)
+            sa_info = dict(sa_info)
+            credentials = service_account.Credentials.from_service_account_info(sa_info)
             client      = bigquery.Client(credentials=credentials, project=self.projectName)
-            
+
+
 
         # 테이블 참조
         table_ref = getattr(self, tb_name)  # 예: "project.dataset.table"
