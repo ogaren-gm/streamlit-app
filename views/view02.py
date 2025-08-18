@@ -83,7 +83,15 @@ def main():
         
         # 2) Google Sheet
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        creds = Credentials.from_service_account_file("C:/_code/auth/sleeper-461005-c74c5cd91818.json", scopes=scope)
+        
+        try: 
+            creds = Credentials.from_service_account_file("C:/_code/auth/sleeper-461005-c74c5cd91818.json", scopes=scope)
+        except: # 배포용 (secrets.toml)
+            sa_info = st.secrets["sleeper-462701-admin"]
+            if isinstance(sa_info, str):  # 혹시 문자열(JSON)로 저장했을 경우
+                sa_info = json.loads(sa_info)
+            creds = Credentials.from_service_account_info(sa_info, scopes=scope)
+            
         gc = gspread.authorize(creds)
         sh = gc.open_by_url('https://docs.google.com/spreadsheets/d/11ov-_o6Lv5HcuZo1QxrKOZnLtnxEKTiV78OFBZzVmWA/edit')
         df_sheet = pd.DataFrame(sh.worksheet('parse').get_all_records())
