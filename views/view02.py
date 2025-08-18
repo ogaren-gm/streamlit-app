@@ -590,7 +590,8 @@ def main():
             height=height,
             fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
             theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-            allow_unsafe_jscode=True
+            allow_unsafe_jscode=True,
+            reload_data=True
         )
     
     
