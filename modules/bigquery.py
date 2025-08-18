@@ -26,17 +26,20 @@ import db_dtypes
 # pymysql.install_as_MySQLdb()
 warnings.filterwarnings(action='ignore')
 from google.cloud.bigquery_storage import BigQueryReadClient
+from pathlib import Path
 
 
-
+CFG_PATH = Path(__file__).resolve().parents[1] / "json" / "bigquery_projectCode.json"
 
 class BigQuery():
 
     def __init__(self, projectCode, startDate=None, endDate=None, custom_startDate=None, custom_endDate=None):
         
         # -- Allocation
-        # Read json file and allocate table information.
-        f  = open('C:/_code/streamlit-app/streamlit-app/json/bigquery_projectCode.json', encoding='UTF-8')
+        try:
+            f  = open('C:/_code/streamlit-app/streamlit-app/json/bigquery_projectCode.json', encoding='UTF-8')
+        except:
+            f = open(CFG_PATH, encoding="utf-8")
         
         json_data = json.loads(f.read(),strict=False) 
         self.projectCode = projectCode
