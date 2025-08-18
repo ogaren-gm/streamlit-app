@@ -17,6 +17,9 @@ matplotlib==3.9.1.post1
 plotly==5.23.0
 tqdm==4.67.1
 db_dtypes==1.4.3
-plotly
 google-cloud-bigquery-storage==2.32.0
 xlsxwriter==3.2.5
+google-cloud-bigquery==3.25.0
+google-auth==2.30.0
+pandas-gbq==0.23.1
+pyarrow==15.0.2
