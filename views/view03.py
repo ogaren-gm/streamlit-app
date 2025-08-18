@@ -24,7 +24,7 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-    st.set_page_config(layout="wide", page_title="SLPR | 퍼포먼스 대시보드")
+    # st.set_page_config(layout="wide", page_title="SLPR | 퍼포먼스 대시보드")
     st.markdown(
         """
         <style>

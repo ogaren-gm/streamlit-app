@@ -23,7 +23,7 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-    st.set_page_config(layout="wide", page_title="SLPR | 액션 종합 대시보드")
+    # st.set_page_config(layout="wide", page_title="SLPR | 액션 종합 대시보드")
     st.markdown(
         """
         <style>

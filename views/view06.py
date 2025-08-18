@@ -17,7 +17,7 @@ def main():
     # ──────────────────────────────────
 
 
-    st.set_page_config(layout="wide", page_title="SLPR | 제품 대시보드")
+    # st.set_page_config(layout="wide", page_title="SLPR | 제품 대시보드")
     st.markdown(
         """
         <style>
