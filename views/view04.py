@@ -400,7 +400,8 @@ def main():
                 ("쇼룸예약",    "CVR"):" %",
         }
         )
-        st.dataframe(styled, use_container_width=True, height=420)
+
+        st.dataframe(styled, use_container_width=True, height=420, hide_index=True)
 
     # => "채널별 쿼리 기여량"용
     def decorate_df_ctb(df: pd.DataFrame,
@@ -495,7 +496,7 @@ def main():
                 ("베리엠제이",        "비중(%)"): " %",
         }
         )
-        st.dataframe(styled, use_container_width=True, height=420)
+        st.dataframe(styled, use_container_width=True, height=420, hide_index=True)
 
     
     # def render_stacked_bar(
@@ -1949,7 +1950,7 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
             except: pass
             df_f = df_f[['날짜', '키워드', '검색량']]
-            st.dataframe(df_f)
+            st.dataframe(df_f, hide_index=True)
             
     with tab2: 
         df = query_nor.copy()
@@ -2077,7 +2078,7 @@ def main():
             fig.update_layout(xaxis_title=None, yaxis_title=None)
             st.plotly_chart(fig, use_container_width=True)
             df_f = df_f[['날짜', '키워드', '검색량']]
-            st.dataframe(df_f)
+            st.dataframe(df_f, hide_index=True)
 
 
     # ────────────────────────────────────────────────────────────────

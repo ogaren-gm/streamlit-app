@@ -427,7 +427,7 @@ def main():
             ]
         )
         
-        st.dataframe(styled2, use_container_width=True)
+        st.dataframe(styled2, use_container_width=True, hide_index=True)
 
 
     # def render_aggrid(

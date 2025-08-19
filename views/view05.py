@@ -14,7 +14,7 @@ from st_aggrid.shared import JsCode
 import io
 from google.oauth2.service_account import Credentials
 import gspread
-
+import re
 import sys
 import modules.style
 importlib.reload(sys.modules['modules.style'])
@@ -96,7 +96,9 @@ def main():
             ]
             for event_name, flag_col in events:
                 df[flag_col] = (df[event_name] > 0).astype(int)
-            df["isPaid_4"] = categorize_paid(df)
+            df["isPaid_4"]    = categorize_paid(df)
+            df["_geo_region"] = categorize_region(df)
+
             return df
 
         def categorize_paid(df: pd.DataFrame) -> pd.Series:
@@ -119,6 +121,60 @@ def main():
             ]
             choices = ['ETC','Paid','Owned','Earned']
             return np.select(conds, choices, default='ETC')
+
+
+        def categorize_region(df: pd.DataFrame,
+                            city_col: str = "geo__city",
+                            default_region: str = "기타") -> pd.Series:
+
+            # 컬럼 없을 경우 전부 기본값으로 채움
+            if city_col not in df.columns:
+                return pd.Series([default_region] * len(df), index=df.index, name="_geo_region")
+
+            # 1) 표준화(소문자, 트림, 다중 공백 축소)
+            def _norm(x):
+                if pd.isna(x):
+                    return None
+                s = str(x).strip()
+                s = re.sub(r"\s+", " ", s)
+                return s.lower()
+
+            # 2) 매핑 딕셔너리
+            norm_map = {
+                "incheon": "수도권",
+                "seoul": "수도권",
+                "gyeonggi-do": "수도권",
+
+                "chungcheongbuk-do": "중부",
+                "chungcheongnam-do": "중부",
+                "daejeon": "중부",
+
+                "gyeongsangbuk-do": "경북",
+                "daegu": "경북",
+                "ulsan": "경북",
+
+                "busan": "경남",
+                "gyeongsangnam-do": "경남",
+
+                "jeollanam-do": "전라",
+                "gwangju": "전라",
+                "jeonbuk state": "전라",
+                "jeollabuk-do": "전라",
+
+                "gangwon-do": "강원",
+
+                "jeju-do": "기타",
+                "(not set)": "기타",
+                "not set": "기타",
+            }
+
+            # 3) 표준화 후 매핑
+            norm = df[city_col].apply(_norm)
+            mapped = norm.map(norm_map).fillna(default_region)
+
+            # 4) 반환 (그냥 문자열 시리즈)
+            return pd.Series(mapped, index=df.index, name="_geo_region")
+
         
         return preprocess_data(df_psi)
 
@@ -284,12 +340,14 @@ def main():
     df_daily_device  =  pivot_daily(df_psi, group_cols=["device__category"])
     df_daily_geo     =  pivot_daily(df_psi, group_cols=["geo__city"],          top_n=6,   기타_label="기타")
     df_daily_source  =  pivot_daily(df_psi, group_cols=["_sourceMedium"],      top_n=20,   기타_label="기타")
+    df_daily_region  = pivot_daily(df_psi, group_cols=["_geo_region"])
 
     # 데이터프레임 별 -> 컬럼명 한글 치환
     df_daily_paid   = df_daily_paid.rename(columns={"isPaid_4":           "광고유무"})
     df_daily_device = df_daily_device.rename(columns={"device__category":   "디바이스"})
     df_daily_geo    = df_daily_geo.rename(columns={"geo__city":           "접속지역"})
     df_daily_source = df_daily_source.rename(columns={"_sourceMedium":       "유입매체"})
+    df_daily_region = df_daily_region.rename(columns={"_geo_region":       "접속권역"})
     
     # ──────────────────────────────────
     # 1) 방문 추이
@@ -310,7 +368,13 @@ def main():
         render_line_chart(df_daily, x="날짜", y=y_cols)
     with _p: pass
     with c2:
-        st.dataframe(df_daily)
+        styled = style_cmap(
+            df_daily,
+            gradient_rules=[
+                {"col": "방문수", "cmap":"Blues", "vmax":20000, "low":0.0, "high":0.3},
+            ]
+        )
+        st.dataframe(styled, hide_index=True)
 
 
     # ──────────────────────────────────
@@ -320,7 +384,7 @@ def main():
     st.markdown("<h5 style='margin:0'>주요 방문 현황</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, **광고유무, 디바이스, 접속지역**별 방문 추이를 확인할 수 있습니다.")
     
-    tab1, tab2, tab3, tab4 = st.tabs(["광고유무", "디바이스", "접속지역", "유입매체"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["광고유무", "디바이스", "접속지역", "접속권역", "유입매체"])
     
     # — 광고유무 탭
     with tab1:
@@ -335,7 +399,7 @@ def main():
             render_stacked_bar(df_paid_tab, x="날짜", y="방문수", color="광고유무")
         with _p: pass
         with c2:
-            st.dataframe(df_paid_tab)
+            st.dataframe(df_paid_tab, hide_index=True)
     
     # — 디바이스 탭
     with tab2:
@@ -350,7 +414,7 @@ def main():
             render_stacked_bar(df_dev_tab, x="날짜", y="방문수", color="디바이스")
         with _p: pass
         with c2:
-            st.dataframe(df_dev_tab)
+            st.dataframe(df_dev_tab, hide_index=True)
     
     # — 접속지역 탭
     with tab3:
@@ -365,10 +429,26 @@ def main():
             render_stacked_bar(df_geo_tab, x="날짜", y="방문수", color="접속지역")
         with _p: pass
         with c2:
-            st.dataframe(df_geo_tab)
+            st.dataframe(df_geo_tab, hide_index=True)
+    
+    # - 접속권역 탭
+    with tab4: 
+        region_options = ["전체"] + sorted(df_psi["_geo_region"].dropna().unique().tolist())
+        sel_region = st.selectbox("접속권역 선택", region_options, index=0)
+        if sel_region == "전체":
+            df_region_tab = df_daily_region.copy()
+        else:
+            df_region_tab = df_daily_region[df_daily_region["접속권역"] == sel_region]
+        c1, _p, c2 = st.columns([5.0, 0.2, 3.8])
+        with c1:
+            render_stacked_bar(df_region_tab, x="날짜", y="방문수", color="접속권역")
+        with _p: pass
+        with c2:
+            st.dataframe(df_region_tab, hide_index=True)
+    
             
     # — 유입매체 탭
-    with tab4:
+    with tab5:
         source_options = ["전체"] + sorted(df_psi["_sourceMedium"].dropna().unique().tolist())
         sel_source = st.selectbox("유입매체 선택", source_options, index=0)
         if sel_source == "전체":
@@ -380,7 +460,7 @@ def main():
             render_stacked_bar(df_source_tab, x="날짜", y="방문수", color="유입매체")
         with _p: pass
         with c2:
-            st.dataframe(df_source_tab)
+            st.dataframe(df_source_tab, hide_index=True)
 
 
     # ──────────────────────────────────
@@ -429,7 +509,7 @@ def main():
         y_cols = ["장바구니_세션수","쇼룸예약_세션수"]
         render_line_chart(metrics_df, x="날짜", y=y_cols, title="🛒 전환의도")
 
-    st.dataframe(metrics_df)
+    st.dataframe(metrics_df, hide_index=True)
 
 
     # ──────────────────────────────────

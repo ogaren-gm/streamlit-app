@@ -352,7 +352,7 @@ def main():
                 {"col": ("COST","매출"), "cmap":"Greens", "vmax":200000000, "low":0.0, "high":0.3},
             ]
         )
-        st.dataframe(styled2, use_container_width=True, height=388)
+        st.dataframe(styled2, use_container_width=True, height=388, hide_index=True)
 
     # def render_aggrid(
     #     df: pd.DataFrame,
