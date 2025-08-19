@@ -491,7 +491,7 @@ def main():
                 ("베리엠제이",        "비중(%)"): " %",
         }
         )
-        st.dataframe(styled, use_container_width=True)
+        st.dataframe(styled, use_container_width=True, height=420)
 
     
     def render_stacked_bar(
@@ -514,6 +514,7 @@ def main():
             barmode="relative",
         )
         fig.update_layout(
+            barmode="relative",
             bargap=0.1,        # 카테고리 간 간격 (0~1)
             bargroupgap=0.2,   # 같은 카테고리 내 막대 간 간격 (0~1)
             height=400,
