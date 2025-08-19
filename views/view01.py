@@ -17,8 +17,7 @@ import gspread
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import math
-from modules.render_df import style_thousands_per_column
-import streamlit as st
+from modules.render_df import style_format
 
 
 def main():
@@ -292,8 +291,12 @@ def main():
         
         # 컬럼 순서 지정
         df = df[['event_date','ord_amount_sum','ord_count_sum','AOV','cost_gross_sum','ROAS','session_count','CVR']]
-        df['event_date'] = pd.to_datetime(df['event_date'], errors='coerce').dt.strftime('%Y-%m-%d')
         
+        # 자료형 워싱
+        df['event_date'] = pd.to_datetime(df['event_date'], errors='coerce').dt.strftime('%Y-%m-%d')
+        num_cols = df.select_dtypes(include=['number']).columns
+        df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))        
+
         # 컬럼 이름 변경 - 단일 인덱스
         # rename_map = {
         #     "event_date":       "날짜",
@@ -319,175 +322,188 @@ def main():
             ("GA",          "세션수"),              # session_count
             ("GA",          "CVR(전환율)"),          # CVR
         ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)        
-
-        
         
         return df
-    
 
-    # ────────────────────────────────────────────────────────────────
+    def render_style_format(target_df):
+        styled = style_format(
+            decorate_df(target_df),
+            decimals_map={
+                ("COST",        "매출"): 0,
+                ("COST",        "주문수"): 0,
+                ("COST",        "AOV(평균주문금액)"): 0,
+                ("PERFORMANCE", "광고비"): 0,
+                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
+                ("GA",          "세션수"): 0,
+                ("GA",          "CVR(전환율)"): 2,
+            },
+            suffix_map={
+                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
+                ("GA",          "CVR(전환율)"): " %",
+        }
+        )
+        st.dataframe(styled, use_container_width=True, height=388)
 
-    def render_aggrid(
-        df: pd.DataFrame,
-        height: int = 323,
-        use_parent: bool = True
-        ) -> None:
-        """
-        use_parent: False / True
-        """
-        df2 = df.copy()
-        df2.fillna(0, inplace=True)     # 값이 없는 경우 일단 0으로 치환
+    # def render_aggrid(
+    #     df: pd.DataFrame,
+    #     height: int = 323,
+    #     use_parent: bool = True
+    #     ) -> None:
+    #     """
+    #     use_parent: False / True
+    #     """
+    #     df2 = df.copy()
+    #     df2.fillna(0, inplace=True)     # 값이 없는 경우 일단 0으로 치환
         
-        # 전처리 영역 (파생지표 생성, 컬럼순서 지정)
-        df2['CVR']  = (df2['ord_count_sum']  / df2['session_count']  * 100).round(2)
-        df2['AOV']  = (df2['ord_amount_sum'] / df2['ord_count_sum']  ).round(0)
-        df2['ROAS'] = (df2['ord_amount_sum'] / df2['cost_gross_sum'] * 100).round(2)
-        df2 = df2[['event_date','ord_amount_sum','ord_count_sum','AOV','cost_gross_sum','ROAS','session_count','CVR']]
+    #     # 전처리 영역 (파생지표 생성, 컬럼순서 지정)
+    #     df2['CVR']  = (df2['ord_count_sum']  / df2['session_count']  * 100).round(2)
+    #     df2['AOV']  = (df2['ord_amount_sum'] / df2['ord_count_sum']  ).round(0)
+    #     df2['ROAS'] = (df2['ord_amount_sum'] / df2['cost_gross_sum'] * 100).round(2)
+    #     df2 = df2[['event_date','ord_amount_sum','ord_count_sum','AOV','cost_gross_sum','ROAS','session_count','CVR']]
         
-        # (필수함수) make_num_child
-        def make_num_child(header, field, fmt_digits=0, suffix=''):
-            return {
-                "headerName": header, "field": field,
-                "type": ["numericColumn","customNumericFormat"],
-                "valueFormatter": JsCode(
-                    f"function(params){{"
-                    f"  return params.value!=null?"
-                    f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
-                    f"}}"
-                ),
-                "cellStyle": JsCode("params=>({textAlign:'right'})")
-            }
+    #     # (필수함수) make_num_child
+    #     def make_num_child(header, field, fmt_digits=0, suffix=''):
+    #         return {
+    #             "headerName": header, "field": field,
+    #             "type": ["numericColumn","customNumericFormat"],
+    #             "valueFormatter": JsCode(
+    #                 f"function(params){{"
+    #                 f"  return params.value!=null?"
+    #                 f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
+    #                 f"}}"
+    #             ),
+    #             "cellStyle": JsCode("params=>({textAlign:'right'})")
+    #         }
 
-        # (필수함수) add_summary - deprecated !!
-        # def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
-        #     summary: dict[str, float] = {}
-        #     for col, op in agg_map.items():
-        #         if op == 'sum':
-        #             summary[col] = int(df[col].sum())
-        #         elif op == 'avg':
-        #             summary[col] = float(df[col].mean())
-        #         elif op == 'mid':
-        #             summary[col] = float(df[col].median())
-        #         else:
-        #             summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
+    #     # (필수함수) add_summary - deprecated !!
+    #     # def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
+    #     #     summary: dict[str, float] = {}
+    #     #     for col, op in agg_map.items():
+    #     #         if op == 'sum':
+    #     #             summary[col] = int(df[col].sum())
+    #     #         elif op == 'avg':
+    #     #             summary[col] = float(df[col].mean())
+    #     #         elif op == 'mid':
+    #     #             summary[col] = float(df[col].median())
+    #     #         else:
+    #     #             summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
                     
-        #     grid_options['pinnedBottomRowData'] = [summary]
-        #     return grid_options
+    #     #     grid_options['pinnedBottomRowData'] = [summary]
+    #     #     return grid_options
 
-        # (필수함수) add_summary
-        def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
-            summary: dict[str, float | str] = {}
-            for col, op in agg_map.items():
-                val = None
-                try:
-                    if op == 'sum':
-                        val = df[col].sum()
-                    elif op == 'avg':
-                        val = df[col].mean()
-                    elif op == 'mid':
-                        val = df[col].median()
-                except:
-                    val = None
+    #     # (필수함수) add_summary
+    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
+    #         summary: dict[str, float | str] = {}
+    #         for col, op in agg_map.items():
+    #             val = None
+    #             try:
+    #                 if op == 'sum':
+    #                     val = df[col].sum()
+    #                 elif op == 'avg':
+    #                     val = df[col].mean()
+    #                 elif op == 'mid':
+    #                     val = df[col].median()
+    #             except:
+    #                 val = None
 
-                # NaN / Inf / numpy 타입 → None or native 타입으로 처리
-                if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-                    summary[col] = None
-                else:
-                    # numpy 타입 제거
-                    if isinstance(val, (np.integer, np.int64, np.int32)):
-                        summary[col] = int(val)
-                    elif isinstance(val, (np.floating, np.float64, np.float32)):
-                        summary[col] = float(round(val, 2))
-                    else:
-                        summary[col] = val
+    #             # NaN / Inf / numpy 타입 → None or native 타입으로 처리
+    #             if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+    #                 summary[col] = None
+    #             else:
+    #                 # numpy 타입 제거
+    #                 if isinstance(val, (np.integer, np.int64, np.int32)):
+    #                     summary[col] = int(val)
+    #                 elif isinstance(val, (np.floating, np.float64, np.float32)):
+    #                     summary[col] = float(round(val, 2))
+    #                 else:
+    #                     summary[col] = val
 
-            grid_options['pinnedBottomRowData'] = [summary]
-            return grid_options
+    #         grid_options['pinnedBottomRowData'] = [summary]
+    #         return grid_options
 
-        # date_col
-        date_col = {
-            "headerName": "날짜",
-            "field": "event_date",
-            "pinned": "left",
-            "width": 100,
-            "cellStyle": JsCode("params=>({textAlign:'left'})"),
-            "sort": "desc"
-        }
+    #     # date_col
+    #     date_col = {
+    #         "headerName": "날짜",
+    #         "field": "event_date",
+    #         "pinned": "left",
+    #         "width": 100,
+    #         "cellStyle": JsCode("params=>({textAlign:'left'})"),
+    #         "sort": "desc"
+    #     }
 
-        # (use_parent) flat_cols
-        flat_cols = [
-            date_col,
-            make_num_child("매출",   "ord_amount_sum"),
-            make_num_child("주문수", "ord_count_sum"),
-            make_num_child("AOV(평균주문금액)",    "AOV"),
-            make_num_child("광고비", "cost_gross_sum"),
-            make_num_child("ROAS(광고수익률)",   "ROAS", fmt_digits=2, suffix='%'),
-            make_num_child("세션수", "session_count"),
-            make_num_child("CVR(전환율)",    "CVR", fmt_digits=2, suffix='%'),
-        ]
+    #     # (use_parent) flat_cols
+    #     flat_cols = [
+    #         date_col,
+    #         make_num_child("매출",   "ord_amount_sum"),
+    #         make_num_child("주문수", "ord_count_sum"),
+    #         make_num_child("AOV(평균주문금액)",    "AOV"),
+    #         make_num_child("광고비", "cost_gross_sum"),
+    #         make_num_child("ROAS(광고수익률)",   "ROAS", fmt_digits=2, suffix='%'),
+    #         make_num_child("세션수", "session_count"),
+    #         make_num_child("CVR(전환율)",    "CVR", fmt_digits=2, suffix='%'),
+    #     ]
 
-        # (use_parent) grouped_cols
-        grouped_cols = [
-            date_col,
-            {
-                "headerName": "COST",
-                "children": [
-                    make_num_child("매출",   "ord_amount_sum"),
-                    make_num_child("주문수", "ord_count_sum"),
-                    make_num_child("AOV(평균주문금액)",    "AOV"),
-                ]
-            },
-            {
-                "headerName": "PERP",
-                "children": [
-                    make_num_child("광고비", "cost_gross_sum"),
-                    make_num_child("ROAS(광고수익률)",   "ROAS", fmt_digits=2, suffix='%'),
-                ]
-            },
-            {
-                "headerName": "GA",
-                "children": [
-                    make_num_child("세션수", "session_count"),
-                    make_num_child("CVR(전환율)",    "CVR", fmt_digits=2, suffix='%'),
-                ]
-            },
-        ]
+    #     # (use_parent) grouped_cols
+    #     grouped_cols = [
+    #         date_col,
+    #         {
+    #             "headerName": "COST",
+    #             "children": [
+    #                 make_num_child("매출",   "ord_amount_sum"),
+    #                 make_num_child("주문수", "ord_count_sum"),
+    #                 make_num_child("AOV(평균주문금액)",    "AOV"),
+    #             ]
+    #         },
+    #         {
+    #             "headerName": "PERP",
+    #             "children": [
+    #                 make_num_child("광고비", "cost_gross_sum"),
+    #                 make_num_child("ROAS(광고수익률)",   "ROAS", fmt_digits=2, suffix='%'),
+    #             ]
+    #         },
+    #         {
+    #             "headerName": "GA",
+    #             "children": [
+    #                 make_num_child("세션수", "session_count"),
+    #                 make_num_child("CVR(전환율)",    "CVR", fmt_digits=2, suffix='%'),
+    #             ]
+    #         },
+    #     ]
 
-        # (use_parent)
-        column_defs = grouped_cols if use_parent else flat_cols
+    #     # (use_parent)
+    #     column_defs = grouped_cols if use_parent else flat_cols
         
-        # grid_options & 렌더링
-        grid_options = {
-            "columnDefs": column_defs,
-            "defaultColDef": {"sortable": True, "filter": True, "resizable": True},
-            "headerHeight": 30,
-            "groupHeaderHeight": 30,
-        }
+    #     # grid_options & 렌더링
+    #     grid_options = {
+    #         "columnDefs": column_defs,
+    #         "defaultColDef": {"sortable": True, "filter": True, "resizable": True},
+    #         "headerHeight": 30,
+    #         "groupHeaderHeight": 30,
+    #     }
 
-        # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-        grid_options = add_summary(
-            grid_options,
-            df2,
-            {
-                'ord_amount_sum': 'sum',
-                'ord_count_sum' : 'sum',
-                'AOV'           : 'avg',
-                'cost_gross_sum': 'sum',
-                'ROAS'          : 'avg',
-                'session_count' : 'sum',
-                'CVR'           : 'avg',
-            }
-        )
+    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
+    #     grid_options = add_summary(
+    #         grid_options,
+    #         df2,
+    #         {
+    #             'ord_amount_sum': 'sum',
+    #             'ord_count_sum' : 'sum',
+    #             'AOV'           : 'avg',
+    #             'cost_gross_sum': 'sum',
+    #             'ROAS'          : 'avg',
+    #             'session_count' : 'sum',
+    #             'CVR'           : 'avg',
+    #         }
+    #     )
 
-        AgGrid(
-            df2,
-            gridOptions=grid_options,
-            height=height,
-            fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
-            theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-            allow_unsafe_jscode=True
-        )
-
+    #     AgGrid(
+    #         df2,
+    #         gridOptions=grid_options,
+    #         height=height,
+    #         fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
+    #         theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
+    #         allow_unsafe_jscode=True
+    #     )
 
 
 
@@ -498,37 +514,14 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
+
     # ────────────────────────────────────────────────────────────────
     # 통합 매출 리포트 
     # ────────────────────────────────────────────────────────────────
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 매출 리포트</h5>", unsafe_allow_html=True)  
+    st.markdown("<h5 style='margin:0'><span style='color:#FF804B;'>통합</span> 매출 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **COST**(매출), **PERFORMANCE**(광고비), **GA**(유입) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
     
-    # render_aggrid(df_total)
-
-    styled = style_thousands_per_column(
-        decorate_df(df_total),
-        decimals_map={
-            ("COST",        "매출"): 0,
-            ("COST",        "주문수"): 0,
-            ("COST",        "AOV(평균주문금액)"): 0,
-            ("PERFORMANCE", "광고비"): 0,
-            ("PERFORMANCE", "ROAS(광고수익률)"): 1,
-            ("GA",          "세션수"): 0,
-            ("GA",          "CVR(전환율)"): 2,
-        },
-        suffix_map={
-            ("PERFORMANCE", "ROAS(광고수익률)"): " %",
-            ("GA",          "CVR(전환율)"): " %",
-    }
-    )
-
-    st.dataframe(styled, use_container_width=True, height=388)
-
-
-
-
-
+    render_style_format(df_total)
 
 
     # ────────────────────────────────────────────────────────────────
@@ -540,128 +533,39 @@ def main():
 
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 매트리스", "슬립퍼 프레임"])
     with tabs[0]:
-        styled = style_thousands_per_column(
-            decorate_df(df_slp),
-            decimals_map={
-                ("COST",        "매출"): 0,
-                ("COST",        "주문수"): 0,
-                ("COST",        "AOV(평균주문금액)"): 0,
-                ("PERFORMANCE", "광고비"): 0,
-                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
-                ("GA",          "세션수"): 0,
-                ("GA",          "CVR(전환율)"): 2,
-            },
-            suffix_map={
-                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
-                ("GA",          "CVR(전환율)"): " %",
-        }
-        )
-        st.dataframe(styled, use_container_width=True, height=388)
+        render_style_format(df_slp)
     with tabs[1]:
-        styled = style_thousands_per_column(
-            decorate_df(df_slp_mat),
-            decimals_map={
-                ("COST",        "매출"): 0,
-                ("COST",        "주문수"): 0,
-                ("COST",        "AOV(평균주문금액)"): 0,
-                ("PERFORMANCE", "광고비"): 0,
-                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
-                ("GA",          "세션수"): 0,
-                ("GA",          "CVR(전환율)"): 2,
-            },
-            suffix_map={
-                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
-                ("GA",          "CVR(전환율)"): " %",
-        }
-        )
-        st.dataframe(styled, use_container_width=True, height=388)
+        render_style_format(df_slp_mat)
     with tabs[2]:
-        styled = style_thousands_per_column(
-            decorate_df(df_slp_frm),
-            decimals_map={
-                ("COST",        "매출"): 0,
-                ("COST",        "주문수"): 0,
-                ("COST",        "AOV(평균주문금액)"): 0,
-                ("PERFORMANCE", "광고비"): 0,
-                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
-                ("GA",          "세션수"): 0,
-                ("GA",          "CVR(전환율)"): 2,
-            },
-            suffix_map={
-                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
-                ("GA",          "CVR(전환율)"): " %",
-        }
-        )
-        st.dataframe(styled, use_container_width=True, height=388)
+        render_style_format(df_slp_frm)
 
-    # 3) 누어 영역 (탭 구성)
+
+    # ────────────────────────────────────────────────────────────────
+    # 누어 매출 리포트
+    # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>누어</span> 매출 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
 
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
     with tabs[0]:
-        styled = style_thousands_per_column(
-            decorate_df(df_nor),
-            decimals_map={
-                ("COST",        "매출"): 0,
-                ("COST",        "주문수"): 0,
-                ("COST",        "AOV(평균주문금액)"): 0,
-                ("PERFORMANCE", "광고비"): 0,
-                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
-                ("GA",          "세션수"): 0,
-                ("GA",          "CVR(전환율)"): 2,
-            },
-            suffix_map={
-                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
-                ("GA",          "CVR(전환율)"): " %",
-        }
-        )
-        st.dataframe(styled, use_container_width=True, height=388)
+        render_style_format(df_nor)
     with tabs[1]:
-        styled = style_thousands_per_column(
-            decorate_df(df_nor_mat),
-            decimals_map={
-                ("COST",        "매출"): 0,
-                ("COST",        "주문수"): 0,
-                ("COST",        "AOV(평균주문금액)"): 0,
-                ("PERFORMANCE", "광고비"): 0,
-                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
-                ("GA",          "세션수"): 0,
-                ("GA",          "CVR(전환율)"): 2,
-            },
-            suffix_map={
-                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
-                ("GA",          "CVR(전환율)"): " %",
-        }
-        )
-        st.dataframe(styled, use_container_width=True, height=388)
+        render_style_format(df_nor_mat)
     with tabs[2]:
-        styled = style_thousands_per_column(
-            decorate_df(df_nor_frm),
-            decimals_map={
-                ("COST",        "매출"): 0,
-                ("COST",        "주문수"): 0,
-                ("COST",        "AOV(평균주문금액)"): 0,
-                ("PERFORMANCE", "광고비"): 0,
-                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
-                ("GA",          "세션수"): 0,
-                ("GA",          "CVR(전환율)"): 2,
-            },
-            suffix_map={
-                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
-                ("GA",          "CVR(전환율)"): " %",
-        }
-        )
-        st.dataframe(styled, use_container_width=True, height=388)
+        render_style_format(df_nor_frm)
 
 
-    # # ────────────────────────────────────────────────────────────────
-    # # 시각화 차트
-    # # ────────────────────────────────────────────────────────────────
-    # st.header(" ") # 공백용
-    # st.markdown("<h5 style='margin:0'>리포트 시각화</h5>", unsafe_allow_html=True)  
-    # st.markdown(":gray-badge[:material/Info: Info]ㅤ위에서 본 리포트(표) 중 하나를 선택하여, 원하는 컬럼을 시각화할 수 있습니다.", unsafe_allow_html=True)
+    # ────────────────────────────────────────────────────────────────
+    # 시각화 차트 (나중에 시각화 영역 따로 추가할 거 같아서 주석처리함 // 08.19)
+    # ────────────────────────────────────────────────────────────────
+    # st.header(" ")
+    # st.markdown("<h5 style='margin:0'>리포트 시각화</h5>", unsafe_allow_html=True)
+    # st.markdown(
+    #     ":gray-badge[:material/Info: Info]ㅤ리포트, 지표, 차트 옵션을 자유롭게 선택하여, 원하는 방식으로 데이터를 살펴보세요.",
+    #     unsafe_allow_html=True,
+    # )
+
     # dfs = {
     #     "통합 리포트":    df_total,
     #     "슬립퍼 통합":    df_slp,
@@ -671,7 +575,9 @@ def main():
     #     "누어 매트리스":  df_nor_mat,
     #     "누어 프레임":    df_nor_frm,
     # }
+    
     # metrics = ["매출","주문수","AOV","광고비","ROAS","세션수","CVR"]
+    
     # col_map = {
     #     "매출":   "ord_amount_sum",
     #     "주문수": "ord_count_sum",
@@ -681,207 +587,116 @@ def main():
     #     "세션수": "session_count",
     #     "CVR":    "CVR"
     # }
-    # left_labels  = {"매출","주문수","AOV","광고비","세션수"}
-    # right_labels = {"ROAS","CVR"}
 
-    # # 1) 선택 UI: 좌우 3:7
-    # col1, col2 = st.columns([3, 7])
-    # with col1:
-    #     df_key = st.selectbox("리포트 선택", list(dfs.keys()))
-    # with col2:
-    #     sel = st.multiselect("컬럼 선택", metrics, default=["AOV", "ROAS"])
+    # default_yaxis = {
+    #     "매출": "left",
+    #     "주문수": "left",
+    #     "AOV": "left",
+    #     "광고비": "left",
+    #     "ROAS": "right",
+    #     "세션수": "left",
+    #     "CVR": "right"
+    # }
+    # default_chart = {
+    #     "매출": "bar",
+    #     "주문수": "bar",
+    #     "AOV": "line",
+    #     "광고비": "bar",
+    #     "ROAS": "line",
+    #     "세션수": "bar",
+    #     "CVR": "line"
+    # }
 
-    # # 2) 차트 로직
-    # if not sel:
-    #     st.warning("하나 이상의 컬럼을 선택해주세요.")
+
+    # # ── 1) 선택 UI
+    # c_report, c_metric = st.columns([3, 7])
+    # with c_report:
+    #     sel_report = st.selectbox("리포트 선택", list(dfs.keys()), key="select_report")
+    # with c_metric:
+    #     sel_metrics = st.multiselect("지표 선택", metrics, default=["AOV", "ROAS"], key="select_metrics")
+
+    # # ── 2) 컬럼별 옵션 선택 UI (표 형태)
+    # with st.expander("지표별 옵션 선택", expanded=False):
+
+    #     metric_settings = {}
+    #     for i, metric in enumerate(sel_metrics):
+    #         c2, c3 = st.columns([2, 2])
+    #         with c2:
+    #             yaxis = st.selectbox(
+    #                 f"Y축 위치: {metric}", ["왼쪽", "오른쪽"],
+    #                 key=f"y_axis_{metric}_{i}",
+    #                 index=0 if default_yaxis[metric] == "left" else 1
+    #             )
+    #         with c3:
+    #             chart_type = st.selectbox(
+    #                 f"차트 유형: {metric}", ["꺾은선", "막대"],
+    #                 key=f"chart_type_{metric}_{i}",
+    #                 index=0 if default_chart[metric] == "line" else 1
+    #             )
+    #         metric_settings[metric] = {
+    #             "yaxis": "right" if yaxis == "오른쪽" else "left",
+    #             "chart": "bar" if chart_type == "막대" else "line"
+    #         }
+
+    # # ── 3) 차트 로직
+    # if not sel_metrics:
+    #     st.warning("하나 이상의 지표를 선택해주세요.")
     # else:
-    #     df_sel   = dfs[df_key].sort_values("event_date")
-    #     df_chart = df_sel.assign(
-    #         AOV  = lambda x: x.ord_amount_sum / x.ord_count_sum,
-    #         ROAS = lambda x: x.ord_amount_sum / x.cost_gross_sum * 100,
-    #         CVR  = lambda x: x.ord_count_sum  / x.session_count   * 100,
-    #     )
+    #     df = dfs[sel_report].sort_values("event_date").copy()
+    #     # 파생지표 생성 (수식이 필요한 항목만)
+    #     df["AOV"]  = df["ord_amount_sum"] / df["ord_count_sum"]
+    #     df["ROAS"] = df["ord_amount_sum"] / df["cost_gross_sum"] * 100
+    #     df["CVR"]  = df["ord_count_sum"]  / df["session_count"] * 100
 
     #     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    #     for m in sel:
-    #         col = col_map[m]
-    #         is_right = (m in right_labels)
-    #         fig.add_trace(
-    #             go.Scatter(
-    #                 x=df_chart["event_date"],
-    #                 y=df_chart[col],
-    #                 name=m,
-    #                 mode="lines+markers",
-    #                 line=dict(dash="dash" if is_right else "solid")
-    #             ),
-    #             secondary_y=is_right
-    #         )
+    #     for metric in sel_metrics:
+    #         col = col_map[metric]
+    #         y_axis = metric_settings[metric]["yaxis"] == "right"
+    #         chart_type = metric_settings[metric]["chart"]
 
-    #     # 3) 레이아웃
+    #         if chart_type == "bar":
+    #             fig.add_trace(
+    #                 go.Bar(
+    #                     x=df["event_date"],
+    #                     y=df[col],
+    #                     name=metric,
+    #                     opacity=0.5,
+    #                     # width=0.9
+    #                 ),
+    #                 secondary_y=y_axis
+    #             )
+    #         else:  # 꺾은선
+    #             fig.add_trace(
+    #                 go.Scatter(
+    #                     x=df["event_date"],
+    #                     y=df[col],
+    #                     name=metric,
+    #                     mode="lines+markers"
+    #                 ),
+    #                 secondary_y=y_axis
+    #             )
+
+    #     left_titles  = [m for m in sel_metrics if metric_settings[m]["yaxis"]=="left"]
+    #     right_titles = [m for m in sel_metrics if metric_settings[m]["yaxis"]=="right"]
+    #     left_title  = " · ".join(left_titles)  if left_titles  else None
+    #     right_title = " · ".join(right_titles) if right_titles else None
+
     #     fig.update_layout(
-    #         title=f"{df_key}  -  {' / '.join(sel)} 추이",
-    #         # xaxis_title="날짜",
+    #         title=f"{sel_report}  -  {' / '.join(sel_metrics)} 추이",
     #         xaxis=dict(tickformat="%m월 %d일"),
     #         legend=dict(
     #             orientation="h",
-    #             x=1, y=1.1,
-    #             xanchor="right",
-    #             yanchor="bottom"
+    #             x=1, y=1.1, xanchor="right", yanchor="bottom"
     #         ),
-    #         margin=dict(t=100, b=20, l=20, r=20)
+    #         margin=dict(t=80, b=20, l=20, r=20)
     #     )
-    #     left_title  = "·".join([m for m in sel if m in left_labels])
-    #     right_title = "·".join([m for m in sel if m in right_labels])
     #     if left_title:
     #         fig.update_yaxes(title_text=left_title, secondary_y=False)
     #     if right_title:
     #         fig.update_yaxes(title_text=right_title, secondary_y=True)
 
     #     st.plotly_chart(fig, use_container_width=True)
-
-
-    # ────────────────────────────────────────────────────────────────
-    # 시각화 차트 (축 선택이랑 디자인 선택 가능하도록 다시 만듦......)
-    # ────────────────────────────────────────────────────────────────
-    st.header(" ")
-    st.markdown("<h5 style='margin:0'>리포트 시각화</h5>", unsafe_allow_html=True)
-    st.markdown(
-        ":gray-badge[:material/Info: Info]ㅤ리포트, 지표, 차트 옵션을 자유롭게 선택하여, 원하는 방식으로 데이터를 살펴보세요.",
-        unsafe_allow_html=True,
-    )
-
-    dfs = {
-        "통합 리포트":    df_total,
-        "슬립퍼 통합":    df_slp,
-        "슬립퍼 매트리스": df_slp_mat,
-        "슬립퍼 프레임":   df_slp_frm,
-        "누어 통합":     df_nor,
-        "누어 매트리스":  df_nor_mat,
-        "누어 프레임":    df_nor_frm,
-    }
-    
-    metrics = ["매출","주문수","AOV","광고비","ROAS","세션수","CVR"]
-    
-    col_map = {
-        "매출":   "ord_amount_sum",
-        "주문수": "ord_count_sum",
-        "AOV":    "AOV",
-        "광고비": "cost_gross_sum",
-        "ROAS":   "ROAS",
-        "세션수": "session_count",
-        "CVR":    "CVR"
-    }
-
-    default_yaxis = {
-        "매출": "left",
-        "주문수": "left",
-        "AOV": "left",
-        "광고비": "left",
-        "ROAS": "right",
-        "세션수": "left",
-        "CVR": "right"
-    }
-    default_chart = {
-        "매출": "bar",
-        "주문수": "bar",
-        "AOV": "line",
-        "광고비": "bar",
-        "ROAS": "line",
-        "세션수": "bar",
-        "CVR": "line"
-    }
-
-
-    # ── 1) 선택 UI
-    c_report, c_metric = st.columns([3, 7])
-    with c_report:
-        sel_report = st.selectbox("리포트 선택", list(dfs.keys()), key="select_report")
-    with c_metric:
-        sel_metrics = st.multiselect("지표 선택", metrics, default=["AOV", "ROAS"], key="select_metrics")
-
-    # ── 2) 컬럼별 옵션 선택 UI (표 형태)
-    with st.expander("지표별 옵션 선택", expanded=False):
-
-        metric_settings = {}
-        for i, metric in enumerate(sel_metrics):
-            c2, c3 = st.columns([2, 2])
-            with c2:
-                yaxis = st.selectbox(
-                    f"Y축 위치: {metric}", ["왼쪽", "오른쪽"],
-                    key=f"y_axis_{metric}_{i}",
-                    index=0 if default_yaxis[metric] == "left" else 1
-                )
-            with c3:
-                chart_type = st.selectbox(
-                    f"차트 유형: {metric}", ["꺾은선", "막대"],
-                    key=f"chart_type_{metric}_{i}",
-                    index=0 if default_chart[metric] == "line" else 1
-                )
-            metric_settings[metric] = {
-                "yaxis": "right" if yaxis == "오른쪽" else "left",
-                "chart": "bar" if chart_type == "막대" else "line"
-            }
-
-    # ── 3) 차트 로직
-    if not sel_metrics:
-        st.warning("하나 이상의 지표를 선택해주세요.")
-    else:
-        df = dfs[sel_report].sort_values("event_date").copy()
-        # 파생지표 생성 (수식이 필요한 항목만)
-        df["AOV"]  = df["ord_amount_sum"] / df["ord_count_sum"]
-        df["ROAS"] = df["ord_amount_sum"] / df["cost_gross_sum"] * 100
-        df["CVR"]  = df["ord_count_sum"]  / df["session_count"] * 100
-
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-        for metric in sel_metrics:
-            col = col_map[metric]
-            y_axis = metric_settings[metric]["yaxis"] == "right"
-            chart_type = metric_settings[metric]["chart"]
-
-            if chart_type == "bar":
-                fig.add_trace(
-                    go.Bar(
-                        x=df["event_date"],
-                        y=df[col],
-                        name=metric,
-                        opacity=0.5,
-                        # width=0.9
-                    ),
-                    secondary_y=y_axis
-                )
-            else:  # 꺾은선
-                fig.add_trace(
-                    go.Scatter(
-                        x=df["event_date"],
-                        y=df[col],
-                        name=metric,
-                        mode="lines+markers"
-                    ),
-                    secondary_y=y_axis
-                )
-
-        left_titles  = [m for m in sel_metrics if metric_settings[m]["yaxis"]=="left"]
-        right_titles = [m for m in sel_metrics if metric_settings[m]["yaxis"]=="right"]
-        left_title  = " · ".join(left_titles)  if left_titles  else None
-        right_title = " · ".join(right_titles) if right_titles else None
-
-        fig.update_layout(
-            title=f"{sel_report}  -  {' / '.join(sel_metrics)} 추이",
-            xaxis=dict(tickformat="%m월 %d일"),
-            legend=dict(
-                orientation="h",
-                x=1, y=1.1, xanchor="right", yanchor="bottom"
-            ),
-            margin=dict(t=80, b=20, l=20, r=20)
-        )
-        if left_title:
-            fig.update_yaxes(title_text=left_title, secondary_y=False)
-        if right_title:
-            fig.update_yaxes(title_text=right_title, secondary_y=True)
-
-        st.plotly_chart(fig, use_container_width=True)
 
 
 if __name__ == "__main__":

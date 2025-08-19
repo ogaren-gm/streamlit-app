@@ -1,4 +1,4 @@
-# 서희_최신수정일_25-07-24
+# 서희_최신수정일_25-08-19
 
 import streamlit as st
 import pandas as pd
@@ -17,13 +17,13 @@ import gspread
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import math
+from modules.render_df import style_format
 
 
 def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-    # st.set_page_config(layout="wide", page_title="SLPR | 액션 종합 대시보드")
     st.markdown(
         """
         <style>
@@ -37,12 +37,10 @@ def main():
         unsafe_allow_html=True,
     )
     st.subheader('액션 종합 대시보드')
-    # st.markdown("설명")
     st.markdown("""
     이 대시보드는 방문 > 상품조회 > 쇼룸찾기 > 구매 등 **자사몰의 주요 액션 흐름**을 단계적으로 보여주는 **행동 퍼널 대시보드**입니다.  
     여기서는 광고비 및 세션수와 더불어 “**각 단계까지 몇 명이 행동했고, 그때의 비용/전환 효율은 어땠는지**”를 확인할 수 있습니다.
     """)
-    # st.markdown(":primary-badge[:material/Cached: Update]ㅤ-")
     st.markdown(
         '<a href="https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c7680d299bee34d617a1626" target="_blank">'
         '지표설명 & 가이드</a>',
@@ -269,331 +267,473 @@ def main():
     df_total             = _df_psi_total.merge(_sctSes_total, on='event_date', how='left')
 
 
-    # ────────────────────────────────────────────────────────────────
-    # 시각화
-    # ────────────────────────────────────────────────────────────────
-    # 공통함수 (3) render_aggrid 
-    def render_aggrid(
-        df: pd.DataFrame,
-        height: int = 401,
-        use_parent: bool = True
-        ) -> None:
-        """
-        use_parent: False / True
-        """
-        df2 = df.copy()
+    # 모든 데이터프레임이 동일한 파생 지표를 가짐
+    def decorate_df(df: pd.DataFrame) -> pd.DataFrame:
+        # 키에러 방지
+        required = ['event_date','session_count','view_item','product_page_scroll_50','product_option_price','find_nearby_showroom','showroom_10s','add_to_cart','showroom_leads','purchase']
+        for c in required:
+            if c not in df.columns:
+                df[c] = 0  
+        num_cols = ['session_count','view_item','product_page_scroll_50','product_option_price','find_nearby_showroom','showroom_10s','add_to_cart','showroom_leads','purchase']
+        df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+            
+        # 파생지표 생성 - CPA
+        df['session_count_CPA']               = (df['cost_gross_sum']               / df['session_count']             ).round(0)
+        df['view_item_CPA']                   = (df['cost_gross_sum']               / df['view_item']                 ).round(0)
+        df['product_page_scroll_50_CPA']      = (df['cost_gross_sum']                   / df['product_page_scroll_50']).round(0)
+        df['product_option_price_CPA']        = (df['cost_gross_sum']                   / df['product_option_price']  ).round(0)
+        df['find_nearby_showroom_CPA']        = (df['cost_gross_sum']                   / df['find_nearby_showroom']  ).round(0)
+        df['showroom_10s_CPA']                = (df['cost_gross_sum']                   / df['showroom_10s']          ).round(0)
+        df['add_to_cart_CPA']                 = (df['cost_gross_sum']                   / df['add_to_cart']           ).round(0)
+        df['showroom_leads_CPA']              = (df['cost_gross_sum']                   / df['showroom_leads']        ).round(0)
+        df['purchase_CPA']                    = (df['cost_gross_sum']                   / df['purchase']              ).round(0)
+        # 파생지표 생성 - CVR
+        df['session_count_CVR']          = (df['session_count']               / df['session_count']              * 100).round(2)
+        df['view_item_CVR']              = (df['view_item']                   / df['session_count']              * 100).round(2)
+        df['product_page_scroll_50_CVR'] = (df['product_page_scroll_50']      / df['view_item']                  * 100).round(2)
+        df['product_option_price_CVR']   = (df['product_option_price']        / df['view_item']                  * 100).round(2)
+        df['find_nearby_showroom_CVR']   = (df['find_nearby_showroom']        / df['view_item']                  * 100).round(2)
+        df['showroom_10s_CVR']           = (df['showroom_10s']                / df['view_item']                  * 100).round(2)
+        df['add_to_cart_CVR']            = (df['add_to_cart']                 / df['view_item']                  * 100).round(2)
+        df['showroom_leads_CVR']         = (df['showroom_leads']              / df['view_item']                  * 100).round(2)
+        df['purchase_CVR1']              = (df['purchase']                    / df['view_item']                  * 100).round(2)
+        df['purchase_CVR2']              = (df['purchase']                    / df['showroom_leads']             * 100).round(2)
         
-        # (주의) 누락됱 컬럼히 당연히 있을수 있음, 그래서 fillna만 해주는게 아니라 컬럼 자리를 만들어서 fillna 해야함.
-        expected_cols = ['session_count','view_item','product_page_scroll_50','product_option_price','find_nearby_showroom','showroom_10s','add_to_cart','showroom_leads','purchase']
-        for col in expected_cols:
-            df2[col] = df2.get(col, 0)
-        df2.fillna(0, inplace=True)     # (기존과 동일) 값이 없는 경우 일단 0으로 치환
-        
-        # 전처리 영역 (파생지표 생성) - CPA
-        df2['session_count_CPA']               = (df2['cost_gross_sum']               / df2['session_count']             ).round(0)
-        df2['view_item_CPA']                   = (df2['cost_gross_sum']               / df2['view_item']                 ).round(0)
-        df2['product_page_scroll_50_CPA']      = (df2['cost_gross_sum']                   / df2['product_page_scroll_50']).round(0)
-        df2['product_option_price_CPA']        = (df2['cost_gross_sum']                   / df2['product_option_price']  ).round(0)
-        df2['find_nearby_showroom_CPA']        = (df2['cost_gross_sum']                   / df2['find_nearby_showroom']  ).round(0)
-        df2['showroom_10s_CPA']                = (df2['cost_gross_sum']                   / df2['showroom_10s']          ).round(0)
-        df2['add_to_cart_CPA']                 = (df2['cost_gross_sum']                   / df2['add_to_cart']           ).round(0)
-        df2['showroom_leads_CPA']              = (df2['cost_gross_sum']                   / df2['showroom_leads']        ).round(0)
-        df2['purchase_CPA']                    = (df2['cost_gross_sum']                   / df2['purchase']              ).round(0)
-        
-        # 전처리 영역 (파생지표 생성) - CVR
-        df2['session_count_CVR']          = (df2['session_count']               / df2['session_count']              * 100).round(2)
-        df2['view_item_CVR']              = (df2['view_item']                   / df2['session_count']              * 100).round(2)
-        df2['product_page_scroll_50_CVR'] = (df2['product_page_scroll_50']      / df2['view_item']                  * 100).round(2)
-        df2['product_option_price_CVR']   = (df2['product_option_price']        / df2['view_item']                  * 100).round(2)
-        df2['find_nearby_showroom_CVR']   = (df2['find_nearby_showroom']        / df2['view_item']                  * 100).round(2)
-        df2['showroom_10s_CVR']           = (df2['showroom_10s']                / df2['view_item']                  * 100).round(2)
-        df2['add_to_cart_CVR']            = (df2['add_to_cart']                 / df2['view_item']                  * 100).round(2)
-        df2['showroom_leads_CVR']         = (df2['showroom_leads']              / df2['view_item']                  * 100).round(2)
-        df2['purchase_CVR1']              = (df2['purchase']                    / df2['view_item']                  * 100).round(2)
-        df2['purchase_CVR2']              = (df2['purchase']                    / df2['showroom_leads']             * 100).round(2)
-        
-
-        # 컬럼순서 지정
-        df2 = df2[['event_date',
-                    'cost_gross_sum',
-                    'session_count','session_count_CPA','session_count_CVR',
-                    'view_item','view_item_CPA','view_item_CVR',
-                    'product_page_scroll_50','product_page_scroll_50_CPA','product_page_scroll_50_CVR',
-                    'product_option_price','product_option_price_CPA','product_option_price_CVR',
-                    'find_nearby_showroom','find_nearby_showroom_CPA','find_nearby_showroom_CVR',
-                    'showroom_10s','showroom_10s_CPA','showroom_10s_CVR',
-                    'add_to_cart','add_to_cart_CPA','add_to_cart_CVR',
-                    'showroom_leads','showroom_leads_CPA','showroom_leads_CVR',
-                    'purchase','purchase_CPA','purchase_CVR1','purchase_CVR2'
+        # 컬럼 순서 지정
+        df = df[['event_date',
+                'cost_gross_sum',
+                'session_count','session_count_CPA',
+                'view_item','view_item_CPA','view_item_CVR',
+                'product_page_scroll_50','product_page_scroll_50_CPA','product_page_scroll_50_CVR',
+                'product_option_price','product_option_price_CPA','product_option_price_CVR',
+                'find_nearby_showroom','find_nearby_showroom_CPA','find_nearby_showroom_CVR',
+                'add_to_cart','add_to_cart_CPA','add_to_cart_CVR',
+                'showroom_10s','showroom_10s_CPA','showroom_10s_CVR',
+                'showroom_leads','showroom_leads_CPA','showroom_leads_CVR',
+                'purchase','purchase_CPA','purchase_CVR1','purchase_CVR2'
                 ]]
+        
+        # 자료형 워싱
+        df['event_date'] = pd.to_datetime(df['event_date'], errors='coerce').dt.strftime('%Y-%m-%d')
+        num_cols = df.select_dtypes(include=['number']).columns
+        df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))
 
-        # (필수함수) make_num_child
-        def make_num_child(header, field, fmt_digits=0, suffix=''):
-            return {
-                "headerName": header, "field": field,
-                "type": ["numericColumn","customNumericFormat"],
-                "valueFormatter": JsCode(
-                    f"function(params){{"
-                    f"  return params.value!=null?"
-                    f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
-                    f"}}"
-                ),
-                "cellStyle": JsCode("params=>({textAlign:'right'})")
-            }
+        # 컬럼 이름 변경 - 멀티 인덱스
+        df.columns = pd.MultiIndex.from_tuples([
+            ("기본정보",      "날짜"),             # event_date
+            ("기본정보",      "매출"),             # cost_gross_sum
+            
+            ("유입 세션수",   "Actual"),           # session_count
+            ("유입 세션수",   "CPA"),              # session_count_CPA
+
+            ("PDP조회",   "Actual"),              # view_item
+            ("PDP조회",   "CPA"),                 # view_item_CPA
+            ("PDP조회",   "CVR"),                 # view_item_CVR
+
+            ("PDPscr50",   "Actual"),            # product_page_scroll_50
+            ("PDPscr50",   "CPA"),               # product_page_scroll_50_CPA
+            ("PDPscr50",   "CVR"),               # product_page_scroll_50_CVR
+
+            ("가격표시",   "Actual"),             # product_option_price
+            ("가격표시",   "CPA"),                # product_option_price_CPA
+            ("가격표시",   "CVR"),                # product_option_price_CVR
+
+            ("쇼룸찾기",   "Actual"),             # find_nearby_showroom
+            ("쇼룸찾기",   "CPA"),                # find_nearby_showroom_CPA
+            ("쇼룸찾기",   "CVR"),                # find_nearby_showroom_CVR
+
+            ("장바구니",   "Actual"),             # add_to_cart
+            ("장바구니",   "CPA"),                # add_to_cart_CPA
+            ("장바구니",   "CVR"),                # add_to_cart_CVR
+
+            ("쇼룸10초",   "Actual"),             # showroom_10s
+            ("쇼룸10초",   "CPA"),                # showroom_10s_CPA
+            ("쇼룸10초",   "CVR"),                # showroom_10s_CVR
+
+            ("쇼룸예약",   "Actual"),             # showroom_leads
+            ("쇼룸예약",   "CPA"),                # showroom_leads_CPA
+            ("쇼룸예약",   "CVR"),                # showroom_leads_CVR
+            
+            ("구매완료",   "Actual"),             # purchase
+            ("구매완료",   "CPA"),                # purchase_CPA
+            ("구매완료",   "CVR1"),               # purchase_CVR1
+            ("구매완료",   "CVR2"),               # purchase_CVR2
+            
+        ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)        
         
-        # (필수함수) add_summary
-        def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
-            summary: dict[str, float] = {}
-            for col, op in agg_map.items():
-                if op == 'sum':
-                    summary[col] = int(df[col].sum())
-                elif op == 'avg':
-                    summary[col] = float(df[col].mean())
-                elif op == 'mid':
-                    summary[col] = float(df[col].median())
-                else:
-                    summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
-            grid_options['pinnedBottomRowData'] = [summary]
-            return grid_options
-        
-        # date_col
-        date_col = {
-            "headerName": "날짜",
-            "field": "event_date",
-            "pinned": "left",
-            "width": 100,
-            "cellStyle": JsCode("params=>({textAlign:'left'})"),
-            "sort": "desc"
+        return df
+
+
+    def render_style_format(target_df):
+        styled = style_format(
+            decorate_df(target_df),
+            decimals_map={
+                ("기본정보",      "매출"): 0,
+                ("유입 세션수",   "Actual"): 0,           # session_count
+                ("유입 세션수",   "CPA"): 0,              # session_count_CPA
+                ("PDP조회",   "Actual"): 0,              # view_item
+                ("PDP조회",   "CPA"): 0,                 # view_item_CPA
+                ("PDP조회",   "CVR"): 2,                 # view_item_CVR
+                ("PDPscr50",   "Actual"): 0,            # product_page_scroll_50
+                ("PDPscr50",   "CPA"): 0,               # product_page_scroll_50_CPA
+                ("PDPscr50",   "CVR"): 2,               # product_page_scroll_50_CVR
+                ("가격표시",   "Actual"): 0,             # product_option_price
+                ("가격표시",   "CPA"): 0,                # product_option_price_CPA
+                ("가격표시",   "CVR"): 2,                # product_option_price_CVR
+                ("쇼룸찾기",   "Actual"): 0,             # find_nearby_showroom
+                ("쇼룸찾기",   "CPA"): 0,                # find_nearby_showroom_CPA
+                ("쇼룸찾기",   "CVR"): 2,                # find_nearby_showroom_CVR
+                ("장바구니",   "Actual"): 0,             # add_to_cart
+                ("장바구니",   "CPA"): 0,                # add_to_cart_CPA
+                ("장바구니",   "CVR"): 2,                # add_to_cart_CVR
+                ("쇼룸10초",   "Actual"): 0,             # showroom_10s
+                ("쇼룸10초",   "CPA"): 0,                # showroom_10s_CPA
+                ("쇼룸10초",   "CVR"): 2,                # showroom_10s_CVR
+                ("쇼룸예약",   "Actual"): 0,             # showroom_leads
+                ("쇼룸예약",   "CPA"): 0,                # showroom_leads_CPA
+                ("쇼룸예약",   "CVR"): 2,                # showroom_leads_CVR
+                ("구매완료",   "Actual"): 0,             # purchase
+                ("구매완료",   "CPA"): 0,                # purchase_CPA
+                ("구매완료",   "CVR1"): 2,               # purchase_CVR1
+                ("구매완료",   "CVR2"): 2,               # purchase_CVR2
+            },
+            suffix_map={
+                ("PDP조회",   "CVR"): " %",                 # view_item_CVR
+                ("PDPscr50",   "CVR"): " %",               # product_page_scroll_50_CVR
+                ("가격표시",   "CVR"): " %",                # product_option_price_CVR
+                ("쇼룸찾기",   "CVR"): " %",                # find_nearby_showroom_CVR
+                ("장바구니",   "CVR"): " %",                # add_to_cart_CVR
+                ("쇼룸10초",   "CVR"): " %",                # showroom_10s_CVR
+                ("쇼룸예약",   "CVR"): " %",                # showroom_leads_CVR
+                ("구매완료",   "CVR1"): " %",               # purchase_CVR1
+                ("구매완료",   "CVR2"): " %",               # purchase_CVR2
         }
-        
-        flat_cols = [
-            date_col,
-            make_num_child("광고비",                         "cost_gross_sum"),
-            make_num_child("세션수",                         "session_count"),
-            make_num_child("세션수 CPA",                     "session_count_CPA"),
-            make_num_child("세션수 CVR",                     "session_count_CVR", fmt_digits=2, suffix="%"),
-            make_num_child("PDP조회",                       "view_item"),
-            make_num_child("PDP조회 CPA",                   "view_item_CPA"),
-            make_num_child("PDP조회 CVR",                   "view_item_CVR", fmt_digits=2, suffix="%"),
-            make_num_child("PDP스크롤50",                   "product_page_scroll_50"),
-            make_num_child("PDP스크롤50 CPA",               "product_page_scroll_50_CPA"),
-            make_num_child("PDP스크롤50 CVR",               "product_page_scroll_50_CVR", fmt_digits=2, suffix="%"),
-            make_num_child("가격표시",                       "product_option_price"),
-            make_num_child("가격표시 CPA",                   "product_option_price_CPA"),
-            make_num_child("가격표시 CVR",                   "product_option_price_CVR", fmt_digits=2, suffix="%"),
-            make_num_child("쇼룸찾기",                       "find_nearby_showroom"),
-            make_num_child("쇼룸찾기 CPA",                   "find_nearby_showroom_CPA"),
-            make_num_child("쇼룸찾기 CVR",                   "find_nearby_showroom_CVR", fmt_digits=2, suffix="%"),
-            make_num_child("쇼룸10초",                       "showroom_10s"),
-            make_num_child("쇼룸10초 CPA",                   "showroom_10s_CPA"),
-            make_num_child("쇼룸10초 CVR",                   "showroom_10s_CVR", fmt_digits=2, suffix="%"),
-            make_num_child("장바구니",                       "add_to_cart"),
-            make_num_child("장바구니 CPA",                   "add_to_cart_CPA"),
-            make_num_child("장바구니 CVR",                   "add_to_cart_CVR", fmt_digits=2, suffix="%"),
-            make_num_child("쇼룸예약",                       "showroom_leads"),
-            make_num_child("쇼룸예약 CPA",                   "showroom_leads_CPA"),
-            make_num_child("쇼룸예약 CVR",                   "showroom_leads_CVR", fmt_digits=2, suffix="%"),
-            make_num_child("구매완료",                       "purchase"),
-            make_num_child("구매완료 CPA",                   "purchase_CPA"),
-            make_num_child("구매완료 CVR1",                  "purchase_CVR1", fmt_digits=2, suffix="%"),
-            make_num_child("구매완료 CVR2",                  "purchase_CVR2", fmt_digits=2, suffix="%"),
-        ]
-
-        
-        # (use_parent) grouped_cols
-        grouped_cols = [
-            date_col,
-            make_num_child("광고비", "cost_gross_sum"),
-            # 세션수
-            {
-                "headerName": "세션수",
-                "children": [
-                    make_num_child("세션수",           "session_count"),
-                    make_num_child("CPA",             "session_count_CPA"),
-                    make_num_child("CVR",             "session_count_CVR", fmt_digits=2, suffix="%"),
-                ]
-            },
-            # PDP 조회
-            {
-                "headerName": "PDP조회",
-                "children": [
-                    make_num_child("Actual",         "view_item"),
-                    make_num_child("CPA",             "view_item_CPA"),
-                    make_num_child("CVR",             "view_item_CVR", fmt_digits=2, suffix="%"),
-                ]
-            },
-            # PDP스크롤50
-            {
-                "headerName": "PDPscr50",
-                "children": [
-                    make_num_child("Actual",         "product_page_scroll_50"),
-                    make_num_child("CPA",             "product_page_scroll_50_CPA"),
-                    make_num_child("CVR",             "product_page_scroll_50_CVR", fmt_digits=2, suffix="%"),
-                ]
-            },
-            # 가격표시
-            {
-                "headerName": "가격표시",
-                "children": [
-                    make_num_child("Actual",         "product_option_price"),
-                    make_num_child("CPA",             "product_option_price_CPA"),
-                    make_num_child("CVR",             "product_option_price_CVR", fmt_digits=2, suffix="%"),
-                ]
-            },
-            # 쇼룸찾기
-            {
-                "headerName": "쇼룸찾기",
-                "children": [
-                    make_num_child("Actual",         "find_nearby_showroom"),
-                    make_num_child("CPA",             "find_nearby_showroom_CPA"),
-                    make_num_child("CVR",             "find_nearby_showroom_CVR", fmt_digits=2, suffix="%"),
-                ]
-            },
-            # 쇼룸10초
-            {
-                "headerName": "쇼룸10초",
-                "children": [
-                    make_num_child("Actual",         "showroom_10s"),
-                    make_num_child("CPA",             "showroom_10s_CPA"),
-                    make_num_child("CVR",             "showroom_10s_CVR", fmt_digits=2, suffix="%"),
-                ]
-            },
-            # 장바구니
-            {
-                "headerName": "장바구니",
-                "children": [
-                    make_num_child("Actual",         "add_to_cart"),
-                    make_num_child("CPA",             "add_to_cart_CPA"),
-                    make_num_child("CVR",             "add_to_cart_CVR", fmt_digits=2, suffix="%"),
-                ]
-            },
-            # 쇼룸예약
-            {
-                "headerName": "쇼룸예약",
-                "children": [
-                    make_num_child("Actual",         "showroom_leads"),
-                    make_num_child("CPA",             "showroom_leads_CPA"),
-                    make_num_child("CVR",             "showroom_leads_CVR", fmt_digits=2, suffix="%"),
-                ]
-            },
-            # 구매완료 (CVR1 & CVR2)
-            {
-                "headerName": "구매완료",
-                "children": [
-                    make_num_child("Actual",         "purchase"),
-                    make_num_child("CPA",             "purchase_CPA"),
-                    make_num_child("CVR1",            "purchase_CVR1", fmt_digits=2, suffix="%"),
-                    make_num_child("CVR2",            "purchase_CVR2", fmt_digits=2, suffix="%"),
-                ]
-            },
-        ]
-
-        # (use_parent)
-        column_defs = grouped_cols if use_parent else flat_cols
-    
-        # grid_options & 렌더링
-        grid_options = {
-        "columnDefs": column_defs,
-        "defaultColDef": {
-            "sortable": True,
-            "filter": True,
-            "resizable": True,
-            "flex": 1,       # flex:1 이면 나머지 공간을 컬럼 개수만큼 균등 분배
-            "minWidth": 90   # 최소 너비
-        },
-        "onGridReady": JsCode(
-            "function(params){ params.api.sizeColumnsToFit(); }"
-        ),
-        "headerHeight": 30,
-        "groupHeaderHeight": 30,
-        }        
-
-        # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-        def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
-            summary: dict[str, float | str] = {}
-            for col, op in agg_map.items():
-                val = None
-                try:
-                    if op == 'sum':
-                        val = df[col].sum()
-                    elif op == 'avg':
-                        val = df[col].mean()
-                    elif op == 'mid':
-                        val = df[col].median()
-                except:
-                    val = None
-
-                # NaN / Inf / numpy 타입 → None or native 타입으로 처리
-                if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-                    summary[col] = None
-                else:
-                    # numpy 타입 제거
-                    if isinstance(val, (np.integer, np.int64, np.int32)):
-                        summary[col] = int(val)
-                    elif isinstance(val, (np.floating, np.float64, np.float32)):
-                        summary[col] = float(round(val, 2))
-                    else:
-                        summary[col] = val
-
-            grid_options['pinnedBottomRowData'] = [summary]
-            return grid_options
-        
-        # AgGrid(
-        #     df2,
-        #     gridOptions=grid_options,
-        #     height=height,
-        #     fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
-        #     theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-        #     allow_unsafe_jscode=True
-        # )
-
-        # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-        grid_options = add_summary(
-            grid_options,
-            df2,
-            {
-                'cost_gross_sum': 'sum',
-                'session_count': 'sum',
-                'session_count_CPA': 'avg',
-                'session_count_CVR': 'avg',
-                'view_item': 'sum',
-                'view_item_CPA': 'avg',
-                'view_item_CVR': 'avg',
-                'product_page_scroll_50': 'sum',
-                'product_page_scroll_50_CPA': 'avg',
-                'product_page_scroll_50_CVR': 'avg',
-                'product_option_price': 'sum',
-                'product_option_price_CPA': 'avg',
-                'product_option_price_CVR': 'avg',
-                'find_nearby_showroom': 'sum',
-                'find_nearby_showroom_CPA': 'avg',
-                'find_nearby_showroom_CVR': 'avg',
-                'showroom_10s': 'sum',
-                'showroom_10s_CPA': 'avg',
-                'showroom_10s_CVR': 'avg',
-                'add_to_cart': 'sum',
-                'add_to_cart_CPA': 'avg',
-                'add_to_cart_CVR': 'avg',
-                'showroom_leads': 'sum',
-                'showroom_leads_CPA': 'avg',
-                'showroom_leads_CVR': 'avg',
-                'purchase': 'sum',
-                'purchase_CPA': 'avg',
-                'purchase_CVR1': 'avg',
-                'purchase_CVR2': 'avg',
-            }
         )
+        st.dataframe(styled, use_container_width=True)
 
-        AgGrid(
-            df2,
-            gridOptions=grid_options,
-            height=height,
-            fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
-            theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-            allow_unsafe_jscode=True,
-            reload_data=True
-        )
+
+    # def render_aggrid(
+    #     df: pd.DataFrame,
+    #     height: int = 401,
+    #     use_parent: bool = True
+    #     ) -> None:
+    #     """
+    #     use_parent: False / True
+    #     """
+    #     df2 = df.copy()
+        
+    #     # (주의) 누락됱 컬럼히 당연히 있을수 있음, 그래서 fillna만 해주는게 아니라 컬럼 자리를 만들어서 fillna 해야함.
+    #     expected_cols = ['session_count','view_item','product_page_scroll_50','product_option_price','find_nearby_showroom','showroom_10s','add_to_cart','showroom_leads','purchase']
+    #     for col in expected_cols:
+    #         df2[col] = df2.get(col, 0)
+    #     df2.fillna(0, inplace=True)     # (기존과 동일) 값이 없는 경우 일단 0으로 치환
+        
+    #     # 전처리 영역 (파생지표 생성) - CPA
+    #     df2['session_count_CPA']               = (df2['cost_gross_sum']               / df2['session_count']             ).round(0)
+    #     df2['view_item_CPA']                   = (df2['cost_gross_sum']               / df2['view_item']                 ).round(0)
+    #     df2['product_page_scroll_50_CPA']      = (df2['cost_gross_sum']                   / df2['product_page_scroll_50']).round(0)
+    #     df2['product_option_price_CPA']        = (df2['cost_gross_sum']                   / df2['product_option_price']  ).round(0)
+    #     df2['find_nearby_showroom_CPA']        = (df2['cost_gross_sum']                   / df2['find_nearby_showroom']  ).round(0)
+    #     df2['showroom_10s_CPA']                = (df2['cost_gross_sum']                   / df2['showroom_10s']          ).round(0)
+    #     df2['add_to_cart_CPA']                 = (df2['cost_gross_sum']                   / df2['add_to_cart']           ).round(0)
+    #     df2['showroom_leads_CPA']              = (df2['cost_gross_sum']                   / df2['showroom_leads']        ).round(0)
+    #     df2['purchase_CPA']                    = (df2['cost_gross_sum']                   / df2['purchase']              ).round(0)
+        
+    #     # 전처리 영역 (파생지표 생성) - CVR
+    #     df2['session_count_CVR']          = (df2['session_count']               / df2['session_count']              * 100).round(2)
+    #     df2['view_item_CVR']              = (df2['view_item']                   / df2['session_count']              * 100).round(2)
+    #     df2['product_page_scroll_50_CVR'] = (df2['product_page_scroll_50']      / df2['view_item']                  * 100).round(2)
+    #     df2['product_option_price_CVR']   = (df2['product_option_price']        / df2['view_item']                  * 100).round(2)
+    #     df2['find_nearby_showroom_CVR']   = (df2['find_nearby_showroom']        / df2['view_item']                  * 100).round(2)
+    #     df2['showroom_10s_CVR']           = (df2['showroom_10s']                / df2['view_item']                  * 100).round(2)
+    #     df2['add_to_cart_CVR']            = (df2['add_to_cart']                 / df2['view_item']                  * 100).round(2)
+    #     df2['showroom_leads_CVR']         = (df2['showroom_leads']              / df2['view_item']                  * 100).round(2)
+    #     df2['purchase_CVR1']              = (df2['purchase']                    / df2['view_item']                  * 100).round(2)
+    #     df2['purchase_CVR2']              = (df2['purchase']                    / df2['showroom_leads']             * 100).round(2)
+        
+
+    #     # 컬럼순서 지정
+    #     df2 = df2[['event_date',
+    #                 'cost_gross_sum',
+    #                 'session_count','session_count_CPA','session_count_CVR',
+    #                 'view_item','view_item_CPA','view_item_CVR',
+    #                 'product_page_scroll_50','product_page_scroll_50_CPA','product_page_scroll_50_CVR',
+    #                 'product_option_price','product_option_price_CPA','product_option_price_CVR',
+    #                 'find_nearby_showroom','find_nearby_showroom_CPA','find_nearby_showroom_CVR',
+    #                 'showroom_10s','showroom_10s_CPA','showroom_10s_CVR',
+    #                 'add_to_cart','add_to_cart_CPA','add_to_cart_CVR',
+    #                 'showroom_leads','showroom_leads_CPA','showroom_leads_CVR',
+    #                 'purchase','purchase_CPA','purchase_CVR1','purchase_CVR2'
+    #             ]]
+
+    #     # (필수함수) make_num_child
+    #     def make_num_child(header, field, fmt_digits=0, suffix=''):
+    #         return {
+    #             "headerName": header, "field": field,
+    #             "type": ["numericColumn","customNumericFormat"],
+    #             "valueFormatter": JsCode(
+    #                 f"function(params){{"
+    #                 f"  return params.value!=null?"
+    #                 f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
+    #                 f"}}"
+    #             ),
+    #             "cellStyle": JsCode("params=>({textAlign:'right'})")
+    #         }
+        
+    #     # (필수함수) add_summary
+    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
+    #         summary: dict[str, float] = {}
+    #         for col, op in agg_map.items():
+    #             if op == 'sum':
+    #                 summary[col] = int(df[col].sum())
+    #             elif op == 'avg':
+    #                 summary[col] = float(df[col].mean())
+    #             elif op == 'mid':
+    #                 summary[col] = float(df[col].median())
+    #             else:
+    #                 summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
+    #         grid_options['pinnedBottomRowData'] = [summary]
+    #         return grid_options
+        
+    #     # date_col
+    #     date_col = {
+    #         "headerName": "날짜",
+    #         "field": "event_date",
+    #         "pinned": "left",
+    #         "width": 100,
+    #         "cellStyle": JsCode("params=>({textAlign:'left'})"),
+    #         "sort": "desc"
+    #     }
+        
+    #     flat_cols = [
+    #         date_col,
+    #         make_num_child("광고비",                         "cost_gross_sum"),
+    #         make_num_child("세션수",                         "session_count"),
+    #         make_num_child("세션수 CPA",                     "session_count_CPA"),
+    #         make_num_child("세션수 CVR",                     "session_count_CVR", fmt_digits=2, suffix="%"),
+    #         make_num_child("PDP조회",                       "view_item"),
+    #         make_num_child("PDP조회 CPA",                   "view_item_CPA"),
+    #         make_num_child("PDP조회 CVR",                   "view_item_CVR", fmt_digits=2, suffix="%"),
+    #         make_num_child("PDP스크롤50",                   "product_page_scroll_50"),
+    #         make_num_child("PDP스크롤50 CPA",               "product_page_scroll_50_CPA"),
+    #         make_num_child("PDP스크롤50 CVR",               "product_page_scroll_50_CVR", fmt_digits=2, suffix="%"),
+    #         make_num_child("가격표시",                       "product_option_price"),
+    #         make_num_child("가격표시 CPA",                   "product_option_price_CPA"),
+    #         make_num_child("가격표시 CVR",                   "product_option_price_CVR", fmt_digits=2, suffix="%"),
+    #         make_num_child("쇼룸찾기",                       "find_nearby_showroom"),
+    #         make_num_child("쇼룸찾기 CPA",                   "find_nearby_showroom_CPA"),
+    #         make_num_child("쇼룸찾기 CVR",                   "find_nearby_showroom_CVR", fmt_digits=2, suffix="%"),
+    #         make_num_child("쇼룸10초",                       "showroom_10s"),
+    #         make_num_child("쇼룸10초 CPA",                   "showroom_10s_CPA"),
+    #         make_num_child("쇼룸10초 CVR",                   "showroom_10s_CVR", fmt_digits=2, suffix="%"),
+    #         make_num_child("장바구니",                       "add_to_cart"),
+    #         make_num_child("장바구니 CPA",                   "add_to_cart_CPA"),
+    #         make_num_child("장바구니 CVR",                   "add_to_cart_CVR", fmt_digits=2, suffix="%"),
+    #         make_num_child("쇼룸예약",                       "showroom_leads"),
+    #         make_num_child("쇼룸예약 CPA",                   "showroom_leads_CPA"),
+    #         make_num_child("쇼룸예약 CVR",                   "showroom_leads_CVR", fmt_digits=2, suffix="%"),
+    #         make_num_child("구매완료",                       "purchase"),
+    #         make_num_child("구매완료 CPA",                   "purchase_CPA"),
+    #         make_num_child("구매완료 CVR1",                  "purchase_CVR1", fmt_digits=2, suffix="%"),
+    #         make_num_child("구매완료 CVR2",                  "purchase_CVR2", fmt_digits=2, suffix="%"),
+    #     ]
+
+        
+    #     # (use_parent) grouped_cols
+    #     grouped_cols = [
+    #         date_col,
+    #         make_num_child("광고비", "cost_gross_sum"),
+    #         # 세션수
+    #         {
+    #             "headerName": "세션수",
+    #             "children": [
+    #                 make_num_child("세션수",           "session_count"),
+    #                 make_num_child("CPA",             "session_count_CPA"),
+    #                 make_num_child("CVR",             "session_count_CVR", fmt_digits=2, suffix="%"),
+    #             ]
+    #         },
+    #         # PDP 조회
+    #         {
+    #             "headerName": "PDP조회",
+    #             "children": [
+    #                 make_num_child("Actual",         "view_item"),
+    #                 make_num_child("CPA",             "view_item_CPA"),
+    #                 make_num_child("CVR",             "view_item_CVR", fmt_digits=2, suffix="%"),
+    #             ]
+    #         },
+    #         # PDP스크롤50
+    #         {
+    #             "headerName": "PDPscr50",
+    #             "children": [
+    #                 make_num_child("Actual",         "product_page_scroll_50"),
+    #                 make_num_child("CPA",             "product_page_scroll_50_CPA"),
+    #                 make_num_child("CVR",             "product_page_scroll_50_CVR", fmt_digits=2, suffix="%"),
+    #             ]
+    #         },
+    #         # 가격표시
+    #         {
+    #             "headerName": "가격표시",
+    #             "children": [
+    #                 make_num_child("Actual",         "product_option_price"),
+    #                 make_num_child("CPA",             "product_option_price_CPA"),
+    #                 make_num_child("CVR",             "product_option_price_CVR", fmt_digits=2, suffix="%"),
+    #             ]
+    #         },
+    #         # 쇼룸찾기
+    #         {
+    #             "headerName": "쇼룸찾기",
+    #             "children": [
+    #                 make_num_child("Actual",         "find_nearby_showroom"),
+    #                 make_num_child("CPA",             "find_nearby_showroom_CPA"),
+    #                 make_num_child("CVR",             "find_nearby_showroom_CVR", fmt_digits=2, suffix="%"),
+    #             ]
+    #         },
+    #         # 쇼룸10초
+    #         {
+    #             "headerName": "쇼룸10초",
+    #             "children": [
+    #                 make_num_child("Actual",         "showroom_10s"),
+    #                 make_num_child("CPA",             "showroom_10s_CPA"),
+    #                 make_num_child("CVR",             "showroom_10s_CVR", fmt_digits=2, suffix="%"),
+    #             ]
+    #         },
+    #         # 장바구니
+    #         {
+    #             "headerName": "장바구니",
+    #             "children": [
+    #                 make_num_child("Actual",         "add_to_cart"),
+    #                 make_num_child("CPA",             "add_to_cart_CPA"),
+    #                 make_num_child("CVR",             "add_to_cart_CVR", fmt_digits=2, suffix="%"),
+    #             ]
+    #         },
+    #         # 쇼룸예약
+    #         {
+    #             "headerName": "쇼룸예약",
+    #             "children": [
+    #                 make_num_child("Actual",         "showroom_leads"),
+    #                 make_num_child("CPA",             "showroom_leads_CPA"),
+    #                 make_num_child("CVR",             "showroom_leads_CVR", fmt_digits=2, suffix="%"),
+    #             ]
+    #         },
+    #         # 구매완료 (CVR1 & CVR2)
+    #         {
+    #             "headerName": "구매완료",
+    #             "children": [
+    #                 make_num_child("Actual",         "purchase"),
+    #                 make_num_child("CPA",             "purchase_CPA"),
+    #                 make_num_child("CVR1",            "purchase_CVR1", fmt_digits=2, suffix="%"),
+    #                 make_num_child("CVR2",            "purchase_CVR2", fmt_digits=2, suffix="%"),
+    #             ]
+    #         },
+    #     ]
+
+    #     # (use_parent)
+    #     column_defs = grouped_cols if use_parent else flat_cols
     
+    #     # grid_options & 렌더링
+    #     grid_options = {
+    #     "columnDefs": column_defs,
+    #     "defaultColDef": {
+    #         "sortable": True,
+    #         "filter": True,
+    #         "resizable": True,
+    #         "flex": 1,       # flex:1 이면 나머지 공간을 컬럼 개수만큼 균등 분배
+    #         "minWidth": 90   # 최소 너비
+    #     },
+    #     "onGridReady": JsCode(
+    #         "function(params){ params.api.sizeColumnsToFit(); }"
+    #     ),
+    #     "headerHeight": 30,
+    #     "groupHeaderHeight": 30,
+    #     }        
+
+    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
+    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
+    #         summary: dict[str, float | str] = {}
+    #         for col, op in agg_map.items():
+    #             val = None
+    #             try:
+    #                 if op == 'sum':
+    #                     val = df[col].sum()
+    #                 elif op == 'avg':
+    #                     val = df[col].mean()
+    #                 elif op == 'mid':
+    #                     val = df[col].median()
+    #             except:
+    #                 val = None
+
+    #             # NaN / Inf / numpy 타입 → None or native 타입으로 처리
+    #             if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+    #                 summary[col] = None
+    #             else:
+    #                 # numpy 타입 제거
+    #                 if isinstance(val, (np.integer, np.int64, np.int32)):
+    #                     summary[col] = int(val)
+    #                 elif isinstance(val, (np.floating, np.float64, np.float32)):
+    #                     summary[col] = float(round(val, 2))
+    #                 else:
+    #                     summary[col] = val
+
+    #         grid_options['pinnedBottomRowData'] = [summary]
+    #         return grid_options
+        
+    #     # AgGrid(
+    #     #     df2,
+    #     #     gridOptions=grid_options,
+    #     #     height=height,
+    #     #     fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
+    #     #     theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
+    #     #     allow_unsafe_jscode=True
+    #     # )
+
+    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
+    #     grid_options = add_summary(
+    #         grid_options,
+    #         df2,
+    #         {
+    #             'cost_gross_sum': 'sum',
+    #             'session_count': 'sum',
+    #             'session_count_CPA': 'avg',
+    #             'session_count_CVR': 'avg',
+    #             'view_item': 'sum',
+    #             'view_item_CPA': 'avg',
+    #             'view_item_CVR': 'avg',
+    #             'product_page_scroll_50': 'sum',
+    #             'product_page_scroll_50_CPA': 'avg',
+    #             'product_page_scroll_50_CVR': 'avg',
+    #             'product_option_price': 'sum',
+    #             'product_option_price_CPA': 'avg',
+    #             'product_option_price_CVR': 'avg',
+    #             'find_nearby_showroom': 'sum',
+    #             'find_nearby_showroom_CPA': 'avg',
+    #             'find_nearby_showroom_CVR': 'avg',
+    #             'showroom_10s': 'sum',
+    #             'showroom_10s_CPA': 'avg',
+    #             'showroom_10s_CVR': 'avg',
+    #             'add_to_cart': 'sum',
+    #             'add_to_cart_CPA': 'avg',
+    #             'add_to_cart_CVR': 'avg',
+    #             'showroom_leads': 'sum',
+    #             'showroom_leads_CPA': 'avg',
+    #             'showroom_leads_CVR': 'avg',
+    #             'purchase': 'sum',
+    #             'purchase_CPA': 'avg',
+    #             'purchase_CVR1': 'avg',
+    #             'purchase_CVR2': 'avg',
+    #         }
+    #     )
+
+    #     AgGrid(
+    #         df2,
+    #         gridOptions=grid_options,
+    #         height=height,
+    #         fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
+    #         theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
+    #         allow_unsafe_jscode=True,
+    #         reload_data=True
+    #     )
+    
+
     
     # 탭 간격 CSS
     st.markdown("""
@@ -603,42 +743,51 @@ def main():
     """, unsafe_allow_html=True)
     
     
-    # 1) 통합 영역 (탭 X)
+    # ────────────────────────────────────────────────────────────────
+    # 통합 액션 리포트 
+    # ────────────────────────────────────────────────────────────────
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 액션 리포트</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **광고비**, **세션수 및 주요 액션별 효율**(GA) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
-    render_aggrid(df_total)
-    
-    # 2) 슬립퍼 영역 (탭 구성)
+
+    render_style_format(df_total)
+
+
+    # ────────────────────────────────────────────────────────────────
+    # 슬립퍼 액션 리포트 
+    # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>슬립퍼</span> 액션 리포트</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
     
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 PAID", "슬립퍼 매트리스", "슬립퍼 매트리스 PAID", "슬립퍼 프레임", "슬립퍼 프레임 PAID"])
     with tabs[0]:
-        render_aggrid(df_slp)
+        render_style_format(df_slp)
     with tabs[1]:
-        render_aggrid(df_slp_y)
+        render_style_format(df_slp_y)
     with tabs[2]:
-        render_aggrid(df_slp_mat)
+        render_style_format(df_slp_mat)
     with tabs[3]:
-        render_aggrid(df_slp_mat_y)
+        render_style_format(df_slp_mat_y)
     with tabs[4]:
-        render_aggrid(df_slp_frm)
+        render_style_format(df_slp_frm)
     with tabs[5]:
-        render_aggrid(df_slp_frm_y)
+        render_style_format(df_slp_frm_y)
 
-    # 3) 누어 영역 (탭 구성)
+
+    # ────────────────────────────────────────────────────────────────
+    # 누어 액션 리포트 
+    # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>누어</span> 액션 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
 
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
     with tabs[0]:
-        render_aggrid(df_nor)
+        render_style_format(df_nor)
     with tabs[1]:
-        render_aggrid(df_nor_mat)
+        render_style_format(df_nor_mat)
     with tabs[2]:
-        render_aggrid(df_nor_frm)    
+        render_style_format(df_nor_frm)    
 
 
 if __name__ == '__main__':

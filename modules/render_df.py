@@ -2,7 +2,7 @@ from __future__ import annotations
 import pandas as pd
 
 
-def style_thousands_per_column(df: pd.DataFrame,
+def style_format(df: pd.DataFrame,
                             decimals_map: dict,
                             suffix_map: dict | None = None,
                             thousands: str = ","):
