@@ -17,10 +17,11 @@ import gspread
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import math
-importlib.reload(modules.style)
-from modules.style import style_format
-from modules.style import style_cmap
-importlib.reload(modules.style)
+
+import sys
+import modules.style
+importlib.reload(sys.modules['modules.style'])
+from modules.style import style_format, style_cmap
 
 
 def main():

@@ -15,6 +15,11 @@ import io
 from google.oauth2.service_account import Credentials
 import gspread
 
+import sys
+import modules.style
+importlib.reload(sys.modules['modules.style'])
+from modules.style import style_format, style_cmap
+
 def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정

@@ -17,6 +17,10 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import re
 
+import sys
+import modules.style
+importlib.reload(sys.modules['modules.style'])
+from modules.style import style_format, style_cmap
 
 
 def main():

@@ -18,7 +18,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import re
 import math
-from modules.style import style_format
+
+import sys
+import modules.style
+importlib.reload(sys.modules['modules.style'])
+from modules.style import style_format, style_cmap
 
 
 def main():
