@@ -1241,149 +1241,149 @@ def main():
     #         allow_unsafe_jscode=True
     #     )
 
-    def render_aggrid__kwd(
-        df: pd.DataFrame,
-        height: int = 292,
-        use_parent: bool = False
-        ) -> None:
-        """
-        use_parent: False / True
-        """
-        df2 = df.copy()
+    # def render_aggrid__kwd(
+    #     df: pd.DataFrame,
+    #     height: int = 292,
+    #     use_parent: bool = False
+    #     ) -> None:
+    #     """
+    #     use_parent: False / True
+    #     """
+    #     df2 = df.copy()
         
-        # (주의) 누락됱 컬럼히 당연히 있을수 있음, 그래서 fillna만 해주는게 아니라 컬럼 자리를 만들어서 fillna 해야함.
-        expected_cols = ['날짜', '키워드', '검색량']
+    #     # (주의) 누락됱 컬럼히 당연히 있을수 있음, 그래서 fillna만 해주는게 아니라 컬럼 자리를 만들어서 fillna 해야함.
+    #     expected_cols = ['날짜', '키워드', '검색량']
         
-        for col in expected_cols:
-            df2[col] = df2.get(col, 0)
-        df2.fillna(0, inplace=True)     # (기존과 동일) 값이 없는 경우 일단 0으로 치환
+    #     for col in expected_cols:
+    #         df2[col] = df2.get(col, 0)
+    #     df2.fillna(0, inplace=True)     # (기존과 동일) 값이 없는 경우 일단 0으로 치환
 
-        # (필수함수) make_num_child
-        def make_num_child(header, field, fmt_digits=0, suffix=''):
-            return {
-                "headerName": header, "field": field,
-                "type": ["numericColumn","customNumericFormat"],
-                "valueFormatter": JsCode(
-                    f"function(params){{"
-                    f"  return params.value!=null?"
-                    f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
-                    f"}}"
-                ),
-                "cellStyle": JsCode("params=>({textAlign:'right'})")
-            }
+    #     # (필수함수) make_num_child
+    #     def make_num_child(header, field, fmt_digits=0, suffix=''):
+    #         return {
+    #             "headerName": header, "field": field,
+    #             "type": ["numericColumn","customNumericFormat"],
+    #             "valueFormatter": JsCode(
+    #                 f"function(params){{"
+    #                 f"  return params.value!=null?"
+    #                 f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
+    #                 f"}}"
+    #             ),
+    #             "cellStyle": JsCode("params=>({textAlign:'right'})")
+    #         }
         
-        # (필수함수) add_summary
-        def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
-            summary: dict[str, float] = {}
-            for col, op in agg_map.items():
-                if op == 'sum':
-                    summary[col] = int(df[col].sum())
-                elif op == 'avg':
-                    summary[col] = float(df[col].mean())
-                elif op == 'mid':
-                    summary[col] = float(df[col].median())
-                else:
-                    summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
-            grid_options['pinnedBottomRowData'] = [summary]
-            return grid_options
+    #     # (필수함수) add_summary
+    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
+    #         summary: dict[str, float] = {}
+    #         for col, op in agg_map.items():
+    #             if op == 'sum':
+    #                 summary[col] = int(df[col].sum())
+    #             elif op == 'avg':
+    #                 summary[col] = float(df[col].mean())
+    #             elif op == 'mid':
+    #                 summary[col] = float(df[col].median())
+    #             else:
+    #                 summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
+    #         grid_options['pinnedBottomRowData'] = [summary]
+    #         return grid_options
         
-        # date_col
-        date_col = {
-            "headerName": "날짜",
-            "field": "날짜",
-            "pinned": "left",
-            "width": 100,
-            "cellStyle": JsCode("params=>({textAlign:'left'})"),
-            # "sort": "desc"
-        }
-        kwd_col = {
-            "headerName": "키워드",
-            "field": "키워드",
-            "pinned": "left",
-            "width": 100,
-            "cellStyle": JsCode("params=>({textAlign:'left'})"),
-            # "sort": "desc"
-        }
+    #     # date_col
+    #     date_col = {
+    #         "headerName": "날짜",
+    #         "field": "날짜",
+    #         "pinned": "left",
+    #         "width": 100,
+    #         "cellStyle": JsCode("params=>({textAlign:'left'})"),
+    #         # "sort": "desc"
+    #     }
+    #     kwd_col = {
+    #         "headerName": "키워드",
+    #         "field": "키워드",
+    #         "pinned": "left",
+    #         "width": 100,
+    #         "cellStyle": JsCode("params=>({textAlign:'left'})"),
+    #         # "sort": "desc"
+    #     }
         
-        flat_cols = [
-            date_col,
-            kwd_col,
-            make_num_child("검색량",     "검색량"),
-        ]
+    #     flat_cols = [
+    #         date_col,
+    #         kwd_col,
+    #         make_num_child("검색량",     "검색량"),
+    #     ]
 
-        # (use_parent) grouped_cols
-        grouped_cols = [
-        ]
+    #     # (use_parent) grouped_cols
+    #     grouped_cols = [
+    #     ]
 
-        # (use_parent)
-        column_defs = grouped_cols if use_parent else flat_cols
+    #     # (use_parent)
+    #     column_defs = grouped_cols if use_parent else flat_cols
     
-        # grid_options & 렌더링
-        grid_options = {
-        "columnDefs": column_defs,
-        "defaultColDef": {
-            "sortable": True,
-            "filter": True,
-            "resizable": True,
-            "flex": 1,       # flex:1 이면 나머지 공간을 컬럼 개수만큼 균등 분배
-            "minWidth": 90,   # 최소 너비
-            "wrapHeaderText": True,
-            "autoHeaderHeight": True
-        },
-        "onGridReady": JsCode(
-            "function(params){ params.api.sizeColumnsToFit(); }"
-        ),
-        "headerHeight": 30,
-        "groupHeaderHeight": 30,
-        }        
+    #     # grid_options & 렌더링
+    #     grid_options = {
+    #     "columnDefs": column_defs,
+    #     "defaultColDef": {
+    #         "sortable": True,
+    #         "filter": True,
+    #         "resizable": True,
+    #         "flex": 1,       # flex:1 이면 나머지 공간을 컬럼 개수만큼 균등 분배
+    #         "minWidth": 90,   # 최소 너비
+    #         "wrapHeaderText": True,
+    #         "autoHeaderHeight": True
+    #     },
+    #     "onGridReady": JsCode(
+    #         "function(params){ params.api.sizeColumnsToFit(); }"
+    #     ),
+    #     "headerHeight": 30,
+    #     "groupHeaderHeight": 30,
+    #     }        
 
-        # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-        def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
-            summary: dict[str, float | str] = {}
-            for col, op in agg_map.items():
-                val = None
-                try:
-                    if op == 'sum':
-                        val = df[col].sum()
-                    elif op == 'avg':
-                        val = df[col].mean()
-                    elif op == 'mid':
-                        val = df[col].median()
-                except:
-                    val = None
+    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
+    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
+    #         summary: dict[str, float | str] = {}
+    #         for col, op in agg_map.items():
+    #             val = None
+    #             try:
+    #                 if op == 'sum':
+    #                     val = df[col].sum()
+    #                 elif op == 'avg':
+    #                     val = df[col].mean()
+    #                 elif op == 'mid':
+    #                     val = df[col].median()
+    #             except:
+    #                 val = None
 
-                # NaN / Inf / numpy 타입 → None or native 타입으로 처리
-                if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-                    summary[col] = None
-                else:
-                    # numpy 타입 제거
-                    if isinstance(val, (np.integer, np.int64, np.int32)):
-                        summary[col] = int(val)
-                    elif isinstance(val, (np.floating, np.float64, np.float32)):
-                        summary[col] = float(round(val, 2))
-                    else:
-                        summary[col] = val
+    #             # NaN / Inf / numpy 타입 → None or native 타입으로 처리
+    #             if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+    #                 summary[col] = None
+    #             else:
+    #                 # numpy 타입 제거
+    #                 if isinstance(val, (np.integer, np.int64, np.int32)):
+    #                     summary[col] = int(val)
+    #                 elif isinstance(val, (np.floating, np.float64, np.float32)):
+    #                     summary[col] = float(round(val, 2))
+    #                 else:
+    #                     summary[col] = val
 
-            grid_options['pinnedBottomRowData'] = [summary]
-            return grid_options
+    #         grid_options['pinnedBottomRowData'] = [summary]
+    #         return grid_options
 
-        # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-        grid_options = add_summary(
-            grid_options,
-            df2,
-            {
-                '검색량': 'sum',
-            }
-        )
+    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
+    #     grid_options = add_summary(
+    #         grid_options,
+    #         df2,
+    #         {
+    #             '검색량': 'sum',
+    #         }
+    #     )
         
-        AgGrid(
-            df2,
-            gridOptions=grid_options,
-            height=height,
-            fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
-            theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-            allow_unsafe_jscode=True
-        )
+    #     AgGrid(
+    #         df2,
+    #         gridOptions=grid_options,
+    #         height=height,
+    #         fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
+    #         theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
+    #         allow_unsafe_jscode=True
+    #     )
 
 
 
@@ -1915,6 +1915,8 @@ def main():
                     color="키워드",
                     barmode="relative",
                 )
+                fig.update_layout(barmode="relative")
+                fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
                 fig.update_traces(opacity=0.6)
 
             elif chart_type == "누적 영역":
@@ -1937,11 +1939,13 @@ def main():
                 fig.update_traces(opacity=0.6)
 
             # x축 한글 포맷, 축 제목 숨기기
-            fig.update_xaxes(tickformat="%m월 %d일")
-            fig.update_layout(xaxis_title=None, yaxis_title=None)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            render_aggrid__kwd(df_f)
+            try:
+                fig.update_xaxes(tickformat="%m월 %d일")
+                fig.update_layout(xaxis_title=None, yaxis_title=None)
+                st.plotly_chart(fig, use_container_width=True)
+            except: pass
+            df_f = df_f[['날짜', '키워드', '검색량']]
+            st.dataframe(df_f)
             
     with tab2: 
         df = query_nor.copy()
@@ -2041,6 +2045,8 @@ def main():
                     color="키워드",
                     barmode="relative",
                 )
+                fig.update_layout(barmode="relative")
+                fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
                 fig.update_traces(opacity=0.6)
 
             elif chart_type == "누적 영역":
@@ -2066,8 +2072,8 @@ def main():
             fig.update_xaxes(tickformat="%m월 %d일")
             fig.update_layout(xaxis_title=None, yaxis_title=None)
             st.plotly_chart(fig, use_container_width=True)
-            
-            render_aggrid__kwd(df_f)
+            df_f = df_f[['날짜', '키워드', '검색량']]
+            st.dataframe(df_f)
 
 
     # ────────────────────────────────────────────────────────────────
