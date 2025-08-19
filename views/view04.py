@@ -494,43 +494,91 @@ def main():
         st.dataframe(styled, use_container_width=True, height=420)
 
     
-    def render_stacked_bar(
-        df: pd.DataFrame,
-        x: str,
-        y: str | list[str],
-        color: str,
-        ) -> None:
+    # def render_stacked_bar(
+    #     df: pd.DataFrame,
+    #     x: str,
+    #     y: str | list[str],
+    #     color: str,
+    #     ) -> None:
 
-        # y가 단일 문자열이면 리스트로 감싸기
-        y_cols = [y] if isinstance(y, str) else y
+    #     # y가 단일 문자열이면 리스트로 감싸기
+    #     y_cols = [y] if isinstance(y, str) else y
 
-        fig = px.bar(
-            df,
-            x=x,
-            y=y_cols,
-            color=color,
-            labels={"variable": ""},
-            opacity=0.6,
-            barmode="relative",
-        )
+    #     fig = px.bar(
+    #         df,
+    #         x=x,
+    #         y=y_cols,
+    #         color=color,
+    #         labels={"variable": ""},
+    #         opacity=0.6,
+    #         barmode="relative",
+    #     )
+    #     fig.update_layout(
+    #         barmode="relative",
+    #         bargap=0.1,        # 카테고리 간 간격 (0~1)
+    #         bargroupgap=0.2,   # 같은 카테고리 내 막대 간 간격 (0~1)
+    #         height=400,
+    #         xaxis_title=None,
+    #         yaxis_title=None,
+    #         legend=dict(
+    #             orientation="h",
+    #             y=1.02,
+    #             x=1,
+    #             xanchor="right",
+    #             yanchor="bottom",
+    #             title=None
+    #         )
+    #     )
+    #     fig.update_xaxes(tickformat="%m월 %d일")
+    #     st.plotly_chart(fig, use_container_width=True)
+
+
+    def render_stacked_bar(df: pd.DataFrame, x: str, y: str | list[str], color: str | None) -> None:
+        # 숫자형 보정
+        def _to_numeric(cols):
+            for c in cols:
+                df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
+        if isinstance(y, (list, tuple)):   # wide-form 들어오면
+            _to_numeric(list(y))
+            if color is not None and color in df.columns:
+                # y-list + color가 같이 오면 long으로 변환해 확실히 누적
+                long_df = df.melt(id_vars=[x, color], value_vars=list(y),
+                                var_name="__series__", value_name="__value__")
+                fig = px.bar(long_df, x=x, y="__value__", color="__series__", opacity=0.6)
+            else:
+                fig = px.bar(df, x=x, y=list(y), opacity=0.6)
+        else:                               # y가 단일이면 long-form
+            _to_numeric([y])
+            fig = px.bar(df, x=x, y=y, color=color, opacity=0.6)
+
+        # 핵심: 진짜로 누적시키기
+        fig.update_layout(barmode="relative")
+        fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+
         fig.update_layout(
-            barmode="relative",
-            bargap=0.1,        # 카테고리 간 간격 (0~1)
-            bargroupgap=0.2,   # 같은 카테고리 내 막대 간 간격 (0~1)
+            bargap=0.1,
+            bargroupgap=0.2,
             height=400,
             xaxis_title=None,
             yaxis_title=None,
-            legend=dict(
-                orientation="h",
-                y=1.02,
-                x=1,
-                xanchor="right",
-                yanchor="bottom",
-                title=None
-            )
+            legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
         )
         fig.update_xaxes(tickformat="%m월 %d일")
         st.plotly_chart(fig, use_container_width=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     # def render_aggrid__engag(
