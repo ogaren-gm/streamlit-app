@@ -516,7 +516,7 @@ def main():
 
 
     # ────────────────────────────────────────────────────────────────
-    # 통합 매출 리포트 
+    # 통합 매출 리포트 (FF4B4B -> FF804B)
     # ────────────────────────────────────────────────────────────────
     st.markdown("<h5 style='margin:0'><span style='color:#FF804B;'>통합</span> 매출 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **COST**(매출), **PERFORMANCE**(광고비), **GA**(유입) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
@@ -528,7 +528,7 @@ def main():
     # 슬립퍼 매출 리포트
     # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>슬립퍼</span> 매출 리포트</h5>", unsafe_allow_html=True)  
+    st.markdown("<h5 style='margin:0'><span style='color:#FF804B;'>슬립퍼</span> 매출 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다. ", unsafe_allow_html=True)
 
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 매트리스", "슬립퍼 프레임"])
@@ -544,7 +544,7 @@ def main():
     # 누어 매출 리포트
     # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>누어</span> 매출 리포트</h5>", unsafe_allow_html=True)  
+    st.markdown("<h5 style='margin:0'><span style='color:#FF804B;'>누어</span> 매출 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
 
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
