@@ -190,42 +190,6 @@ def main():
         return wide
 
 
-    # def render_stacked_bar(
-    #     df: pd.DataFrame,
-    #     x: str,
-    #     y: str | list[str],
-    #     color: str,
-    #     ) -> None:
-
-    #     # y가 단일 문자열이면 리스트로 감싸기
-    #     y_cols = [y] if isinstance(y, str) else y
-
-    #     fig = px.bar(
-    #         df,
-    #         x=x,
-    #         y=y_cols,
-    #         color=color,
-    #         labels={"variable": ""},
-    #         opacity=0.6,
-    #         barmode="stack",
-    #     )
-    #     fig.update_layout(
-    #         bargap=0.1,        # 카테고리 간 간격 (0~1)
-    #         bargroupgap=0.2,   # 같은 카테고리 내 막대 간 간격 (0~1)
-    #         height=400,
-    #         xaxis_title=None,
-    #         yaxis_title=None,
-    #         legend=dict(
-    #             orientation="h",
-    #             y=1.02,
-    #             x=1,
-    #             xanchor="right",
-    #             yanchor="bottom"
-    #         )
-    #     )
-    #     fig.update_xaxes(tickformat="%m월 %d일")
-    #     st.plotly_chart(fig, use_container_width=True)
-
     def render_stacked_bar(df: pd.DataFrame, x: str, y: str | list[str], color: str | None) -> None:
         # 숫자형 보정
         def _to_numeric(cols):
@@ -252,7 +216,7 @@ def main():
         fig.update_layout(
             bargap=0.1,
             bargroupgap=0.2,
-            height=400,
+            height=450,
             xaxis_title=None,
             yaxis_title=None,
             legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
@@ -265,7 +229,7 @@ def main():
         df: pd.DataFrame,
         x: str,
         y: list[str] | str,
-        height: int = 400,
+        height: int = 450,
         title: str | None = None,
         ) -> None:
         
@@ -308,101 +272,6 @@ def main():
         st.plotly_chart(fig, use_container_width=True)
 
 
-    # def render_aggrid(
-    #     df: pd.DataFrame,
-    #     height: int = 352,
-    #     use_parent: bool = False,
-    #     agg_map: dict[str, str] | None = None,  # {'col_name': 'sum'|'avg'|'mid', ...}
-    #     ):
-
-    #     # 날짜 컬럼 최좌측으로 재배치
-    #     df2 = df.copy()
-    #     if "날짜" in df2.columns:
-    #         cols = df2.columns.tolist()
-    #         cols.remove("날짜")
-    #         df2 = df2[["날짜"] + cols]
-    #         ## 내림차순 정렬 추가
-    #         df2 = df2.sort_values("날짜", ascending=False)
-
-    #     # (필수함수) add_summary
-    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
-    #         summary: dict[str, float | str] = {}
-    #         for col, op in agg_map.items():
-    #             val = None
-    #             try:
-    #                 if op == 'sum':
-    #                     val = df[col].sum()
-    #                 elif op == 'avg':
-    #                     val = df[col].mean()
-    #                 elif op == 'mid':
-    #                     val = df[col].median()
-    #             except:
-    #                 val = None
-
-    #             # NaN / Inf / numpy 타입 → None or native 타입으로 처리
-    #             if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-    #                 summary[col] = None
-    #             else:
-    #                 # numpy 타입 제거
-    #                 if isinstance(val, (np.integer, np.int64, np.int32)):
-    #                     summary[col] = int(val)
-    #                 elif isinstance(val, (np.floating, np.float64, np.float32)):
-    #                     summary[col] = float(round(val, 2))
-    #                 else:
-    #                     summary[col] = val
-
-    #         grid_options['pinnedBottomRowData'] = [summary]
-    #         return grid_options
-
-    #     # AgGrid 옵션 생성
-    #     gb = GridOptionsBuilder.from_dataframe(df2)
-        
-    #     # 날짜 컬럼 고정
-    #     if "날짜" in df2.columns:
-    #         gb.configure_column(
-    #             "날짜",
-    #             header_name="날짜",
-    #             pinned="left",
-    #             type=["textColumn"],
-    #             # width=110
-    #         )
-
-    #     # 이건 다 숫자형식이라, 따로 공통함수를 만들지 않고 바로 적용 (기능: 수치 컬럼 천단위 쉼표 포맷팅)
-    #     num_cols = df2.select_dtypes(include=[np.number]).columns.tolist()
-    #     for col in num_cols:
-    #         gb.configure_column(
-    #             col,
-    #             type=["numericColumn", "numberColumnFilter"],
-    #             valueFormatter=JsCode(
-    #                 "function(params) { return params.value != null ? params.value.toLocaleString() : ''; }"
-    #             ),
-    #         )
-
-    #     # parent/child 레이아웃 사용 시
-    #     if use_parent:
-    #         # 예: children 이나 groupCols가 미리 설정되어 있으면 사용
-    #         pass
-
-    #     grid_options = gb.build()
-
-    #     # 탭 전환이나 리사이즈 시에도 컬럼 크기 자동 조정
-    #     auto_size_js = JsCode("function(params) { params.api.sizeColumnsToFit(); }")
-    #     grid_options['onFirstDataRendered'] = auto_size_js
-    #     grid_options['onGridSizeChanged']   = auto_size_js
-
-    #     # 렌더링
-    #     if agg_map: # agg_map이 주어지면 합계 행을 추가하여 재랜더링
-    #         grid_options = add_summary(grid_options, df2, agg_map)
-        
-    #     AgGrid(
-    #         df2,
-    #         gridOptions=grid_options,
-    #         fit_columns_on_grid_load=True,
-    #         allow_unsafe_jscode=True,
-    #         enable_enterprise_modules=False,
-    #         height=height
-    #     )
-
 
     # 데이터프레임 생성
     df_daily         =  pivot_daily(df_psi)                                       
@@ -417,14 +286,6 @@ def main():
     df_daily_geo    = df_daily_geo.rename(columns={"geo__city":           "접속지역"})
     df_daily_source = df_daily_source.rename(columns={"_sourceMedium":       "유입매체"})
     
-    # # 데이터프레임 공통 -> 합계행을 위한 json 생성
-    # summary_map__daily = {
-    #     '방문수'   : 'sum',
-    #     '유저수'   : 'sum',
-    #     '신규방문수': 'sum',
-    #     '재방문수' : 'sum',
-    # }
-
     # ──────────────────────────────────
     # 1) 방문 추이
     # ──────────────────────────────────
@@ -444,8 +305,6 @@ def main():
         render_line_chart(df_daily, x="날짜", y=y_cols)
     with _p: pass
     with c2:
-        # render_aggrid(df_daily)
-        # render_aggrid(df_daily, agg_map=summary_map__daily)
         st.dataframe(df_daily)
 
 
@@ -471,7 +330,6 @@ def main():
             render_stacked_bar(df_paid_tab, x="날짜", y="방문수", color="광고유무")
         with _p: pass
         with c2:
-            # render_aggrid(df_paid_tab, agg_map=summary_map__daily)
             st.dataframe(df_paid_tab)
     
     # — 디바이스 탭
@@ -487,7 +345,6 @@ def main():
             render_stacked_bar(df_dev_tab, x="날짜", y="방문수", color="디바이스")
         with _p: pass
         with c2:
-            # render_aggrid(df_dev_tab, agg_map=summary_map__daily)
             st.dataframe(df_dev_tab)
     
     # — 접속지역 탭
@@ -503,7 +360,6 @@ def main():
             render_stacked_bar(df_geo_tab, x="날짜", y="방문수", color="접속지역")
         with _p: pass
         with c2:
-            # render_aggrid(df_geo_tab, agg_map=summary_map__daily)
             st.dataframe(df_geo_tab)
             
     # — 유입매체 탭
@@ -519,7 +375,6 @@ def main():
             render_stacked_bar(df_source_tab, x="날짜", y="방문수", color="유입매체")
         with _p: pass
         with c2:
-            # render_aggrid(df_source_tab, agg_map=summary_map__daily)
             st.dataframe(df_source_tab)
 
 
@@ -551,17 +406,7 @@ def main():
     # 날짜 형식 변경, event_date Drop
     metrics_df["날짜"] = metrics_df["event_date"].dt.strftime("%Y-%m-%d")
     metrics_df = metrics_df.drop(columns=["event_date"])
-
-    # metrics_df -> 합계행을 위한 json 생성
-    summary_map__metric = {
-        'PDP조회_세션수'   : 'sum',
-        'PDPscr50_세션수' : 'sum',
-        '가격표시_세션수'  : 'sum',
-        '쇼룸찾기_세션수'  : 'sum',
-        '쇼룸10초_세션수'  : 'sum',
-        '장바구니_세션수'  : 'sum',
-        '쇼룸예약_세션수'  : 'sum',
-    }
+    metrics_df = metrics_df[['날짜','PDP조회_세션수','PDPscr50_세션수','가격표시_세션수','쇼룸찾기_세션수','쇼룸10초_세션수','장바구니_세션수','쇼룸예약_세션수']]
 
     # — 제품탐색
     col_a, col_b, col_c = st.columns(3)
@@ -579,7 +424,6 @@ def main():
         y_cols = ["장바구니_세션수","쇼룸예약_세션수"]
         render_line_chart(metrics_df, x="날짜", y=y_cols, title="🛒 전환의도")
 
-    # render_aggrid(metrics_df, agg_map=summary_map__metric)
     st.dataframe(metrics_df)
 
 

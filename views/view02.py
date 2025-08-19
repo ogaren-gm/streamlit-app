@@ -17,7 +17,10 @@ import gspread
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import math
-from modules.render_df import style_format
+importlib.reload(modules.style)
+from modules.style import style_format
+from modules.style import style_cmap
+importlib.reload(modules.style)
 
 
 def main():
@@ -364,7 +367,7 @@ def main():
         return df
 
 
-    def render_style_format(target_df):
+    def render_style(target_df):
         styled = style_format(
             decorate_df(target_df),
             decimals_map={
@@ -409,7 +412,21 @@ def main():
                 ("구매완료",   "CVR2"): " %",               # purchase_CVR2
         }
         )
-        st.dataframe(styled, use_container_width=True)
+        styled2 = style_cmap(
+            styled,
+            gradient_rules=[
+                {"col": ("유입 세션수", "Actual"), "cmap":"Blues", "vmax":20000, "low":0.0, "high":0.3},
+                {"col": ("PDP조회", "Actual"), "cmap":"Blues", "vmax":10000, "low":0.0, "high":0.3},
+                {"col": ("PDPscr50", "Actual"), "cmap":"Blues", "vmax":3000, "low":0.0, "high":0.3},
+                {"col": ("가격표시", "Actual"), "cmap":"Blues", "vmax":2000, "low":0.0, "high":0.3},
+                {"col": ("장바구니", "Actual"), "cmap":"Blues", "vmax":1000, "low":0.0, "high":0.3},
+                {"col": ("쇼룸10초", "Actual"), "cmap":"Blues", "vmax":2000, "low":0.0, "high":0.3},
+                {"col": ("쇼룸예약", "Actual"), "cmap":"Blues", "vmax":200, "low":0.0, "high":0.3},
+                {"col": ("구매완료", "Actual"), "cmap":"Blues", "vmax":100, "low":0.0, "high":0.3},
+            ]
+        )
+        
+        st.dataframe(styled2, use_container_width=True)
 
 
     # def render_aggrid(
@@ -749,7 +766,7 @@ def main():
     st.markdown("<h5 style='margin:0'><span style='color:#FF804B;'>통합</span> 액션 리포트</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **광고비**, **세션수 및 주요 액션별 효율**(GA) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
 
-    render_style_format(df_total)
+    render_style(df_total)
 
 
     # ────────────────────────────────────────────────────────────────
@@ -761,17 +778,17 @@ def main():
     
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 PAID", "슬립퍼 매트리스", "슬립퍼 매트리스 PAID", "슬립퍼 프레임", "슬립퍼 프레임 PAID"])
     with tabs[0]:
-        render_style_format(df_slp)
+        render_style(df_slp)
     with tabs[1]:
-        render_style_format(df_slp_y)
+        render_style(df_slp_y)
     with tabs[2]:
-        render_style_format(df_slp_mat)
+        render_style(df_slp_mat)
     with tabs[3]:
-        render_style_format(df_slp_mat_y)
+        render_style(df_slp_mat_y)
     with tabs[4]:
-        render_style_format(df_slp_frm)
+        render_style(df_slp_frm)
     with tabs[5]:
-        render_style_format(df_slp_frm_y)
+        render_style(df_slp_frm_y)
 
 
     # ────────────────────────────────────────────────────────────────
@@ -783,11 +800,11 @@ def main():
 
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
     with tabs[0]:
-        render_style_format(df_nor)
+        render_style(df_nor)
     with tabs[1]:
-        render_style_format(df_nor_mat)
+        render_style(df_nor_mat)
     with tabs[2]:
-        render_style_format(df_nor_frm)    
+        render_style(df_nor_frm)    
 
 
 if __name__ == '__main__':

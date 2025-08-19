@@ -69,9 +69,20 @@ def main():
 
     styled = (
         df.style
-        .format({"A": "{:,}", "B": "{:,}", "C": "{:.0%}"})           # 천단위/퍼센트
-        .background_gradient(subset=["A","B","C"], cmap="YlOrRd")    # 히트맵
+        .format({"A": "{:,}", "B": "{:,}", "C": "{:.0%}"})
+        # B 컬럼만 연한 히트맵 (YlOrRd)
+        .background_gradient(
+            subset=["B"], cmap="YlOrRd",
+            vmin=df["B"].min(), vmax=df["B"].max(),
+            low=0.92, high=0.0   # 값 클수록 더 연해짐(화이트에 가까움)
+        )
+        # C(퍼센트)도 별도로 아주 연하게??
+        .background_gradient(
+            subset=["C"], cmap="Greens",
+            vmin=0.0, vmax=1.0,
+            low=0.0, high=0.5
+        )
     )
 
-    st.table(styled)  # 또는: st.markdown(styled.to_html(), unsafe_allow_html=True)
+    st.dataframe(styled)  # 또는: st.markdown(styled.to_html(), unsafe_allow_html=True)
 

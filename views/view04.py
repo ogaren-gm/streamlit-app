@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import re
 import math
-from modules.render_df import style_format
+from modules.style import style_format
 
 
 def main():
@@ -344,7 +344,7 @@ def main():
         
         return df
 
-    def render_style_format_eng(target_df, select_option):
+    def render_style_eng(target_df, select_option):
         styled = style_format(
             decorate_df_eng(target_df, select_option=opt),
             decimals_map={
@@ -469,7 +469,7 @@ def main():
         
         return df
 
-    def render_style_format_ctb(target_df, brand):
+    def render_style_ctb(target_df, brand):
         styled = style_format(
             decorate_df_ctb(target_df, brand),
             decimals_map={
@@ -1583,7 +1583,7 @@ def main():
             opt = 3
         else:
             opt = 1
-        render_style_format_eng(df_hongchul, select_option=opt)
+        render_style_eng(df_hongchul, select_option=opt)
         
     
     with tab2:    
@@ -1598,7 +1598,7 @@ def main():
             opt = 3
         else:
             opt = 1
-        render_style_format_eng(df_taeyomine, select_option=opt)
+        render_style_eng(df_taeyomine, select_option=opt)
         
     with tab3: 
         c1, c2, _ = st.columns([1,1,11])
@@ -1612,7 +1612,7 @@ def main():
             opt = 3
         else:
             opt = 1
-        render_style_format_eng(df_verymj, select_option=opt)
+        render_style_eng(df_verymj, select_option=opt)
         
     with tab4: 
         c1, c2, _ = st.columns([1,1,11])
@@ -1626,7 +1626,7 @@ def main():
             opt = 3
         else:
             opt = 1
-        render_style_format_eng(df_owldesign, select_option=opt)
+        render_style_eng(df_owldesign, select_option=opt)
         
     with tab5: 
         c1, c2, _ = st.columns([1,1,11])
@@ -1640,7 +1640,7 @@ def main():
             opt = 3
         else:
             opt = 1
-        render_style_format_eng(df_usefulpt, select_option=opt)
+        render_style_eng(df_usefulpt, select_option=opt)
 
 
     # ────────────────────────────────────────────────────────────────
@@ -1733,7 +1733,7 @@ def main():
         )
         # 렌더링
         render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
-        render_style_format_ctb(df_filtered, brand='sleeper')
+        render_style_ctb(df_filtered, brand='sleeper')
     
     # ---- 누어
     with tab2:
@@ -1806,7 +1806,7 @@ def main():
         )
         # 렌더링
         render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
-        render_style_format_ctb(df_filtered_nor, brand='nooer')
+        render_style_ctb(df_filtered_nor, brand='nooer')
     
     
     # ────────────────────────────────────────────────────────────────

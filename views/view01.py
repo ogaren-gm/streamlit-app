@@ -17,7 +17,11 @@ import gspread
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import math
-from modules.render_df import style_format
+importlib.reload(modules.style)
+from modules.style import style_format
+from modules.style import style_cmap
+importlib.reload(modules.style)
+
 
 
 def main():
@@ -325,7 +329,7 @@ def main():
         
         return df
 
-    def render_style_format(target_df):
+    def render_style(target_df):
         styled = style_format(
             decorate_df(target_df),
             decimals_map={
@@ -342,7 +346,13 @@ def main():
                 ("GA",          "CVR(전환율)"): " %",
         }
         )
-        st.dataframe(styled, use_container_width=True, height=388)
+        styled2 = style_cmap(
+            styled,
+            gradient_rules=[
+                {"col": ("COST","매출"), "cmap":"Greens", "vmax":200000000, "low":0.0, "high":0.3},
+            ]
+        )
+        st.dataframe(styled2, use_container_width=True, height=388)
 
     # def render_aggrid(
     #     df: pd.DataFrame,
@@ -521,7 +531,7 @@ def main():
     st.markdown("<h5 style='margin:0'><span style='color:#FF804B;'>통합</span> 매출 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **COST**(매출), **PERFORMANCE**(광고비), **GA**(유입) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
     
-    render_style_format(df_total)
+    render_style(df_total)
 
 
     # ────────────────────────────────────────────────────────────────
@@ -533,11 +543,11 @@ def main():
 
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 매트리스", "슬립퍼 프레임"])
     with tabs[0]:
-        render_style_format(df_slp)
+        render_style(df_slp)
     with tabs[1]:
-        render_style_format(df_slp_mat)
+        render_style(df_slp_mat)
     with tabs[2]:
-        render_style_format(df_slp_frm)
+        render_style(df_slp_frm)
 
 
     # ────────────────────────────────────────────────────────────────
@@ -549,11 +559,11 @@ def main():
 
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
     with tabs[0]:
-        render_style_format(df_nor)
+        render_style(df_nor)
     with tabs[1]:
-        render_style_format(df_nor_mat)
+        render_style(df_nor_mat)
     with tabs[2]:
-        render_style_format(df_nor_frm)
+        render_style(df_nor_frm)
 
 
     # ────────────────────────────────────────────────────────────────
