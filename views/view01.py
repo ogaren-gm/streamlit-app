@@ -1,4 +1,4 @@
-# 서희_최신수정일_25-07-24
+# 서희_최신수정일_25-08-19
 
 import streamlit as st
 import pandas as pd
@@ -17,13 +17,14 @@ import gspread
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import math
+from modules.render_df import style_thousands_per_column
+import streamlit as st
 
 
 def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-    # st.set_page_config(layout="wide", page_title="SLPR | 매출 종합 대시보드")
     st.markdown(
         """
         <style>
@@ -38,12 +39,10 @@ def main():
         unsafe_allow_html=True,
     )
     st.subheader('매출 종합 대시보드')
-    # st.markdown("설명")
     st.markdown("""
     이 대시보드는 **매출 · 광고비 · 유입** 데이터를 일자별로 한눈에 보여주는 **가장 개괄적인 대시보드**입니다.  
     여기서는 일자/브랜드/품목별로 “**얼마 벌었고, 얼마 썼고, 얼마 유입됐고**”를 효율 지표(AOV, ROAS, CVR)와 함께 확인할 수 있습니다.
     """)
-    # st.markdown(":primary-badge[:material/Cached: Update]ㅤ설명.")
     st.markdown(
         '<a href="https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb" target="_blank">'
         '지표설명 & 가이드</a>',
@@ -117,7 +116,6 @@ def main():
                 .groupby("event_date", as_index=False)
                 .agg(session_count=("pseudo_session_id", "nunique")))
 
-        
         return merged, df_psi
 
     # ────────────────────────────────────────────────────────────────
@@ -129,7 +127,7 @@ def main():
         df_merged, df_psi = load_data(cs, ce)
     
 
-    # 공통합수 (1) 일자별 광고비, 세션수 (파생변수는 해당 함수가 계산하지 않음)
+    # 공통합수 (1) 일자별 광고비, 세션수 (파생변수는 해당 함수가 계산하지 않음 -> 나중에 계산함)
     def pivot_cstSes(
         df: pd.DataFrame,
         brand_type: str | None = None,
@@ -163,18 +161,6 @@ def main():
         return pivot
 
 
-    # df_order
-    
-    # dates = pd.date_range("2025-07-01", "2025-07-21")
-    # n = 200
-    # df_order = pd.DataFrame({
-    #     "주문일": np.random.choice(dates, size=n),
-    #     "실결제금액": np.random.randint(100_000, 1_000_001, size=n),
-    #     "카테고리": np.random.choice(["매트리스", "프레임"], size=n),
-    #     "브랜드": np.random.choice(["슬립퍼", "누어"], size=n),
-    #     "주문수": np.random.randint(1, 4, size=n)  # 1~3 랜덤
-    # })
-    
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     
     try: 
@@ -287,13 +273,60 @@ def main():
                 .merge(_df_total_cost,  on='event_date', how='left')
                 .merge(_df_total_order, on='event_date', how='left')
                 )
-    df_total['event_date'] = pd.to_datetime(df_total['event_date'], errors='coerce').dt.strftime('%Y-%m-%d')
 
+    
+    # 모든 데이터프레임이 동일한 파생 지표를 가짐
+    def decorate_df(df: pd.DataFrame) -> pd.DataFrame:
+        # 키에러 방지
+        required = ["event_date", "ord_amount_sum", "ord_count_sum", "cost_gross_sum", "session_count"]
+        for c in required:
+            if c not in df.columns:
+                df[c] = 0  
+        num_cols = ["ord_amount_sum", "ord_count_sum", "cost_gross_sum", "session_count"]
+        df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+            
+        # 파생지표 생성
+        df['CVR']    =  (df['ord_count_sum']  / df['session_count']  * 100).round(2)
+        df['AOV']    =  (df['ord_amount_sum'] / df['ord_count_sum']  ).round(0)
+        df['ROAS']   =  (df['ord_amount_sum'] / df['cost_gross_sum'] * 100).round(2)
+        
+        # 컬럼 순서 지정
+        df = df[['event_date','ord_amount_sum','ord_count_sum','AOV','cost_gross_sum','ROAS','session_count','CVR']]
+        df['event_date'] = pd.to_datetime(df['event_date'], errors='coerce').dt.strftime('%Y-%m-%d')
+        
+        # 컬럼 이름 변경 - 단일 인덱스
+        # rename_map = {
+        #     "event_date":       "날짜",
+        #     "ord_amount_sum":   "매출",
+        #     "ord_count_sum":    "주문수",
+        #     "AOV":              "AOV(평균주문금액)",
+        #     "cost_gross_sum":   "광고비",
+        #     "ROAS":             "ROAS(광고수익률)",
+        #     "session_count":    "세션수",
+        #     "CVR":              "CVR(전환율)",
+        # }
+        # apply_map = {k: v for k, v in rename_map.items() if k in df.columns}
+        # df = df.rename(columns=apply_map)
+
+        # 컬럼 이름 변경 - 멀티 인덱스
+        df.columns = pd.MultiIndex.from_tuples([
+            ("기본정보",      "날짜"),              # event_date
+            ("COST",        "매출"),               # ord_amount_sum
+            ("COST",        "주문수"),             # ord_count_sum
+            ("COST",        "AOV(평균주문금액)"),    # AOV
+            ("PERFORMANCE", "광고비"),              # cost_gross_sum
+            ("PERFORMANCE", "ROAS(광고수익률)"),     # ROAS
+            ("GA",          "세션수"),              # session_count
+            ("GA",          "CVR(전환율)"),          # CVR
+        ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)        
+
+        
+        
+        return df
+    
 
     # ────────────────────────────────────────────────────────────────
-    # 시각화
-    # ────────────────────────────────────────────────────────────────
-    # 공통함수 (3) render_aggrid 
+
     def render_aggrid(
         df: pd.DataFrame,
         height: int = 323,
@@ -456,6 +489,8 @@ def main():
         )
 
 
+
+
     # 탭 간격 CSS
     st.markdown("""
         <style>
@@ -463,24 +498,101 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-
-    # 1) 통합 영역 (탭 X)
+    # ────────────────────────────────────────────────────────────────
+    # 통합 매출 리포트 
+    # ────────────────────────────────────────────────────────────────
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 매출 리포트</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **COST**(매출), **PREP**(광고비), **GA**(유입) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
-    render_aggrid(df_total)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **COST**(매출), **PERFORMANCE**(광고비), **GA**(유입) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
     
-    # 2) 슬립퍼 영역 (탭 구성)
+    # render_aggrid(df_total)
+
+    styled = style_thousands_per_column(
+        decorate_df(df_total),
+        decimals_map={
+            ("COST",        "매출"): 0,
+            ("COST",        "주문수"): 0,
+            ("COST",        "AOV(평균주문금액)"): 0,
+            ("PERFORMANCE", "광고비"): 0,
+            ("PERFORMANCE", "ROAS(광고수익률)"): 1,
+            ("GA",          "세션수"): 0,
+            ("GA",          "CVR(전환율)"): 2,
+        },
+        suffix_map={
+            ("PERFORMANCE", "ROAS(광고수익률)"): " %",
+            ("GA",          "CVR(전환율)"): " %",
+    }
+    )
+
+    st.dataframe(styled, use_container_width=True, height=388)
+
+
+
+
+
+
+
+    # ────────────────────────────────────────────────────────────────
+    # 슬립퍼 매출 리포트
+    # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>슬립퍼</span> 매출 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다. ", unsafe_allow_html=True)
 
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 매트리스", "슬립퍼 프레임"])
     with tabs[0]:
-        render_aggrid(df_slp)
+        styled = style_thousands_per_column(
+            decorate_df(df_slp),
+            decimals_map={
+                ("COST",        "매출"): 0,
+                ("COST",        "주문수"): 0,
+                ("COST",        "AOV(평균주문금액)"): 0,
+                ("PERFORMANCE", "광고비"): 0,
+                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
+                ("GA",          "세션수"): 0,
+                ("GA",          "CVR(전환율)"): 2,
+            },
+            suffix_map={
+                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
+                ("GA",          "CVR(전환율)"): " %",
+        }
+        )
+        st.dataframe(styled, use_container_width=True, height=388)
     with tabs[1]:
-        render_aggrid(df_slp_mat)
+        styled = style_thousands_per_column(
+            decorate_df(df_slp_mat),
+            decimals_map={
+                ("COST",        "매출"): 0,
+                ("COST",        "주문수"): 0,
+                ("COST",        "AOV(평균주문금액)"): 0,
+                ("PERFORMANCE", "광고비"): 0,
+                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
+                ("GA",          "세션수"): 0,
+                ("GA",          "CVR(전환율)"): 2,
+            },
+            suffix_map={
+                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
+                ("GA",          "CVR(전환율)"): " %",
+        }
+        )
+        st.dataframe(styled, use_container_width=True, height=388)
     with tabs[2]:
-        render_aggrid(df_slp_frm)
+        styled = style_thousands_per_column(
+            decorate_df(df_slp_frm),
+            decimals_map={
+                ("COST",        "매출"): 0,
+                ("COST",        "주문수"): 0,
+                ("COST",        "AOV(평균주문금액)"): 0,
+                ("PERFORMANCE", "광고비"): 0,
+                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
+                ("GA",          "세션수"): 0,
+                ("GA",          "CVR(전환율)"): 2,
+            },
+            suffix_map={
+                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
+                ("GA",          "CVR(전환율)"): " %",
+        }
+        )
+        st.dataframe(styled, use_container_width=True, height=388)
 
     # 3) 누어 영역 (탭 구성)
     st.header(" ") # 공백용
@@ -489,11 +601,59 @@ def main():
 
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
     with tabs[0]:
-        render_aggrid(df_nor)
+        styled = style_thousands_per_column(
+            decorate_df(df_nor),
+            decimals_map={
+                ("COST",        "매출"): 0,
+                ("COST",        "주문수"): 0,
+                ("COST",        "AOV(평균주문금액)"): 0,
+                ("PERFORMANCE", "광고비"): 0,
+                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
+                ("GA",          "세션수"): 0,
+                ("GA",          "CVR(전환율)"): 2,
+            },
+            suffix_map={
+                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
+                ("GA",          "CVR(전환율)"): " %",
+        }
+        )
+        st.dataframe(styled, use_container_width=True, height=388)
     with tabs[1]:
-        render_aggrid(df_nor_mat)
+        styled = style_thousands_per_column(
+            decorate_df(df_nor_mat),
+            decimals_map={
+                ("COST",        "매출"): 0,
+                ("COST",        "주문수"): 0,
+                ("COST",        "AOV(평균주문금액)"): 0,
+                ("PERFORMANCE", "광고비"): 0,
+                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
+                ("GA",          "세션수"): 0,
+                ("GA",          "CVR(전환율)"): 2,
+            },
+            suffix_map={
+                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
+                ("GA",          "CVR(전환율)"): " %",
+        }
+        )
+        st.dataframe(styled, use_container_width=True, height=388)
     with tabs[2]:
-        render_aggrid(df_nor_frm)
+        styled = style_thousands_per_column(
+            decorate_df(df_nor_frm),
+            decimals_map={
+                ("COST",        "매출"): 0,
+                ("COST",        "주문수"): 0,
+                ("COST",        "AOV(평균주문금액)"): 0,
+                ("PERFORMANCE", "광고비"): 0,
+                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
+                ("GA",          "세션수"): 0,
+                ("GA",          "CVR(전환율)"): 2,
+            },
+            suffix_map={
+                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
+                ("GA",          "CVR(전환율)"): " %",
+        }
+        )
+        st.dataframe(styled, use_container_width=True, height=388)
 
 
     # # ────────────────────────────────────────────────────────────────
