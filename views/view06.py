@@ -520,6 +520,6 @@ def main():
             ),
             margin=dict(l=10, r=10, t=30, b=10)
         )
-        fig.update_layout(barmode="relative")
-        fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+        fig9.update_layout(barmode="relative")
+        fig9.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
         st.plotly_chart(fig9, use_container_width=True)
