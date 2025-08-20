@@ -33,7 +33,7 @@ from streamlit_option_menu import option_menu
 
 st.set_page_config(
     layout="wide",
-    page_title="SLP 대시보드",
+    page_title="ORANGE 대시보드",
     page_icon="🍊"  # 이모지 또는 이미지 URL
 )
 
