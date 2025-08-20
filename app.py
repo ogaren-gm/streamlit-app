@@ -31,7 +31,11 @@ from views.view07 import main as view07_main
 
 from streamlit_option_menu import option_menu
 
-st.set_page_config(layout="wide", page_title="SLPR Dashboard")
+st.set_page_config(
+    layout="wide",
+    page_title="SLPR Dashboard",
+    page_icon="🐋"  # 이모지 또는 이미지 URL
+)
 
 
 

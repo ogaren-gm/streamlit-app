@@ -47,7 +47,7 @@ def main():
     """)
     st.markdown(
         '<a href="https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c7680d299bee34d617a1626" target="_blank">'
-        '지표설명 & 가이드</a>',
+        '🔍 지표 설명 & 대시보드 사용법 바로가기</a>',
         unsafe_allow_html=True
     )
     st.divider()
@@ -145,7 +145,7 @@ def main():
     # 데이터 불러오기
     # ────────────────────────────────────────────────────────────────
     st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
-    with st.spinner("데이터가 많아 로딩에 조금 시간이 소요됩니다. 조금만 기다려 주세요 😊"):
+    with st.spinner("데이터가 많아 로딩에 조금 시간이 소요됩니다. 조금만 기다려 주세요"):
         df_merged, df_prodRep, df_psi = load_data(cs, ce)
 
     # 공통합수 (1) 일자별 광고비, 세션수 (파생변수는 해당 함수가 계산하지 않음)
@@ -416,14 +416,15 @@ def main():
         styled2 = style_cmap(
             styled,
             gradient_rules=[
-                {"col": ("유입 세션수", "Actual"), "cmap":"Blues", "vmax":20000, "low":0.0, "high":0.3},
-                {"col": ("PDP조회", "Actual"), "cmap":"Blues", "vmax":10000, "low":0.0, "high":0.3},
-                {"col": ("PDPscr50", "Actual"), "cmap":"Blues", "vmax":3000, "low":0.0, "high":0.3},
-                {"col": ("가격표시", "Actual"), "cmap":"Blues", "vmax":2000, "low":0.0, "high":0.3},
-                {"col": ("장바구니", "Actual"), "cmap":"Blues", "vmax":1000, "low":0.0, "high":0.3},
-                {"col": ("쇼룸10초", "Actual"), "cmap":"Blues", "vmax":2000, "low":0.0, "high":0.3},
-                {"col": ("쇼룸예약", "Actual"), "cmap":"Blues", "vmax":200, "low":0.0, "high":0.3},
-                {"col": ("구매완료", "Actual"), "cmap":"Blues", "vmax":100, "low":0.0, "high":0.3},
+                {"col": ("유입 세션수", "Actual"), "cmap":"OrRd", "low":0.0, "high":0.3},
+                {"col": ("PDP조회", "Actual"), "cmap":"OrRd", "vmax":10000, "low":0.0, "high":0.3},
+                {"col": ("PDPscr50", "Actual"), "cmap":"OrRd", "vmax":3000, "low":0.0, "high":0.3},
+                {"col": ("가격표시", "Actual"), "cmap":"OrRd", "vmax":2000, "low":0.0, "high":0.3},
+                {"col": ("쇼룸찾기", "Actual"), "cmap":"OrRd", "vmax":1000, "low":0.0, "high":0.3},
+                {"col": ("장바구니", "Actual"), "cmap":"OrRd", "vmax":1000, "low":0.0, "high":0.3},
+                {"col": ("쇼룸10초", "Actual"), "cmap":"OrRd", "vmax":2000, "low":0.0, "high":0.3},
+                {"col": ("쇼룸예약", "Actual"), "cmap":"OrRd", "vmax":200, "low":0.0, "high":0.3},
+                {"col": ("구매완료", "Actual"), "cmap":"OrRd", "vmax":100, "low":0.0, "high":0.3},
             ]
         )
         

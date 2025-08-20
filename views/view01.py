@@ -46,10 +46,14 @@ def main():
     이 대시보드는 **매출 · 광고비 · 유입** 데이터를 일자별로 한눈에 보여주는 **가장 개괄적인 대시보드**입니다.  
     여기서는 일자/브랜드/품목별로 “**얼마 벌었고, 얼마 썼고, 얼마 유입됐고**”를 효율 지표(AOV, ROAS, CVR)와 함께 확인할 수 있습니다.
     """)
-    st.markdown(
-        '<a href="https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb" target="_blank">'
-        '지표설명 & 가이드</a>',
-        unsafe_allow_html=True
+    # st.markdown(
+    #     '<a href="https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb" target="_blank">'
+    #     '🔍 지표 설명 & 대시보드 사용법 바로가기</a>',
+    #     unsafe_allow_html=True
+    # )
+    st.link_button(
+    "🔍 대시보드 사용 가이드", 
+    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
     )
     st.divider()
 
@@ -126,7 +130,7 @@ def main():
     # ────────────────────────────────────────────────────────────────
     st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
 
-    with st.spinner("데이터가 많아 로딩에 조금 시간이 소요됩니다. 조금만 기다려 주세요 😊"):
+    with st.spinner("데이터가 많아 로딩에 조금 시간이 소요됩니다. 조금만 기다려 주세요."):
         df_merged, df_psi = load_data(cs, ce)
     
 
@@ -240,7 +244,7 @@ def main():
     # 1-1) 슬립퍼
     _sctSes_slp      = pivot_cstSes(df_merged, brand_type="슬립퍼")
     _ord_slp         = pivot_ord(df_order,     brand_type="슬립퍼")
-    df_slp           = _sctSes_slp.join(_ord_slp.set_index('주문일'), on='event_date', how='left') # df_slp = _sctSes_slp.join(_ord_slp, how='left', left_on='event_date', right_on='주문일')
+    df_slp           = _sctSes_slp.join(_ord_slp.set_index('주문일'), on='event_date', how='left')
     
     # 1-2) 슬립퍼 & 매트리스
     _sctSes_slp_mat  = pivot_cstSes(df_merged, brand_type="슬립퍼", product_type="매트리스")
@@ -349,7 +353,7 @@ def main():
         styled2 = style_cmap(
             styled,
             gradient_rules=[
-                {"col": ("COST","매출"), "cmap":"Greens", "vmax":200000000, "low":0.0, "high":0.3},
+                {"col": ("COST",         "매출"), "cmap":"OrRd", "vmax":200000000, "low":0.0, "high":0.3},
             ]
         )
         st.dataframe(styled2, use_container_width=True, height=388, hide_index=True)

@@ -41,7 +41,7 @@ def main():
     """)
     st.markdown(
         '<a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af#241521e07c7680f291c7da35f0ab0743" target="_blank">'
-        '지표설명 & 가이드</a>',
+        '🔍 지표 설명 & 대시보드 사용법 바로가기</a>',
         unsafe_allow_html=True
     )
     st.divider()
@@ -504,8 +504,7 @@ def main():
         )
         fig9.update_traces(marker_opacity=0.6)
         # 핵심: 진짜로 누적시키기
-        fig.update_layout(barmode="relative")
-        fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+
 
         fig9.update_layout(
             legend_title_text="",
@@ -521,5 +520,6 @@ def main():
             ),
             margin=dict(l=10, r=10, t=30, b=10)
         )
-
+        fig.update_layout(barmode="relative")
+        fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
         st.plotly_chart(fig9, use_container_width=True)

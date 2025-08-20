@@ -50,7 +50,7 @@ def main():
     # st.markdown(":primary-badge[:material/Cached: Update]ㅤD-1 데이터는 오전 중 예비 처리된 후, **15:00 이후** 매체 분류가 완료되어 최종 업데이트됩니다.")
     st.markdown(
         '<a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af#241521e07c7680048fc9f2244b732720" target="_blank">'
-        '지표설명 & 가이드</a>',
+        '🔍 지표 설명 & 대시보드 사용법 바로가기</a>',
         unsafe_allow_html=True
     )
     st.divider()

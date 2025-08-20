@@ -43,7 +43,7 @@ def main():
     """)
     st.markdown(
         '<a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af?pvs=97#241521e07c7680439a57cc45c0fba6f2" target="_blank">'
-        '지표설명 & 가이드</a>',
+        '🔍 지표 설명 & 대시보드 사용법 바로가기</a>',
         unsafe_allow_html=True
     )
     st.divider()
