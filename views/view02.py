@@ -764,7 +764,7 @@ def main():
     # ────────────────────────────────────────────────────────────────
     # 통합 액션 리포트 
     # ────────────────────────────────────────────────────────────────
-    st.markdown("<h5 style='margin:0'><span style='color:#FF804B;'>통합</span> 액션 리포트</h5>", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 액션 리포트</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **광고비**, **세션수 및 주요 액션별 효율**(GA) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
 
     render_style(df_total)
@@ -774,7 +774,7 @@ def main():
     # 슬립퍼 액션 리포트 
     # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
-    st.markdown("<h5 style='margin:0'><span style='color:#FF804B;'>슬립퍼</span> 액션 리포트</h5>", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>슬립퍼</span> 액션 리포트</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
     
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 PAID", "슬립퍼 매트리스", "슬립퍼 매트리스 PAID", "슬립퍼 프레임", "슬립퍼 프레임 PAID"])
@@ -796,7 +796,7 @@ def main():
     # 누어 액션 리포트 
     # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
-    st.markdown("<h5 style='margin:0'><span style='color:#FF804B;'>누어</span> 액션 리포트</h5>", unsafe_allow_html=True)  
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>누어</span> 액션 리포트</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
 
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
