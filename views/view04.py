@@ -96,7 +96,7 @@ def main():
         return PPL_LIST, PPL_DATA, PPL_ACTION, query_slp, query_nor, query_sum
 
 
-    with st.spinner("데이터를 불러오는 중입니다. ⏳"):
+    with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
         PPL_LIST, PPL_DATA, PPL_ACTION, query_slp, query_nor, query_sum = load_data()
 
 

@@ -163,7 +163,7 @@ def main():
     }
     
     # 추가 -----------------------------------------------
-    with st.spinner("데이터를 불러오는 중입니다. ⏳"):
+    with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
         if use_compare:
             # cs~ce, cs_cmp~ce_cmp 한 번에 로드
             cs_cmp = comp_start.strftime("%Y%m%d")
