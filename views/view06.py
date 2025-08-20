@@ -39,10 +39,9 @@ def main():
     이 대시보드에서는 **브랜드, 카테고리, 제품** 단위의 **제품 상세 페이지(PDP) 조회량**을 확인할 수 있습니다.   
     해당 대시보드는 view_item 이벤트를 발생시킨 세션 데이터를 기반으로 구성되어 있습니다. 
     """)
-    st.markdown(
-        '<a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af#241521e07c7680f291c7da35f0ab0743" target="_blank">'
-        '🔍 지표 설명 & 대시보드 사용법 바로가기</a>',
-        unsafe_allow_html=True
+    st.link_button(
+    "🔍 대시보드 사용 가이드", 
+    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
     )
     st.divider()
 
@@ -53,7 +52,7 @@ def main():
     st.sidebar.header("Filter")
     today         = datetime.now().date()
     default_end   = today - timedelta(days=1)
-    default_start = today - timedelta(days=14)
+    default_start = today - timedelta(days=9)
 
     start_date, end_date = st.sidebar.date_input(
         "기간 선택",
@@ -115,7 +114,7 @@ def main():
         df: pd.DataFrame,
         x: str,
         y: list[str] | str,
-        height: int = 450,
+        height: int = 400,
         title: str | None = None,
         ) -> None:
         
@@ -436,7 +435,7 @@ def main():
     ## 컬럼명 -> 한글 매핑
     inv_options = {v: k for k, v in options.items()}
     df_product.rename(columns=inv_options, inplace=True)
-    st.dataframe(df_product, hide_index=True)
+    st.dataframe(df_product, height=500, hide_index=True)
 
 
 

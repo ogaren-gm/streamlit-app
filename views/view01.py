@@ -237,6 +237,17 @@ def main():
         )
         return pivot
 
+    def summary_row(df):
+        sum_row = df.iloc[:, 1:].sum(numeric_only=True)
+        avg_row = df.iloc[:, 1:].mean(numeric_only=True)
+
+        # 합계/평균 행 DataFrame
+        summary = pd.DataFrame([
+            ["합계"] + sum_row.astype(int).tolist(),
+            ["평균"] + avg_row.round(1).tolist()
+        ], columns=df.columns)
+        
+        return summary
 
     # ────────────────────────────────────────────────────────────────
     # 데이터프레임 생성 (JOIN인 경우는 고의로 "주문일" 컬럼 떨굴 목적)
@@ -354,10 +365,13 @@ def main():
             styled,
             gradient_rules=[
                 {"col": ("COST",         "매출"), "cmap":"OrRd", "vmax":200000000, "low":0.0, "high":0.3},
-            ]
+            ],
         )
-        st.dataframe(styled2, use_container_width=True, height=388, hide_index=True)
+        st.dataframe(styled2, use_container_width=True, height=400, hide_index=True)
 
+
+
+        
     # def render_aggrid(
     #     df: pd.DataFrame,
     #     height: int = 323,

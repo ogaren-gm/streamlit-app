@@ -33,8 +33,8 @@ from streamlit_option_menu import option_menu
 
 st.set_page_config(
     layout="wide",
-    page_title="SLPR Dashboard",
-    page_icon="🐋"  # 이모지 또는 이미지 URL
+    page_title="SLP 대시보드",
+    page_icon="🍊"  # 이모지 또는 이미지 URL
 )
 
 
@@ -45,7 +45,7 @@ view03_name = "WV | 퍼포먼스 대시보드"
 view04_name = "WV | 언드(PPL) 대시보드"
 view05_name = "GA | 트래픽 대시보드"
 view06_name = "GA | PDP조회 대시보드"
-view07_name = "GA | TEST"
+view07_name = "TEST 페이지"
 
 with st.sidebar:
     st.sidebar.header("Menu")

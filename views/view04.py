@@ -46,10 +46,9 @@ def main():
     이 대시보드는 **PPL 채널별 성과 및 기여**를 확인할 수 있는 대시보드입니다.  
     여기서는 각 채널별 **참여 지표**(조회수, 좋아요 등)와 PLP 랜딩 이후 **사용자 행동**을 살펴볼 수 있으며, 전체 검색량 대비 **채널별 쿼리 기여량**을 파악할 수 있습니다.
     """)
-    st.markdown(
-        '<a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af#241521e07c768094ab81e56cd47e5164" target="_blank">'
-        '🔍 지표 설명 & 대시보드 사용법 바로가기</a>',
-        unsafe_allow_html=True
+    st.link_button(
+    "🔍 대시보드 사용 가이드", 
+    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
     )
     st.divider()
     

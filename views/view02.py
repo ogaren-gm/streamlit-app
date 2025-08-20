@@ -45,10 +45,9 @@ def main():
     이 대시보드는 방문 > 상품조회 > 쇼룸찾기 > 구매 등 **자사몰의 주요 액션 흐름**을 단계적으로 보여주는 **행동 퍼널 대시보드**입니다.  
     여기서는 광고비 및 세션수와 더불어 “**각 단계까지 몇 명이 행동했고, 그때의 비용/전환 효율은 어땠는지**”를 확인할 수 있습니다.
     """)
-    st.markdown(
-        '<a href="https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c7680d299bee34d617a1626" target="_blank">'
-        '🔍 지표 설명 & 대시보드 사용법 바로가기</a>',
-        unsafe_allow_html=True
+    st.link_button(
+    "🔍 대시보드 사용 가이드", 
+    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
     )
     st.divider()
 
@@ -60,7 +59,7 @@ def main():
     
     today = datetime.now().date()
     default_end = today - timedelta(days=1)
-    default_start = today - timedelta(days=14)
+    default_start = today - timedelta(days=9)
     start_date, end_date = st.sidebar.date_input(
         "기간 선택",
         value=[default_start, default_end],
@@ -428,7 +427,7 @@ def main():
             ]
         )
         
-        st.dataframe(styled2, use_container_width=True, hide_index=True)
+        st.dataframe(styled2, use_container_width=True, height=400, hide_index=True)
 
 
     # def render_aggrid(

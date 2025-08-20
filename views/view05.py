@@ -41,10 +41,9 @@ def main():
     이 대시보드는 **자사몰 트래픽**의 방문 유형, 광고 유무, 접속 지역, 주요 이벤트 세션수 등을 한눈에 보여주는 **GA 대시보드**입니다.  
     여기서는 “**얼마나 방문했는지, 어떤 사용자가 방문했는지, 어떤 이벤트를 발생시켰는지**”의 추이를 직관적으로 확인할 수 있습니다.
     """)
-    st.markdown(
-        '<a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af?pvs=97#241521e07c7680439a57cc45c0fba6f2" target="_blank">'
-        '🔍 지표 설명 & 대시보드 사용법 바로가기</a>',
-        unsafe_allow_html=True
+    st.link_button(
+    "🔍 대시보드 사용 가이드", 
+    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
     )
     st.divider()
     
@@ -56,7 +55,7 @@ def main():
     
     today = datetime.now().date()
     default_end = today - timedelta(days=1)
-    default_start = today - timedelta(days=14)
+    default_start = today - timedelta(days=9)
     start_date, end_date = st.sidebar.date_input(
         "기간 선택",
         value=[default_start, default_end],
@@ -290,7 +289,7 @@ def main():
         df: pd.DataFrame,
         x: str,
         y: list[str] | str,
-        height: int = 450,
+        height: int = 400,
         title: str | None = None,
         ) -> None:
         
@@ -371,7 +370,7 @@ def main():
         styled = style_cmap(
             df_daily,
             gradient_rules=[
-                {"col": "방문수", "cmap":"Blues", "vmax":20000, "low":0.0, "high":0.3},
+                {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
             ]
         )
         st.dataframe(styled, hide_index=True)
@@ -382,7 +381,7 @@ def main():
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>주요 방문 현황</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, **광고유무, 디바이스, 접속지역**별 방문 추이를 확인할 수 있습니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, **광고유무, 디바이스, 접속지역/권역, 유입매체**별 방문 추이를 확인할 수 있습니다.")
     
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["광고유무", "디바이스", "접속지역", "접속권역", "유입매체"])
     
@@ -399,7 +398,13 @@ def main():
             render_stacked_bar(df_paid_tab, x="날짜", y="방문수", color="광고유무")
         with _p: pass
         with c2:
-            st.dataframe(df_paid_tab, hide_index=True)
+            styled = style_cmap(
+                df_paid_tab,
+                gradient_rules=[
+                    {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
+                ]
+            )
+            st.dataframe(styled, hide_index=True)
     
     # — 디바이스 탭
     with tab2:
@@ -414,7 +419,13 @@ def main():
             render_stacked_bar(df_dev_tab, x="날짜", y="방문수", color="디바이스")
         with _p: pass
         with c2:
-            st.dataframe(df_dev_tab, hide_index=True)
+            styled = style_cmap(
+                df_dev_tab,
+                gradient_rules=[
+                    {"col": "방문수", "cmap":"OrRd", "vmax":20000, "low":0.0, "high":0.3},
+                ]
+            )
+            st.dataframe(styled, hide_index=True)
     
     # — 접속지역 탭
     with tab3:
@@ -429,7 +440,13 @@ def main():
             render_stacked_bar(df_geo_tab, x="날짜", y="방문수", color="접속지역")
         with _p: pass
         with c2:
-            st.dataframe(df_geo_tab, hide_index=True)
+            styled = style_cmap(
+                df_geo_tab,
+                gradient_rules=[
+                    {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
+                ]
+            )
+            st.dataframe(styled, hide_index=True)
     
     # - 접속권역 탭
     with tab4: 
@@ -444,7 +461,13 @@ def main():
             render_stacked_bar(df_region_tab, x="날짜", y="방문수", color="접속권역")
         with _p: pass
         with c2:
-            st.dataframe(df_region_tab, hide_index=True)
+            styled = style_cmap(
+                df_region_tab,
+                gradient_rules=[
+                    {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
+                ]
+            )
+            st.dataframe(styled, hide_index=True)
     
             
     # — 유입매체 탭
@@ -460,7 +483,13 @@ def main():
             render_stacked_bar(df_source_tab, x="날짜", y="방문수", color="유입매체")
         with _p: pass
         with c2:
-            st.dataframe(df_source_tab, hide_index=True)
+            styled = style_cmap(
+                df_source_tab,
+                gradient_rules=[
+                    {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
+                ]
+            )
+            st.dataframe(styled, hide_index=True)
 
 
     # ──────────────────────────────────
