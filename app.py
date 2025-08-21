@@ -37,8 +37,6 @@ st.set_page_config(
     page_icon="🍊"  # 이모지 또는 이미지 URL
 )
 
-
-
 view01_name = "WV | 매출 종합 대시보드"
 view02_name = "WV | 액션 종합 대시보드"
 view03_name = "WV | 퍼포먼스 대시보드"
@@ -47,44 +45,101 @@ view05_name = "GA | 트래픽 대시보드"
 view06_name = "GA | PDP조회 대시보드"
 view07_name = "TEST 페이지"
 
+
 with st.sidebar:
+    
+    # st.markdown(
+    #     """
+    #     <h1 style='font-weight:700;'>
+    #         🍊 ORANGE 대시보드
+    #     </h1>
+    #     """,
+    #     unsafe_allow_html=True
+    # )
+    
+    st.markdown(
+        """
+        <!-- Google Fonts 불러오기 -->
+        <link href="https://fonts.googleapis.com/css2?family=Carmen+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+
+        <a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af"
+        target="_blank"
+        style="
+            font-family:'Carmen Sans', sans-serif;
+            display:inline-block;
+            padding:5px 5px;
+            font-size:25px;
+            font-weight:600;
+            color:#31333F;
+            background-color:transparent;
+            border-radius:9px;
+            text-decoration:none;
+            text-align:center;">
+        🍊<br>&#x2009;ORANGE 대시보드&#x2009;
+        </a>
+        """,
+        unsafe_allow_html=True
+    )
+
+# border:2px solid #D6D6D9;
+
+    st.markdown("---")
     st.sidebar.header("Menu")
     
+        
+    st.markdown(
+        """
+        <style>
+        /* option_menu 왼쪽 아이콘 숨기기 */
+        .nav-link i {
+            display: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    ) 
     
     selected = option_menu(
-    menu_title="",
-    options=[
-        view01_name,
-        view02_name,
-        view03_name,
-        view04_name,
-        view05_name,
-        view06_name,
-        view07_name,
-    ],
-    # icons=[
-    #             # https://icons.getbootstrap.com
-    #     "piggy-bank-fill",
-    #     "piggy-bank-fill",
-    #     "currency-exchange",
-    #     "bar-chart-line-fill",
-    #     "tags-fill"
-    # ],
-    # menu_icon="",
-    menu_icon="app-indicator",
-    default_index=1,
-    orientation="vertical",
-    styles={
-        # 컨테이너 배경을 투명하게, 패딩 최소화
-        # "container": {
-        #     "padding": "0px 0px 0px 0px",
-        #     "background-color": "transparent",
-        #     "border": "none"
-        # },
-        "nav-link": {"font-weight": "normal"},
-        "nav-link-selected": {"font-weight": "normal"},
-    }
+        menu_title="",
+        options=[
+            view01_name,
+            view02_name,
+            view03_name,
+            view04_name,
+            view05_name,
+            view06_name,
+            view07_name,
+        ],
+        # icons=[
+        #     # https://icons.getbootstrap.com
+        # ],
+        # menu_icon="?",
+        default_index=0,
+        orientation="vertical",
+        styles={
+            "container": {
+                "padding": "0!important",
+                "background-color": "transparent",
+                "border": "none"
+            },
+            "icon": {
+                "display": "none",
+                "width": "0px",
+                "margin": "0px",
+                "padding": "0px",
+                "opacity": "0"
+            },
+            "nav-link": {
+                "font-size": "16px",
+                "text-align": "left",
+                "margin": "2px",
+                # 아이콘 공간이 사라지니 좌측 패딩도 약간 줄이기(선택)
+                # "padding": "6px 8px"
+            },
+            "nav-link-selected": {"font-weight": "normal"},
+        }
     )
+    
     st.markdown("---")
 
 

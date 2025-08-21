@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import re
 import math
-
+# from streamlit_extras.let_it_rain import rain
 
 def main():
     # ──────────────────────────────────
@@ -38,41 +38,14 @@ def main():
     # ──────────────────────────────────
 
 
-
-
-    # # 예시 데이터 생성
-    # data = {
-    #     'A': [1, 2, 3, 4],
-    #     'B': [5, 6, 7, 8],
-    #     'C': [9, 10, 11, 12]
-    # }
-    # df = pd.DataFrame(data)
-
-    # # 합계 행 추가 (각 열에 대해 합계를 계산)
-    # sum_row = df.sum(numeric_only=True)
-    # sum_row['A'] = sum_row['A']
-    # sum_row['B'] = sum_row['B']
-    # sum_row['C'] = sum_row['C']
-
-    # # 합계 행을 새로운 DataFrame으로 변환
-    # sum_row_df = pd.DataFrame([sum_row])
-
-    # # 합계 행을 "합계"로 레이블 변경 (원하는 경우)
-    # sum_row_df.iloc[0, 0] = "합계"
-
-    # # 합계 행을 제외한 DataFrame을 정렬
-    # df_without_sum = df.sort_values(by='A', ascending=True)  # 예시로 'A' 기준으로 정렬
-
-    # # 정렬된 데이터와 합계 행 결합
-    # df_with_sum = pd.concat([df_without_sum, sum_row_df], ignore_index=True)
-
-    # # st.dataframe으로 출력
-    # st.dataframe(df_with_sum, hide_index=True)
-
-
-
-
-
+    # rain(
+    #     emoji="🍊",
+    #     font_size=30,
+    #     falling_speed=4,
+    #     animation_length=3,
+    # )
+    
+    
     # 예시 데이터 생성
     data = {
         'A': [1, 2, 3, 4],
