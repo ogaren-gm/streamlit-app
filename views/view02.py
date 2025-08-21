@@ -28,23 +28,42 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
+
     st.markdown(
         """
         <style>
-        .reportview-container .main .block-container {
-            max-width: 100% !important;
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
+            /* 전체 컨테이너의 패딩 조정 */
+            .block-container {
+                max-width: 100% !important;
+                padding-top: 4rem;   /* 위쪽 여백 */
+                padding-bottom: 8rem;
+                padding-left: 5rem; 
+                padding-right: 4rem; 
+            }
         </style>
         """,
-        unsafe_allow_html=True,
-    )
+        unsafe_allow_html=True
+    )  
+
     st.subheader('액션 종합 대시보드')
-    st.markdown("""
-    이 대시보드는 방문 > 상품조회 > 쇼룸찾기 > 구매 등 **자사몰의 주요 액션 흐름**을 단계적으로 보여주는 **행동 퍼널 대시보드**입니다.  
-    여기서는 광고비 및 세션수와 더불어 “**각 단계까지 몇 명이 행동했고, 그때의 비용 및 전환 효율은 어땠는지**”를 확인할 수 있습니다.
-    """)
+    st.markdown(
+        """
+        <div style="
+            color:#6c757d;        
+            font-size:14px;       
+            line-height:1.5;      
+        ">
+        이 대시보드는 방문 → 상품조회 → 쇼룸찾기 → 구매 등 
+        <b>자사몰의 주요 액션 흐름</b>을 단계적으로 보여주는 
+        <b>행동 퍼널 대시보드</b>입니다.<br>
+        여기서는 광고비 및 세션수와 더불어 
+        “<b>각 단계까지 몇 명이 행동했고, 그때의 비용 및 전환 효율은 어땠는지</b>”를 
+        확인할 수 있습니다.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.divider()
 
 

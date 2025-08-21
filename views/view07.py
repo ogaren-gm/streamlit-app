@@ -22,19 +22,24 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
+
     st.markdown(
         """
         <style>
-        .reportview-container .main .block-container {
-            max-width: 100% !important;
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
+            /* 전체 컨테이너의 패딩 조정 */
+            .block-container {
+                max-width: 100% !important;
+                padding-top: 4rem;   /* 위쪽 여백 */
+                padding-bottom: 8rem;
+                padding-left: 5rem; 
+                padding-right: 4rem; 
+            }
         </style>
         """,
-        unsafe_allow_html=True,
-    )
-    st.subheader('TEST PAGE')
+        unsafe_allow_html=True
+    )  
+
+    st.subheader('TEST')
     # ──────────────────────────────────
 
     # # rain(

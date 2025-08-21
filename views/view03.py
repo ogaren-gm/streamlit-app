@@ -30,24 +30,41 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
+
     st.markdown(
         """
         <style>
-        .reportview-container .main .block-container {
-            max-width: 100% !important;
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
-        
+            /* 전체 컨테이너의 패딩 조정 */
+            .block-container {
+                max-width: 100% !important;
+                padding-top: 4rem;   /* 위쪽 여백 */
+                padding-bottom: 8rem;
+                padding-left: 5rem; 
+                padding-right: 4rem; 
+            }
         </style>
         """,
-        unsafe_allow_html=True,
-    )
+        unsafe_allow_html=True
+    )  
+
     st.subheader('퍼포먼스 대시보드')
-    st.markdown("""
-    이 대시보드는 **GA와 광고 데이터를 연결**해서, 광고비부터 액션 데이터까지 **주요 마케팅 성과**를 한눈에 확인할 수 있는 맞춤 대시보드입니다.  
-    여기서는 **기간/매체/브랜드/품목** 등 원하는 조건을 선택해서, 광고 성과 지표들을 자유롭게 비교 · 분석할 수 있습니다.
-    """)
+    st.markdown(
+        """
+        <div style="
+            color:#6c757d;        
+            font-size:14px;       
+            line-height:1.5;      
+        ">
+        이 대시보드는 <b>GA와 광고 데이터를 연결</b>해서, 
+        광고비부터 액션 데이터까지 <b>주요 마케팅 성과</b>를 
+        한눈에 확인할 수 있는 맞춤 대시보드입니다.<br>
+        여기서는 <b>기간/매체/브랜드/품목</b> 등 원하는 조건을 선택해서, 
+        광고 성과 지표들을 자유롭게 비교 · 분석할 수 있습니다.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.divider()
 
 

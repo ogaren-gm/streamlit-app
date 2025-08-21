@@ -28,24 +28,39 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
+
     st.markdown(
         """
         <style>
-        .reportview-container .main .block-container {
-            max-width: 100% !important;
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
-        
+            /* 전체 컨테이너의 패딩 조정 */
+            .block-container {
+                max-width: 100% !important;
+                padding-top: 4rem;   /* 위쪽 여백 */
+                padding-bottom: 8rem;
+                padding-left: 5rem; 
+                padding-right: 4rem; 
+            }
         </style>
         """,
-        unsafe_allow_html=True,
-    )
+        unsafe_allow_html=True
+    )    
+
     st.subheader('매출 종합 대시보드')
-    st.markdown("""
-    이 대시보드는 **매출 · 매체 · 유입** 데이터를 일자별로 한눈에 보여주는 **가장 개괄적인 대시보드**입니다.  
-    여기서는 일자/브랜드/품목별로 “**얼마 벌었고, 얼마 썼고, 얼마 유입됐고**”를 효율 지표(AOV, ROAS, CVR)와 함께 확인할 수 있습니다.
-    """)
+    st.markdown(
+        """
+        <div style="
+            color:#6c757d;        /* 글자 색 (회색톤) */
+            font-size:14px;       /* 글자 크기 */
+            line-height:1.5;      /* 줄간격 */
+        ">
+        이 대시보드는 <b>매출 · 매체 · 유입</b> 데이터를 일자별로 한눈에 보여주는 
+        <b>가장 개괄적인 대시보드</b>입니다.<br>
+        여기서는 일자/브랜드/품목별로 “<b>얼마 벌었고, 얼마 썼고, 얼마 유입됐고</b>”를 
+        효율 지표(AOV, ROAS, CVR)와 함께 확인할 수 있습니다.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
     st.divider()
 
 

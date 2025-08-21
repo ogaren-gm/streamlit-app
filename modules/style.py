@@ -170,11 +170,11 @@ def style_cmap(df_or_styler,
     # (추가) 합계/평균 행 row 단위 컬러링
     def highlight_summary(row):
         if ("기본정보","날짜") in row.index and row[("기본정보","날짜")] in ["합계","평균"]:
-            return [f"background-color: #F8F9FB; color: #8E9097; font-weight: bold;"] * len(row)
+            return [f"background-color: #F8F9FB; color: #8E9097;"] * len(row)
         elif "event_date" in row.index and row["event_date"] in ["합계","평균"]:
-            return [f"background-color: #F8F9FB; color: #8E9097; font-weight: bold;"] * len(row)
+            return [f"background-color: #F8F9FB; color: #8E9097;"] * len(row)
         elif "날짜" in row.index and row["날짜"] in ["합계","평균"]:
-            return [f"background-color: #F8F9FB; color: #8E9097; font-weight: bold;"] * len(row)
+            return [f"background-color: #F8F9FB; color: #8E9097;"] * len(row)
         return [""] * len(row)
 
     styler = styler.apply(highlight_summary, axis=1)

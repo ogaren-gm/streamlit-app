@@ -21,24 +21,39 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정 (반드시 최상단)
     # ──────────────────────────────────
+
     st.markdown(
         """
         <style>
-        .reportview-container .main .block-container {
-            max-width: 100% !important;
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
-
+            /* 전체 컨테이너의 패딩 조정 */
+            .block-container {
+                max-width: 100% !important;
+                padding-top: 4rem;   /* 위쪽 여백 */
+                padding-bottom: 8rem;
+                padding-left: 5rem; 
+                padding-right: 4rem; 
+            }
         </style>
         """,
-        unsafe_allow_html=True,
-    )
+        unsafe_allow_html=True
+    )  
+
     st.subheader('GA PDP 대시보드')
-    st.markdown("""
-    이 대시보드에서는 **브랜드, 카테고리, 제품** 단위의 **제품 상세 페이지(PDP) 조회량**을 확인할 수 있습니다.   
-    해당 대시보드는 view_item 이벤트를 발생시킨 세션 데이터를 기반으로 구성되어 있습니다. 
-    """)
+    st.markdown(
+        """
+        <div style="
+            color:#6c757d;        
+            font-size:14px;       
+            line-height:1.5;      
+        ">
+        이 대시보드에서는 <b>브랜드, 카테고리, 제품</b> 단위의 
+        <b>제품 상세 페이지(PDP) 조회량</b>을 확인할 수 있습니다.<br>
+        해당 대시보드는 view_item 이벤트를 발생시킨 세션 데이터를 기반으로 구성되어 있습니다.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.divider()
 
 

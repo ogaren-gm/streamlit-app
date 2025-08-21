@@ -24,23 +24,40 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
+
     st.markdown(
         """
         <style>
-        .reportview-container .main .block-container {
-            max-width: 100% !important;
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
+            /* 전체 컨테이너의 패딩 조정 */
+            .block-container {
+                max-width: 100% !important;
+                padding-top: 4rem;   /* 위쪽 여백 */
+                padding-bottom: 8rem;
+                padding-left: 5rem; 
+                padding-right: 4rem; 
+            }
         </style>
         """,
-        unsafe_allow_html=True,
-    )
+        unsafe_allow_html=True
+    )  
+
     st.subheader('GA 트래픽 대시보드')
-    st.markdown("""
-    이 대시보드는 **자사몰 트래픽**의 방문 유형, 광고 유무, 접속 지역, 주요 이벤트 세션수 등을 한눈에 보여주는 **GA 대시보드**입니다.  
-    여기서는 “**얼마나 방문했는지, 어떤 사용자가 방문했는지, 어떤 이벤트를 발생시켰는지**”의 추이를 직관적으로 확인할 수 있습니다.
-    """)
+    st.markdown(
+        """
+        <div style="
+            color:#6c757d;        
+            font-size:14px;       
+            line-height:1.5;      
+        ">
+        이 대시보드는 <b>자사몰 트래픽</b>의 방문 유형, 광고 유무, 접속 지역, 주요 이벤트 세션수 등을 
+        한눈에 보여주는 <b>GA 대시보드</b>입니다.<br>
+        여기서는 “<b>얼마나 방문했는지, 어떤 사용자가 방문했는지, 
+        어떤 이벤트를 발생시켰는지</b>”의 추이를 직관적으로 확인할 수 있습니다.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.divider()
     
     

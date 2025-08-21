@@ -44,53 +44,48 @@ view04_name = "언드·PPL 대시보드"
 view05_name = "GA 트래픽 대시보드"
 view06_name = "GA PDP 대시보드"
 view07_name = "TEST"
-
+# border:2px solid #D6D6D9;
 
 with st.sidebar:
-    
-    # st.markdown(
-    #     """
-    #     <h1 style='font-weight:700;'>
-    #         🍊 ORANGE 대시보드
-    #     </h1>
-    #     """,
-    #     unsafe_allow_html=True
-    # )
-    
+
     st.markdown(
         """
-        <!-- Google Fonts 불러오기 -->
-        <link href="https://fonts.googleapis.com/css2?family=Carmen+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-        <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700&display=swap" rel="stylesheet">
-
-
-        <a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af"
-        target="_blank"
-        style="
-            font-family:'Baloo 2', sans-serif;
-            display:inline-block;
-            padding:0px 0px;
-            font-size:25px;
-            font-weight:700;
-            color:#31333F;
-            background-color:transparent;
-            border-radius:9px;
-            text-decoration:none;
-            text-align:center;">
-        🍊<br>ORANGE 대시보드&#x2009;
-        </a>
+        <div style="display:flex; align-items:baseline;">
+            <span style="font-size:26px; font-weight:700; color:#31333F;">O\u200AR\u200AA\u200AN\u200AG\u200AE</span>
+            <span style="font-size:16px; color:#8E9097; margin-left:10px;">Dashboard</span>
+        </div>
         """,
         unsafe_allow_html=True
     )
 
-    st.markdown("""
-    설명   
-    설명
-    """)
 
-# border:2px solid #D6D6D9;
+    # st.markdown(
+    #     """
+    #     <!-- Google Fonts -->
+    #     <link href="https://fonts.googleapis.com/css2?family=Arimo:wght@400;600;700&display=swap" rel="stylesheet">
+    #     <!-- Notion Link -->
+    #     <a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af"
+    #     target="_blank"
+    #     style="
+    #         font-family:'sans-serif', sans-serif;
+    #         display:inline-block;
+    #         padding:0px 0px;
+    #         font-size:24px;
+    #         font-weight:700;
+    #         color:#31333F;
+    #         background-color:transparent;
+    #         border-radius:9px;
+    #         text-decoration:none;
+    #         text-align:center;">
+    #     ORANGE
+    #     </a>
+    #     """,
+    #     unsafe_allow_html=True
+    # )
+    st.markdown(" ")
+    st.link_button("🍊 대시보드 활용 가이드", "https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af", type="secondary")
 
-    st.markdown("---")
+    st.divider()
     st.sidebar.header("Menu")
     
         
