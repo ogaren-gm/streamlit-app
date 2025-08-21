@@ -41,15 +41,11 @@ def main():
         """,
         unsafe_allow_html=True,
     )
-    st.subheader('언드 대시보드')
+    st.subheader('언드·PPL 대시보드')
     st.markdown("""
     이 대시보드는 **PPL 채널별 성과 및 기여**를 확인할 수 있는 대시보드입니다.  
     여기서는 각 채널별 **참여 지표**(조회수, 좋아요 등)와 PLP 랜딩 이후 **사용자 행동**을 살펴볼 수 있으며, 전체 검색량 대비 **채널별 쿼리 기여량**을 파악할 수 있습니다.
     """)
-    st.link_button(
-    "🔍 대시보드 사용 가이드", 
-    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
-    )
     st.divider()
     
     
@@ -230,8 +226,8 @@ def main():
                 ("ENGAGEMENT",   "댓글수"),            # 
                 ("ENGAGEMENT",   "브랜드언급량"),       # 
                 ("ENGAGEMENT",   "링크클릭수"),         # 
-                ("GA ACTION",    "유입 세션수"),       # session_count
-                ("GA ACTION",    "평균세션시간(초)"),   # avg_session_duration_sec
+                ("GA",    "유입 세션수"),       # session_count
+                ("GA",    "평균세션시간(초)"),   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"),          # view_item_list_sessions
                 ("PDP조회",    "Acutal"),          # view_item_sessions
                 ("PDPscr50",    "Acutal"),         # scroll_50_sessions
@@ -252,8 +248,8 @@ def main():
                 ("ENGAGEMENT",   "댓글수"),            # 
                 ("ENGAGEMENT",   "브랜드언급량"),       # 
                 ("ENGAGEMENT",   "링크클릭수"),         # 
-                ("GA ACTION",    "유입 세션수"),       # session_count
-                ("GA ACTION",    "평균세션시간(초)"),   # avg_session_duration_sec
+                ("GA",    "유입 세션수"),       # session_count
+                ("GA",    "평균세션시간(초)"),   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"),          # view_item_list_sessions
                 ("PLP조회",    "CVR"),     
                 ("PDP조회",    "Acutal"),          # view_item_sessions
@@ -283,8 +279,8 @@ def main():
                 ("ENGAGEMENT",   "댓글수"),            # 
                 ("ENGAGEMENT",   "브랜드언급량"),       # 
                 ("ENGAGEMENT",   "링크클릭수"),         # 
-                ("GA ACTION",    "유입 세션수"),       # session_count
-                ("GA ACTION",    "평균세션시간(초)"),   # avg_session_duration_sec
+                ("GA",    "유입 세션수"),       # session_count
+                ("GA",    "평균세션시간(초)"),   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"),          # view_item_list_sessions
                 ("PLP조회",    "CPA"),     
                 ("PDP조회",    "Acutal"),          # view_item_sessions
@@ -314,8 +310,8 @@ def main():
                 ("ENGAGEMENT",   "댓글수"),            # 
                 ("ENGAGEMENT",   "브랜드언급량"),       # 
                 ("ENGAGEMENT",   "링크클릭수"),         # 
-                ("GA ACTION",    "유입 세션수"),       # session_count
-                ("GA ACTION",    "평균세션시간(초)"),   # avg_session_duration_sec
+                ("GA",    "유입 세션수"),       # session_count
+                ("GA",    "평균세션시간(초)"),   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"),          # view_item_list_sessions
                 ("PLP조회",    "CVR"),     
                 ("PLP조회",    "CPA"),     
@@ -357,8 +353,8 @@ def main():
                 ("ENGAGEMENT",   "댓글수"):0,            # 
                 ("ENGAGEMENT",   "브랜드언급량"):0,       # 
                 ("ENGAGEMENT",   "링크클릭수"):0,         # 
-                ("GA ACTION",    "유입 세션수"):0,       # session_count
-                ("GA ACTION",    "평균세션시간(초)"):0,   # avg_session_duration_sec
+                ("GA",    "유입 세션수"):0,       # session_count
+                ("GA",    "평균세션시간(초)"):0,   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"):0,          # view_item_list_sessions
                 ("PLP조회",    "CVR"):2,     
                 ("PLP조회",    "CPA"):0,     
@@ -400,7 +396,7 @@ def main():
         }
         )
 
-        st.dataframe(styled, use_container_width=True, height=420, hide_index=True)
+        st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
 
     # => "채널별 쿼리 기여량"용
     def decorate_df_ctb(df: pd.DataFrame,
@@ -495,7 +491,7 @@ def main():
                 ("베리엠제이",        "비중(%)"): " %",
         }
         )
-        st.dataframe(styled, use_container_width=True, height=420, hide_index=True)
+        st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
 
     
     # def render_stacked_bar(
@@ -1533,6 +1529,11 @@ def main():
     st.subheader(" ")
     st.markdown("<h5 style='margin:0'>채널별 인게이지먼트 및 액션</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별, **인게이지먼트** (참여 및 반응 데이터), **세션수 및 주요 액션별 효율** (GA 데이터)을 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
+    with st.popover("지표 설명"):
+        st.markdown("""
+                    - **CVR** (Conversion Rate) : **전환율** (주문수 ÷ 세션수 × 100)  
+                    - **CPA** (Cost Per Action) : **행동당 비용** (광고비 ÷ 전환수)  
+                    """)
 
     _df_merged = pd.merge(PPL_DATA, PPL_ACTION, on=['날짜', 'utm_camp', 'utm_content'], how='outer')
     df_merged = pd.merge(_df_merged, PPL_LIST, on=['utm_camp', 'utm_content'], how='left')
@@ -1949,7 +1950,7 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
             except: pass
             df_f = df_f[['날짜', '키워드', '검색량']]
-            st.dataframe(df_f, hide_index=True)
+            st.dataframe(df_f,  row_height=30, hide_index=True)
             
     with tab2: 
         df = query_nor.copy()
@@ -2077,7 +2078,7 @@ def main():
             fig.update_layout(xaxis_title=None, yaxis_title=None)
             st.plotly_chart(fig, use_container_width=True)
             df_f = df_f[['날짜', '키워드', '검색량']]
-            st.dataframe(df_f, hide_index=True)
+            st.dataframe(df_f, row_height=30,  hide_index=True)
 
 
     # ────────────────────────────────────────────────────────────────

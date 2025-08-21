@@ -34,36 +34,35 @@ def main():
         """,
         unsafe_allow_html=True,
     )
-    st.subheader('테스트')
+    st.subheader('TEST PAGE')
     # ──────────────────────────────────
 
-
-    # rain(
-    #     emoji="🍊",
-    #     font_size=30,
-    #     falling_speed=4,
-    #     animation_length=3,
-    # )
+    # # rain(
+    # #     emoji="🍊",
+    # #     font_size=30,
+    # #     falling_speed=4,
+    # #     animation_length=3,
+    # # )
     
     
-    # 예시 데이터 생성
-    data = {
-        'A': [1, 2, 3, 4],
-        'B': [5, 6, 7, 8],
-        'C': [9, 10, 11, 12],
-        'Category': ['X', 'Y', 'Z', 'W']
-    }
-    df = pd.DataFrame(data)
+    # # 예시 데이터 생성
+    # data = {
+    #     'A': [1, 2, 3, 4],
+    #     'B': [5, 6, 7, 8],
+    #     'C': [9, 10, 11, 12],
+    #     'Category': ['X', 'Y', 'Z', 'W']
+    # }
+    # df = pd.DataFrame(data)
 
 
-    sum_row = df.select_dtypes(include='number').sum()
+    # sum_row = df.select_dtypes(include='number').sum()
 
-    total_row = df.select_dtypes(exclude='number').apply(lambda x: 'Total')
+    # total_row = df.select_dtypes(exclude='number').apply(lambda x: 'Total')
 
-    sum_row_df = pd.DataFrame([sum_row]).assign(**total_row)
+    # sum_row_df = pd.DataFrame([sum_row]).assign(**total_row)
 
-    df_with_sum = pd.concat([sum_row_df, df], ignore_index=True)
+    # df_with_sum = pd.concat([sum_row_df, df], ignore_index=True)
 
-    # st.dataframe으로 합계 행을 포함한 데이터프레임을 출력
-    st.dataframe(df_with_sum, hide_index=True)
+    # # st.dataframe으로 합계 행을 포함한 데이터프레임을 출력
+    # st.dataframe(df_with_sum, hide_index=True)
 

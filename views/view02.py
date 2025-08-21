@@ -43,12 +43,8 @@ def main():
     st.subheader('액션 종합 대시보드')
     st.markdown("""
     이 대시보드는 방문 > 상품조회 > 쇼룸찾기 > 구매 등 **자사몰의 주요 액션 흐름**을 단계적으로 보여주는 **행동 퍼널 대시보드**입니다.  
-    여기서는 광고비 및 세션수와 더불어 “**각 단계까지 몇 명이 행동했고, 그때의 비용/전환 효율은 어땠는지**”를 확인할 수 있습니다.
+    여기서는 광고비 및 세션수와 더불어 “**각 단계까지 몇 명이 행동했고, 그때의 비용 및 전환 효율은 어땠는지**”를 확인할 수 있습니다.
     """)
-    st.link_button(
-    "🔍 대시보드 사용 가이드", 
-    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
-    )
     st.divider()
 
 
@@ -321,6 +317,13 @@ def main():
         num_cols = df.select_dtypes(include=['number']).columns
         df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))
 
+        # 합계 & 평균 행 추가
+        sum_row = df[num_cols].sum().to_frame().T
+        sum_row['event_date'] = "합계"
+        mean_row = df[num_cols].mean().to_frame().T
+        mean_row['event_date'] = "평균"
+        df = pd.concat([df, sum_row, mean_row], ignore_index=True)
+
         # 컬럼 이름 변경 - 멀티 인덱스
         df.columns = pd.MultiIndex.from_tuples([
             ("기본정보",      "날짜"),             # event_date
@@ -415,8 +418,8 @@ def main():
         styled2 = style_cmap(
             styled,
             gradient_rules=[
-                {"col": ("유입 세션수", "Actual"), "cmap":"OrRd", "low":0.0, "high":0.3},
-                {"col": ("PDP조회", "Actual"), "cmap":"OrRd", "vmax":10000, "low":0.0, "high":0.3},
+                {"col": ("유입 세션수", "Actual"), "cmap":"OrRd", "vmax":20000, "low":0.0, "high":0.3},
+                {"col": ("PDP조회", "Actual"), "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
                 {"col": ("PDPscr50", "Actual"), "cmap":"OrRd", "vmax":3000, "low":0.0, "high":0.3},
                 {"col": ("가격표시", "Actual"), "cmap":"OrRd", "vmax":2000, "low":0.0, "high":0.3},
                 {"col": ("쇼룸찾기", "Actual"), "cmap":"OrRd", "vmax":1000, "low":0.0, "high":0.3},
@@ -427,7 +430,7 @@ def main():
             ]
         )
         
-        st.dataframe(styled2, use_container_width=True, height=400, hide_index=True)
+        st.dataframe(styled2, use_container_width=True,  row_height=30, hide_index=True)
 
 
     # def render_aggrid(
@@ -765,8 +768,17 @@ def main():
     # 통합 액션 리포트 
     # ────────────────────────────────────────────────────────────────
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 액션 리포트</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **광고비**, **세션수 및 주요 액션별 효율**(GA) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
-
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **광고비, 세션수, 주요 액션별 효율** 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
+    with st.popover("지표 설명"):
+        st.markdown("""
+        - **CPA** (Cost Per Action) : **행동당 비용** (광고비 ÷ 전환수)  
+        - **액션별 CVR**은 **이전행동**에서 **다음행동**으로 넘어가는 비율을 나타냅니다.  
+            - PDP조회는 **전체 세션**을 기준으로,  
+            - 이후 액션은 **PDP조회**를 기준으로,  
+            - 구매완료는 2가지로 측정합니다.  
+                - CVR1 : **PDP조회** → 구매완료  
+                - CVR2 : **쇼룸예약** → 구매완료  
+        """)
     render_style(df_total)
 
 

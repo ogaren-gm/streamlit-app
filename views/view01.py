@@ -43,18 +43,9 @@ def main():
     )
     st.subheader('매출 종합 대시보드')
     st.markdown("""
-    이 대시보드는 **매출 · 광고비 · 유입** 데이터를 일자별로 한눈에 보여주는 **가장 개괄적인 대시보드**입니다.  
+    이 대시보드는 **매출 · 매체 · 유입** 데이터를 일자별로 한눈에 보여주는 **가장 개괄적인 대시보드**입니다.  
     여기서는 일자/브랜드/품목별로 “**얼마 벌었고, 얼마 썼고, 얼마 유입됐고**”를 효율 지표(AOV, ROAS, CVR)와 함께 확인할 수 있습니다.
     """)
-    # st.markdown(
-    #     '<a href="https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb" target="_blank">'
-    #     '🔍 지표 설명 & 대시보드 사용법 바로가기</a>',
-    #     unsafe_allow_html=True
-    # )
-    st.link_button(
-    "🔍 대시보드 사용 가이드", 
-    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
-    )
     st.divider()
 
 
@@ -329,17 +320,24 @@ def main():
         # }
         # apply_map = {k: v for k, v in rename_map.items() if k in df.columns}
         # df = df.rename(columns=apply_map)
+        
+        # 합계 & 평균 행 추가
+        sum_row = df[num_cols].sum().to_frame().T
+        sum_row['event_date'] = "합계"
+        mean_row = df[num_cols].mean().to_frame().T
+        mean_row['event_date'] = "평균"
+        df = pd.concat([df, sum_row, mean_row], ignore_index=True)
 
         # 컬럼 이름 변경 - 멀티 인덱스
         df.columns = pd.MultiIndex.from_tuples([
             ("기본정보",      "날짜"),              # event_date
             ("COST",        "매출"),               # ord_amount_sum
             ("COST",        "주문수"),             # ord_count_sum
-            ("COST",        "AOV(평균주문금액)"),    # AOV
-            ("PERFORMANCE", "광고비"),              # cost_gross_sum
-            ("PERFORMANCE", "ROAS(광고수익률)"),     # ROAS
+            ("COST",        "AOV"),    # AOV
+            ("MEDIA", "광고비"),              # cost_gross_sum
+            ("MEDIA", "ROAS"),     # ROAS
             ("GA",          "세션수"),              # session_count
-            ("GA",          "CVR(전환율)"),          # CVR
+            ("GA",          "CVR"),          # CVR
         ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)        
         
         return df
@@ -350,27 +348,29 @@ def main():
             decimals_map={
                 ("COST",        "매출"): 0,
                 ("COST",        "주문수"): 0,
-                ("COST",        "AOV(평균주문금액)"): 0,
-                ("PERFORMANCE", "광고비"): 0,
-                ("PERFORMANCE", "ROAS(광고수익률)"): 1,
+                ("COST",        "AOV"): 0,
+                ("MEDIA", "광고비"): 0,
+                ("MEDIA", "ROAS"): 1,
                 ("GA",          "세션수"): 0,
-                ("GA",          "CVR(전환율)"): 2,
+                ("GA",          "CVR"): 2,
             },
             suffix_map={
-                ("PERFORMANCE", "ROAS(광고수익률)"): " %",
-                ("GA",          "CVR(전환율)"): " %",
+                ("MEDIA", "ROAS"): " %",
+                ("GA",          "CVR"): " %",
         }
         )
         styled2 = style_cmap(
             styled,
             gradient_rules=[
-                {"col": ("COST",         "매출"), "cmap":"OrRd", "vmax":200000000, "low":0.0, "high":0.3},
+                {"col": ("COST",         "매출"), "cmap":"Greens", "vmax":200000000, "low":0.0, "high":0.3},
+                {"col": ("MEDIA", "광고비"), "cmap":"Blues", "vmax":50000000, "low":0.0, "high":0.3},
+                {"col": ("GA",          "세션수"), "cmap":"OrRd", "vmax":20000, "low":0.0, "high":0.3},
             ],
         )
-        st.dataframe(styled2, use_container_width=True, height=400, hide_index=True)
+        st.dataframe(styled2, use_container_width=True, hide_index=True, row_height=30)
 
 
-
+# height=410, 
         
     # def render_aggrid(
     #     df: pd.DataFrame,
@@ -547,8 +547,13 @@ def main():
     # 통합 매출 리포트 (FF4B4B -> FF804B)
     # ────────────────────────────────────────────────────────────────
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 매출 리포트</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **COST**(매출), **PERFORMANCE**(광고비), **GA**(유입) 데이터를 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
-    
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **매출 · 매체 · 유입** 데이터와 **효율 지표**를 확인할 수 있습니다.", unsafe_allow_html=True)
+    with st.popover("지표 설명"):
+        st.markdown("""
+                    - **AOV** (Average Order Value) : **평균주문금액** (매출 ÷ 주문수)  
+                    - **ROAS** (Return On Ad Spend) : **광고 수익률** (매출 ÷ 광고비 × 100)  
+                    - **CVR** (Conversion Rate) : **전환율** (주문수 ÷ 세션수 × 100)  
+                    """)
     render_style(df_total)
 
 

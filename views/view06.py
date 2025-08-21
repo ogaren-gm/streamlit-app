@@ -34,15 +34,11 @@ def main():
         """,
         unsafe_allow_html=True,
     )
-    st.subheader('PDP조회 대시보드')
+    st.subheader('GA PDP 대시보드')
     st.markdown("""
     이 대시보드에서는 **브랜드, 카테고리, 제품** 단위의 **제품 상세 페이지(PDP) 조회량**을 확인할 수 있습니다.   
     해당 대시보드는 view_item 이벤트를 발생시킨 세션 데이터를 기반으로 구성되어 있습니다. 
     """)
-    st.link_button(
-    "🔍 대시보드 사용 가이드", 
-    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
-    )
     st.divider()
 
 
@@ -156,8 +152,16 @@ def main():
         fig.update_xaxes(tickformat="%m월 %d일")
         st.plotly_chart(fig, use_container_width=True)
 
+    def summary_row(df):
+        # 숫자형 컬럼만 자동 추출
+        num_cols = df.select_dtypes(include="number").columns
+        sum_row = df[num_cols].sum().to_frame().T
+        sum_row['날짜'] = "합계"
+        mean_row = df[num_cols].mean().to_frame().T
+        mean_row['날짜'] = "평균"
+        df = pd.concat([df, sum_row, mean_row], ignore_index=True)
 
-
+        return df  
 
     # 데이터프레임 생성
     # ──────────────────────────────────
@@ -219,8 +223,20 @@ def main():
         render_line_chart(df_brand, x="날짜", y=y_cols)
     with _p: pass
     with col2:
-        st.dataframe(df_brand, hide_index=True)
-        
+        styled = style_format(
+            summary_row(df_brand),
+            decimals_map={
+                ("누어"): 0,
+                ("슬립퍼"): 0,
+            },
+        )
+        styled2 = style_cmap(
+            styled,
+            gradient_rules=[
+                {"col": "슬립퍼", "cmap":"Purples", "vmax":6000, "low":0.0, "high":0.3},
+            ]
+        )
+        st.dataframe(styled2, row_height=30,  hide_index=True)
     
     # ──────────────────────────────────
     # 2) 카테고리별 추이
@@ -312,7 +328,24 @@ def main():
         col_sums = {col: df_table[col].sum() for col in mid_cats}
         sorted_cols = sorted(col_sums, key=lambda c: col_sums[c], reverse=True)
         df_table = df_table[["날짜"] + sorted_cols]
-        st.dataframe(df_table, hide_index=True)
+
+        styled = style_format(
+            summary_row(df_table),
+            decimals_map={
+                ("패브릭 침대"): 0,
+                ("매트리스"): 0,
+                ("원목 침대"): 0,
+                ("기타"): 0,
+                ("프레임"): 0,
+            },
+        )
+        styled2 = style_cmap(
+            styled,
+            gradient_rules=[
+                {"col": "매트리스", "cmap":"Purples", "vmax":3000, "low":0.0, "high":0.3},
+            ]
+        )
+        st.dataframe(styled2, row_height=30,  hide_index=True)
         
         
         

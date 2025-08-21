@@ -37,13 +37,13 @@ st.set_page_config(
     page_icon="🍊"  # 이모지 또는 이미지 URL
 )
 
-view01_name = "WV | 매출 종합 대시보드"
-view02_name = "WV | 액션 종합 대시보드"
-view03_name = "WV | 퍼포먼스 대시보드"
-view04_name = "WV | 언드(PPL) 대시보드"
-view05_name = "GA | 트래픽 대시보드"
-view06_name = "GA | PDP조회 대시보드"
-view07_name = "TEST 페이지"
+view01_name = "매출 종합 대시보드"
+view02_name = "액션 종합 대시보드"
+view03_name = "퍼포먼스 대시보드"
+view04_name = "언드·PPL 대시보드"
+view05_name = "GA 트래픽 대시보드"
+view06_name = "GA PDP 대시보드"
+view07_name = "TEST"
 
 
 with st.sidebar:
@@ -61,25 +61,32 @@ with st.sidebar:
         """
         <!-- Google Fonts 불러오기 -->
         <link href="https://fonts.googleapis.com/css2?family=Carmen+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700&display=swap" rel="stylesheet">
+
 
         <a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af"
         target="_blank"
         style="
-            font-family:'Carmen Sans', sans-serif;
+            font-family:'Baloo 2', sans-serif;
             display:inline-block;
-            padding:5px 5px;
+            padding:0px 0px;
             font-size:25px;
-            font-weight:600;
+            font-weight:700;
             color:#31333F;
             background-color:transparent;
             border-radius:9px;
             text-decoration:none;
             text-align:center;">
-        🍊<br>&#x2009;ORANGE 대시보드&#x2009;
+        🍊<br>ORANGE 대시보드&#x2009;
         </a>
         """,
         unsafe_allow_html=True
     )
+
+    st.markdown("""
+    설명   
+    설명
+    """)
 
 # border:2px solid #D6D6D9;
 

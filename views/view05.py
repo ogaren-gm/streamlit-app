@@ -36,15 +36,11 @@ def main():
         """,
         unsafe_allow_html=True,
     )
-    st.subheader('트래픽 대시보드')
+    st.subheader('GA 트래픽 대시보드')
     st.markdown("""
     이 대시보드는 **자사몰 트래픽**의 방문 유형, 광고 유무, 접속 지역, 주요 이벤트 세션수 등을 한눈에 보여주는 **GA 대시보드**입니다.  
     여기서는 “**얼마나 방문했는지, 어떤 사용자가 방문했는지, 어떤 이벤트를 발생시켰는지**”의 추이를 직관적으로 확인할 수 있습니다.
     """)
-    st.link_button(
-    "🔍 대시보드 사용 가이드", 
-    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
-    )
     st.divider()
     
     
@@ -224,8 +220,21 @@ def main():
             .rename(columns={"event_date": "날짜"})
         )
         # 날짜 형식 변경
-        result["날짜"] = result["날짜"].dt.strftime("%Y-%m-%d")
+        result["날짜"] = result["날짜"].dt.strftime("%Y-%m-%d") 
         return result
+
+
+    def summary_row(df):
+        # 숫자형 컬럼만 자동 추출
+        num_cols = df.select_dtypes(include="number").columns
+        sum_row = df[num_cols].sum().to_frame().T
+        sum_row['날짜'] = "합계"
+        mean_row = df[num_cols].mean().to_frame().T
+        mean_row['날짜'] = "평균"
+        df = pd.concat([df, sum_row, mean_row], ignore_index=True)
+
+        return df     
+
 
     def pivot_bySource(
         df: pd.DataFrame,
@@ -331,6 +340,8 @@ def main():
         fig.update_xaxes(tickformat="%m월 %d일")
         st.plotly_chart(fig, use_container_width=True)
 
+    # 합계 & 평균 행 추가 (단, num_cols 비정의되어 있을때)
+
 
 
     # 데이터프레임 생성
@@ -339,7 +350,7 @@ def main():
     df_daily_device  =  pivot_daily(df_psi, group_cols=["device__category"])
     df_daily_geo     =  pivot_daily(df_psi, group_cols=["geo__city"],          top_n=6,   기타_label="기타")
     df_daily_source  =  pivot_daily(df_psi, group_cols=["_sourceMedium"],      top_n=20,   기타_label="기타")
-    df_daily_region  = pivot_daily(df_psi, group_cols=["_geo_region"])
+    df_daily_region  =  pivot_daily(df_psi, group_cols=["_geo_region"])
 
     # 데이터프레임 별 -> 컬럼명 한글 치환
     df_daily_paid   = df_daily_paid.rename(columns={"isPaid_4":           "광고유무"})
@@ -367,13 +378,22 @@ def main():
         render_line_chart(df_daily, x="날짜", y=y_cols)
     with _p: pass
     with c2:
-        styled = style_cmap(
-            df_daily,
+        styled = style_format(
+            summary_row(df_daily),
+            decimals_map={
+                ("방문수"): 0,
+                ("유저수"): 0,
+                ("신규방문수"): 0,
+                ("재방문수"): 0,
+            },
+        )
+        styled2 = style_cmap(
+            styled,
             gradient_rules=[
                 {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
             ]
         )
-        st.dataframe(styled, hide_index=True)
+        st.dataframe(styled2, row_height=30,  hide_index=True)
 
 
     # ──────────────────────────────────
@@ -398,13 +418,22 @@ def main():
             render_stacked_bar(df_paid_tab, x="날짜", y="방문수", color="광고유무")
         with _p: pass
         with c2:
-            styled = style_cmap(
+            styled = style_format(
                 df_paid_tab,
+                decimals_map={
+                    ("방문수"): 0,
+                    ("유저수"): 0,
+                    ("신규방문수"): 0,
+                    ("재방문수"): 0,
+                },
+            )
+            styled2 = style_cmap(
+                styled,
                 gradient_rules=[
-                    {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
+                    {"col": "방문수", "cmap":"OrRd", "vmax":20000, "low":0.0, "high":0.3},
                 ]
             )
-            st.dataframe(styled, hide_index=True)
+            st.dataframe(styled2,  row_height=30,  hide_index=True)
     
     # — 디바이스 탭
     with tab2:
@@ -419,13 +448,22 @@ def main():
             render_stacked_bar(df_dev_tab, x="날짜", y="방문수", color="디바이스")
         with _p: pass
         with c2:
-            styled = style_cmap(
+            styled = style_format(
                 df_dev_tab,
+                decimals_map={
+                    ("방문수"): 0,
+                    ("유저수"): 0,
+                    ("신규방문수"): 0,
+                    ("재방문수"): 0,
+                },
+            )
+            styled2 = style_cmap(
+                styled,
                 gradient_rules=[
                     {"col": "방문수", "cmap":"OrRd", "vmax":20000, "low":0.0, "high":0.3},
                 ]
             )
-            st.dataframe(styled, hide_index=True)
+            st.dataframe(styled2,  row_height=30,  hide_index=True)
     
     # — 접속지역 탭
     with tab3:
@@ -440,13 +478,22 @@ def main():
             render_stacked_bar(df_geo_tab, x="날짜", y="방문수", color="접속지역")
         with _p: pass
         with c2:
-            styled = style_cmap(
+            styled = style_format(
                 df_geo_tab,
+                decimals_map={
+                    ("방문수"): 0,
+                    ("유저수"): 0,
+                    ("신규방문수"): 0,
+                    ("재방문수"): 0,
+                },
+            )
+            styled2 = style_cmap(
+                styled,
                 gradient_rules=[
                     {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
                 ]
             )
-            st.dataframe(styled, hide_index=True)
+            st.dataframe(styled2,  row_height=30,  hide_index=True)
     
     # - 접속권역 탭
     with tab4: 
@@ -461,13 +508,22 @@ def main():
             render_stacked_bar(df_region_tab, x="날짜", y="방문수", color="접속권역")
         with _p: pass
         with c2:
-            styled = style_cmap(
+            styled = style_format(
                 df_region_tab,
+                decimals_map={
+                    ("방문수"): 0,
+                    ("유저수"): 0,
+                    ("신규방문수"): 0,
+                    ("재방문수"): 0,
+                },
+            )
+            styled2 = style_cmap(
+                styled,
                 gradient_rules=[
                     {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
                 ]
             )
-            st.dataframe(styled, hide_index=True)
+            st.dataframe(styled2,  row_height=30,  hide_index=True)
     
             
     # — 유입매체 탭
@@ -483,13 +539,22 @@ def main():
             render_stacked_bar(df_source_tab, x="날짜", y="방문수", color="유입매체")
         with _p: pass
         with c2:
-            styled = style_cmap(
+            styled = style_format(
                 df_source_tab,
+                decimals_map={
+                    ("방문수"): 0,
+                    ("유저수"): 0,
+                    ("신규방문수"): 0,
+                    ("재방문수"): 0,
+                },
+            )
+            styled2 = style_cmap(
+                styled,
                 gradient_rules=[
                     {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
                 ]
             )
-            st.dataframe(styled, hide_index=True)
+            st.dataframe(styled2,  row_height=30,  hide_index=True)
 
 
     # ──────────────────────────────────
@@ -538,7 +603,27 @@ def main():
         y_cols = ["장바구니_세션수","쇼룸예약_세션수"]
         render_line_chart(metrics_df, x="날짜", y=y_cols, title="🛒 전환의도")
 
-    st.dataframe(metrics_df, hide_index=True)
+    styled = style_format(
+        summary_row(metrics_df),
+        decimals_map={
+            ("PDP조회_세션수"): 0,
+            ("PDPscr50_세션수"): 0,
+            ("가격표시_세션수"): 0,
+            ("쇼룸찾기_세션수"): 0,
+            ("쇼룸10초_세션수"): 0,
+            ("장바구니_세션수"): 0,
+            ("쇼룸예약_세션수"): 0,
+        },
+    )
+    styled2 = style_cmap(
+        styled,
+        gradient_rules=[
+            {"col": "쇼룸찾기_세션수", "cmap":"OrRd", "vmax":400, "low":0.0, "high":0.3},
+            {"col": "쇼룸10초_세션수", "cmap":"OrRd", "vmax":800, "low":0.0, "high":0.3},
+            {"col": "쇼룸예약_세션수", "cmap":"OrRd", "vmax":100, "low":0.0, "high":0.3},
+        ]
+    )
+    st.dataframe(styled2,  row_height=30,  hide_index=True)
 
 
     # ──────────────────────────────────

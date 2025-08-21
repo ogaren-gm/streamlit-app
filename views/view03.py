@@ -45,13 +45,9 @@ def main():
     )
     st.subheader('퍼포먼스 대시보드')
     st.markdown("""
-    이 대시보드는 **GA와 광고 데이터를 연결**해서, 광고비부터 유입, 전환까지 **주요 마케팅 성과**를 한눈에 확인할 수 있는 맞춤 대시보드입니다.  
-    여기서는 **기간, 매체, 브랜드, 품목 등 원하는 조건을 선택해서**, 광고 성과 지표들을 자유롭게 비교 · 분석할 수 있습니다.
+    이 대시보드는 **GA와 광고 데이터를 연결**해서, 광고비부터 액션 데이터까지 **주요 마케팅 성과**를 한눈에 확인할 수 있는 맞춤 대시보드입니다.  
+    여기서는 **기간/매체/브랜드/품목** 등 원하는 조건을 선택해서, 광고 성과 지표들을 자유롭게 비교 · 분석할 수 있습니다.
     """)
-    st.link_button(
-    "🔍 대시보드 사용 가이드", 
-    "https://www.notion.so/Views-241521e07c7680df86eecf5c5f8da4af#241521e07c76805198d9eaf0c28deadb"
-    )
     st.divider()
 
 
@@ -590,6 +586,8 @@ def main():
         styled2 = style_cmap(
             styled,
             gradient_rules=[
+                {"col": ("MEDIA", "노출수"), "cmap":"Blues", "vmax":1000000, "low":0.0, "high":0.3},
+                {"col": ("MEDIA", "클릭수"), "cmap":"Blues", "vmax":20000, "low":0.0, "high":0.3},
                 {"col": ("전체 세션수", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
                 {"col": ("PDP조회", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
                 {"col": ("PDPscr50", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
@@ -601,7 +599,7 @@ def main():
                 {"col": ("구매완료", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
             ],
         )
-        st.dataframe(styled2, use_container_width=True, height=460, hide_index=True)
+        st.dataframe(styled2, use_container_width=True, height=470, row_height=30, hide_index=True)
 
     # 공통 필터 함수: 멀티셀렉트 vs 텍스트 입력
     def apply_filter_pair(
@@ -647,6 +645,14 @@ def main():
         
     st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> 커스텀 </span>리포트</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ필터와 비교기간 기능을 활용하여, **광고 성과부터 GA 액션별 전환 효율까지** 원하는 기준의 데이터를 확인할 수 있습니다.")
+
+    with st.popover("지표 설명"):
+        st.markdown("""
+                    - **CPC** (Cost Per Click) : **클릭당 비용** (광고비 ÷ 클릭수)  
+                    - **CTR** (Click Through Rate) : **클릭률** (클릭수 ÷ 노출수 × 100)  
+                    - **CPA** (Cost Per Action) : **행동당 비용** (광고비 ÷ 전환수)  
+                    """)
+
     st.markdown(" ")
 
 
@@ -984,7 +990,7 @@ def main():
             decimals_map=decimals_map,
             suffix_map=suffix_map
         )
-        st.dataframe(styled, use_container_width=True, height=400, hide_index=True)
+        st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
 
 
 
