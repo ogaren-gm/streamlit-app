@@ -133,22 +133,50 @@ def main():
         # 4) tb_sleeper_psi, 넓게 이벤트까지 피벗해옴    
         df_psi = bq.get_data("tb_sleeper_psi")
         df_psi["event_date"] = pd.to_datetime(df_psi["event_date"], format="%Y%m%d")
-        df_psi = (
+        
+        # df_psi = (
+        #     df_psi
+        #     .groupby("event_date", as_index=False)
+        #     .agg(
+        #         session_count            = ("pseudo_session_id",       "nunique"),
+        #         view_item                = ("view_item",               "sum"),
+        #         product_page_scroll_50   = ("product_page_scroll_50",  "sum"),
+        #         product_option_price     = ("product_option_price",    "sum"),
+        #         find_nearby_showroom     = ("find_nearby_showroom",    "sum"),
+        #         showroom_10s             = ("showroom_10s",            "sum"),
+        #         add_to_cart              = ("add_to_cart",             "sum"),
+        #         showroom_leads           = ("showroom_leads",          "sum"),
+        #         purchase                 = ("purchase",                "sum"),
+        #     )
+        #     .sort_values("event_date")
+        # )
+
+        ## 대체 
+        events = [
+            "view_item","product_page_scroll_50","product_option_price",
+            "find_nearby_showroom","showroom_10s","add_to_cart",
+            "showroom_leads","purchase"
+        ]
+        df_psi[events] = df_psi[events].apply(pd.to_numeric, errors="coerce").fillna(0)
+
+        ses_level = (
             df_psi
+            .groupby(["event_date", "pseudo_session_id"], as_index=False)[events]
+            .sum()
+        )
+        ses_level[events] = (ses_level[events] > 0).astype(int)  # 0/1 플래그화
+
+        agg_dict = {"pseudo_session_id": "nunique"}
+        agg_dict.update({e: "sum" for e in events})
+
+        df_psi = (
+            ses_level
             .groupby("event_date", as_index=False)
-            .agg(
-                session_count            = ("pseudo_session_id",       "nunique"),
-                view_item                = ("view_item",               "sum"),
-                product_page_scroll_50   = ("product_page_scroll_50",  "sum"),
-                product_option_price     = ("product_option_price",    "sum"),
-                find_nearby_showroom     = ("find_nearby_showroom",    "sum"),
-                showroom_10s             = ("showroom_10s",            "sum"),
-                add_to_cart              = ("add_to_cart",             "sum"),
-                showroom_leads           = ("showroom_leads",          "sum"),
-                purchase                 = ("purchase",                "sum"),
-            )
+            .agg(agg_dict)
+            .rename(columns={"pseudo_session_id": "session_count"})
             .sort_values("event_date")
         )
+
         df_psi['event_date'] = pd.to_datetime(df_psi['event_date'], errors='coerce')
         df_psi['event_date'] = df_psi['event_date'].dt.strftime('%Y-%m-%d')
 
