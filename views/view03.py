@@ -996,7 +996,7 @@ def main():
         decimals_map.update({c: 0 for c in cols_클릭수})
         decimals_map.update({c: 0 for c in cols_cpc})
         # CTR* → 2자리
-        decimals_map.update({c: 2 for c in cols_ctr})
+        decimals_map.update({c: 1 for c in cols_ctr})
         # 접미사 매핑: CTR* → " %"
         suffix_map = {c: " %" for c in cols_ctr}
 

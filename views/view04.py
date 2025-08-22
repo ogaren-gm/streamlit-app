@@ -373,31 +373,31 @@ def main():
                 ("GA",    "유입 세션수"):0,       # session_count
                 ("GA",    "평균세션시간(초)"):0,   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"):0,          # view_item_list_sessions
-                ("PLP조회",    "CVR"):2,     
+                ("PLP조회",    "CVR"):1,     
                 ("PLP조회",    "CPA"):0,     
                 ("PDP조회",    "Acutal"):0,          # view_item_sessions
-                ("PDP조회",    "CVR"):2,  
+                ("PDP조회",    "CVR"):1,  
                 ("PDP조회",    "CPA"):0,     
                 ("PDPscr50",    "Acutal"):0,         # scroll_50_sessions
-                ("PDPscr50",    "CVR"):2,    
+                ("PDPscr50",    "CVR"):1,    
                 ("PDPscr50",    "CPA"):0,     
                 ("가격표시",    "Acutal"):0,          # product_option_price_sessions
-                ("가격표시",    "CVR"):2,   
+                ("가격표시",    "CVR"):1,   
                 ("가격표시",    "CPA"):0,    
                 ("쇼룸찾기",    "Acutal"):0,          # find_showroom_sessions
-                ("쇼룸찾기",    "CVR"):2, 
+                ("쇼룸찾기",    "CVR"):1, 
                 ("쇼룸찾기",    "CPA"):0, 
                 ("장바구니",    "Acutal"):0,          # add_to_cart_sessions
-                ("장바구니",    "CVR"):2,
+                ("장바구니",    "CVR"):1,
                 ("장바구니",    "CPA"):0, 
                 ("회원가입",    "Acutal"):0,          # sign_up_sessions
-                ("회원가입",    "CVR"):2,  
+                ("회원가입",    "CVR"):1,  
                 ("회원가입",    "CPA"):0,  
                 ("쇼룸10초",    "Acutal"):0,          # showroom_10s_sessions
-                ("쇼룸10초",    "CVR"):2,  
+                ("쇼룸10초",    "CVR"):1,  
                 ("쇼룸10초",    "CPA"):0,  
                 ("쇼룸예약",    "Acutal"):0,          # showroom_leads_sessions
-                ("쇼룸예약",    "CVR"):2,
+                ("쇼룸예약",    "CVR"):1,
                 ("쇼룸예약",    "CPA"):0, 
             },
             suffix_map={
@@ -1545,7 +1545,7 @@ def main():
     st.subheader(" ")
     st.subheader(" ")
     st.markdown("<h5 style='margin:0'>채널별 인게이지먼트 및 액션</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별, **인게이지먼트** (참여 및 반응 데이터), **세션수 및 주요 액션별 효율** (GA 데이터)을 표에서 확인할 수 있습니다.", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ채널별 **반응 데이터**와 **사용자 액션 및 효율 데이터**를 확인할 수 있습니다.", unsafe_allow_html=True)
     with st.popover("지표 설명"):
         st.markdown("""
                     - **CVR** (Conversion Rate) : **전환율** (주문수 ÷ 세션수 × 100)  
@@ -1673,7 +1673,7 @@ def main():
     
     st.header(" ")
     st.markdown("<h5 style='margin:0'>채널별 쿼리 기여량</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ“쿼리 기여량”은 전체 검색량 중에서 **각 PPL 채널이 유도했다고 판단되는 검색 수**를 의미합니다.", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ'쿼리 기여량'은 전체 검색량 중에서 **각 PPL 채널이 유도했다고 판단되는 검색 수**를 의미합니다.", unsafe_allow_html=True)
     
     ppl_action2 = PPL_ACTION[['날짜', 'utm_content', 'SearchVolume_contribution']]   # 기여 쿼리량 { 날짜, utm_content, SearchVolume_contribution }
     ppl_action3 = pd.merge(ppl_action2, PPL_LIST, on=['utm_content'], how='left')   # utm_content가 너무 복잡하니까 채널명으로 변경

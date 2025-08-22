@@ -51,8 +51,8 @@ def main():
         ">
         이 대시보드는 <b>자사몰 트래픽</b>의 방문 유형, 광고 유무, 접속 지역, 주요 이벤트 세션수 등을 
         한눈에 보여주는 <b>GA 대시보드</b>입니다.<br>
-        여기서는 “<b>얼마나 방문했는지, 어떤 사용자가 방문했는지, 
-        어떤 이벤트를 발생시켰는지</b>”의 추이를 직관적으로 확인할 수 있습니다.
+        여기서는 "<b>얼마나 방문했는지, 어떤 사용자가 방문했는지, 
+        어떤 이벤트를 발생시켰는지</b>"의 추이를 확인할 수 있습니다.
         </div>
         """,
         unsafe_allow_html=True
@@ -68,7 +68,7 @@ def main():
     
     today = datetime.now().date()
     default_end = today - timedelta(days=1)
-    default_start = today - timedelta(days=9)
+    default_start = today - timedelta(days=7)
     start_date, end_date = st.sidebar.date_input(
         "기간 선택",
         value=[default_start, default_end],
@@ -387,7 +387,7 @@ def main():
     """, unsafe_allow_html=True)
     
     st.markdown("<h5 style='margin:0'>방문 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **방문수**(세션 기준), **유저수**(중복 제거), **신규 및 재방문수** 추이를 확인할 수 있습니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **방문수**(세션 기준), **유저수**(중복 제거), **신규 및 재방문수** 추이를 확인할 수 있습니다.")
     # — 시각화
     c1, _p, c2 = st.columns([5.0, 0.2, 3.8])
     with c1:
@@ -417,8 +417,8 @@ def main():
     # 2) 주요 방문 현황
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>주요 방문 현황</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, **광고유무, 디바이스, 접속지역/권역, 유입매체**별 방문 추이를 확인할 수 있습니다.")
+    st.markdown("<h5 style='margin:0'>방문 현황</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ**광고유무/디바이스/접속지역/유입매체**별 방문 추이를 확인할 수 있습니다.")
     
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["광고유무", "디바이스", "접속지역", "접속권역", "유입매체"])
     
@@ -578,8 +578,8 @@ def main():
     # 3) 주요 이벤트 현황
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>주요 이벤트 현황</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ**PDP 조회부터 쇼룸 예약까지**, 날짜별 **GA 주요 이벤트**에 대한 추이를 확인할 수 있습니다.")
+    st.markdown("<h5 style='margin:0'>이벤트 현황</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ**PDP 조회**부터 **쇼룸 예약**에 대한 세션 추이를 확인할 수 있습니다.")
 
     # 매핑 명칭 일괄 선언
     col_map = {

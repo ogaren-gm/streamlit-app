@@ -46,7 +46,7 @@ def main():
             font-size:14px;       
             line-height:1.5;      
         ">
-        이 대시보드에서는 <b>브랜드, 카테고리, 제품</b> 단위의 
+        이 대시보드에서는 <b>브랜드/카테고리/제품</b> 단위의 
         <b>제품 상세 페이지(PDP) 조회량</b>을 확인할 수 있습니다.<br>
         해당 대시보드는 view_item 이벤트를 발생시킨 세션 데이터를 기반으로 구성되어 있습니다.
         </div>
@@ -63,7 +63,7 @@ def main():
     st.sidebar.header("Filter")
     today         = datetime.now().date()
     default_end   = today - timedelta(days=1)
-    default_start = today - timedelta(days=9)
+    default_start = today - timedelta(days=7)
 
     start_date, end_date = st.sidebar.date_input(
         "기간 선택",
@@ -369,7 +369,7 @@ def main():
     # ──────────────────────────────────
     st.header(" ")
     st.markdown(f"<h5 style='margin:0'><h5 style='margin:0'><span style='color:#FF4B4B;'>제품별</span> 추이</h5></h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ**제품별** 조회 현황을 일자별로 확인하고, 하단에서는 선택한 행 필드를 기준으로 해당 지표들을 피벗하여 조회할 수 있습니다.") #
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ**제품별** 조회 현황을 일자별로 확인하고, 선택한 행 필드를 기준으로 지표들을 피벗하여 조회할 수 있습니다.") #
 
     # ---------- 필터 영역 ----------
     # Pills 필터

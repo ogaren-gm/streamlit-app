@@ -368,7 +368,7 @@ def main():
                 ("MEDIA", "광고비"): 0,
                 ("MEDIA", "ROAS"): 1,
                 ("GA",          "세션수"): 0,
-                ("GA",          "CVR"): 2,
+                ("GA",          "CVR"): 1,
             },
             suffix_map={
                 ("MEDIA", "ROAS"): " %",
