@@ -55,8 +55,8 @@ def main():
             line-height:1.5;      
         ">
         이 대시보드는 <b>PPL 채널별 성과 및 기여</b>를 확인할 수 있는 대시보드입니다.<br>
-        여기서는 각 채널별 <b>참여 지표</b>(조회수, 좋아요 등)와 
-        PLP 랜딩 이후 <b>사용자 행동</b>을 살펴볼 수 있으며, 
+        여기서는 <b>채널별 참여 지표</b>와, 
+        랜딩 이후의 <b>사용자 행동</b>을 살펴볼 수 있으며, 
         전체 검색량 대비 <b>채널별 쿼리 기여량</b>을 파악할 수 있습니다.
         </div>
         """,
@@ -1405,7 +1405,7 @@ def main():
 
 
     # ────────────────────────────────────────────────────────────────
-    # 집행 채널 목록
+    # 채널 목록
     # ────────────────────────────────────────────────────────────────
     # 탭 간격 CSS
     st.markdown("""
@@ -1415,9 +1415,9 @@ def main():
     """, unsafe_allow_html=True)
 
     # 1번 영역
-    st.markdown("<h5 style='margin:0'>집행 채널 목록</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 채널별 집행 날짜와 집행 금액을 확인할 수 있습니다. (최신순으로 정렬됩니다.)", unsafe_allow_html=True)
-    
+    st.markdown("<h5 style='margin:0'>채널 목록</h5>", unsafe_allow_html=True)  
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 채널에 대한 집행 정보입니다. <span style='color:#8E9097;'>(최신순 정렬)</span> ", unsafe_allow_html=True)
+
     df = PPL_LIST
     df = df.sort_values(by="order", ascending=False)
     

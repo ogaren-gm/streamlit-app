@@ -55,11 +55,10 @@ def main():
             font-size:14px;       
             line-height:1.5;      
         ">
-        이 대시보드는 <b>GA와 광고 데이터를 연결</b>해서, 
-        광고비부터 액션 데이터까지 <b>주요 마케팅 성과</b>를 
-        한눈에 확인할 수 있는 맞춤 대시보드입니다.<br>
-        여기서는 <b>기간/매체/브랜드/품목</b> 등 원하는 조건을 선택해서, 
-        광고 성과 지표들을 자유롭게 비교 · 분석할 수 있습니다.
+        이 대시보드는 <b>매체 데이터와 GA 데이터를 결합</b>하여, 
+        광고비부터 액션까지의 <b>마케팅 성과</b>를 
+        확인할 수 있는 맞춤 대시보드입니다.<br>
+        여기서는 원하는 조건으로 다양한 지표들을 자유롭게 비교하고 분석할 수 있습니다.
         </div>
         """,
         unsafe_allow_html=True
@@ -661,8 +660,7 @@ def main():
     """, unsafe_allow_html=True)
         
     st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> 커스텀 </span>리포트</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ필터와 비교기간 기능을 활용하여, **광고 성과부터 GA 액션별 전환 효율까지** 원하는 기준의 데이터를 확인할 수 있습니다.")
-
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ**행 필드**는 데이터를 피벗하는 기준이며, **기본/고급 필터**를 활용하면 원하는 조건을 세부적으로 조정할 수 있습니다. <span style='color:#8E9097;'>(15시 이후 D-1 데이터 제공)</span> ", unsafe_allow_html=True)
     with st.popover("지표 설명"):
         st.markdown("""
                     - **CPC** (Cost Per Click) : **클릭당 비용** (광고비 ÷ 클릭수)  
@@ -697,7 +695,7 @@ def main():
         pivot_cols.remove("event_date")
         
     # 공통 서치필터 및 상세 서치필터 정렬
-    with st.expander("기본 멀티셀렉 필터", expanded=False):
+    with st.expander("기본 필터", expanded=False):
         ft1, ft2, ft3, ft4, ft5, ft6 = st.columns(6)
         with ft1:
             df_filtered, df_filtered_cmp = apply_filter_pair(df_filtered, df_filtered_cmp, "media_name", text_filter=False)
@@ -712,7 +710,7 @@ def main():
         with ft6:
             df_filtered, df_filtered_cmp = apply_filter_pair(df_filtered, df_filtered_cmp, "product_type", text_filter=False)
     
-    with st.expander("고급 멀티셀렉 필터", expanded=False):
+    with st.expander("고급 필터", expanded=False):
         ft7, ft8, ft9, ft10 = st.columns([2,1,2,1])
         with ft7:
             df_filtered, df_filtered_cmp = apply_filter_pair(df_filtered, df_filtered_cmp, "campaign_name", text_filter=False)
@@ -933,7 +931,7 @@ def main():
                 yaxis_title=y1[0],
                 yaxis2=dict(title=y2[0], overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                height=400
+                height=380
             )
             st.plotly_chart(fig1, use_container_width=True, key=f"{key_prefix}_fig1")
 
@@ -953,7 +951,7 @@ def main():
                 yaxis_title=y1[0],
                 yaxis2=dict(title=y2[0], overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                height=400
+                height=380
             )
             st.plotly_chart(fig2, use_container_width=True, key=f"{key_prefix}_fig2")
 
@@ -974,7 +972,7 @@ def main():
                 yaxis=dict(title="CTR"),
                 yaxis2=dict(title="CPC", overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                height=400
+                height=380
             )
             st.plotly_chart(fig3, use_container_width=True, key=f"{key_prefix}_fig3")
 
@@ -1016,7 +1014,8 @@ def main():
     # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> 고정뷰 </span>리포트</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ매체, 브랜드, 품목, 퍼널별로 **노출과 클릭 효율**을 집중적으로 확인할 수 있습니다. ")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ고정된 기준에 따라 **효율 및 추이**를 그래프와 함께 확인할 수 있습니다. <span style='color:#8E9097;'>(15시 이후 D-1 데이터 제공)</span> ", unsafe_allow_html=True)
+
 
     pivot_total = pivot_ctr(df3, group_col=None)
 

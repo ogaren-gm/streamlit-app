@@ -54,10 +54,10 @@ def main():
             line-height:1.5;      
         ">
         이 대시보드는 방문 → 상품조회 → 쇼룸찾기 → 구매 등 
-        <b>자사몰의 주요 액션 흐름</b>을 단계적으로 보여주는 
+        자사몰의 <b>주요 액션 흐름</b>을 단계적으로 보여주는 
         <b>행동 퍼널 대시보드</b>입니다.<br>
-        여기서는 광고비 및 세션수와 더불어 
-        “<b>각 단계까지 몇 명이 행동했고, 그때의 비용 및 전환 효율은 어땠는지</b>”를 
+        여기서는 
+        <b>"각 단계까지 얼마나 이동했고, 그때의 비용 및 전환 효율은 어땠는지"</b>를 
         확인할 수 있습니다.
         </div>
         """,
@@ -74,7 +74,7 @@ def main():
     
     today = datetime.now().date()
     default_end = today - timedelta(days=1)
-    default_start = today - timedelta(days=9)
+    default_start = today - timedelta(days=7)
     start_date, end_date = st.sidebar.date_input(
         "기간 선택",
         value=[default_start, default_end],
@@ -374,7 +374,7 @@ def main():
         # 컬럼 이름 변경 - 멀티 인덱스
         df.columns = pd.MultiIndex.from_tuples([
             ("기본정보",      "날짜"),             # event_date
-            ("기본정보",      "매출"),             # cost_gross_sum
+            ("기본정보",      "광고비"),             # cost_gross_sum
             
             ("유입 세션수",   "Actual"),           # session_count
             ("유입 세션수",   "CPA"),              # session_count_CPA
@@ -421,34 +421,34 @@ def main():
         styled = style_format(
             decorate_df(target_df),
             decimals_map={
-                ("기본정보",      "매출"): 0,
+                ("기본정보",      "광고비"): 0,
                 ("유입 세션수",   "Actual"): 0,           # session_count
                 ("유입 세션수",   "CPA"): 0,              # session_count_CPA
                 ("PDP조회",   "Actual"): 0,              # view_item
                 ("PDP조회",   "CPA"): 0,                 # view_item_CPA
-                ("PDP조회",   "CVR"): 2,                 # view_item_CVR
+                ("PDP조회",   "CVR"): 1,                 # view_item_CVR
                 ("PDPscr50",   "Actual"): 0,            # product_page_scroll_50
                 ("PDPscr50",   "CPA"): 0,               # product_page_scroll_50_CPA
-                ("PDPscr50",   "CVR"): 2,               # product_page_scroll_50_CVR
+                ("PDPscr50",   "CVR"): 1,               # product_page_scroll_50_CVR
                 ("가격표시",   "Actual"): 0,             # product_option_price
                 ("가격표시",   "CPA"): 0,                # product_option_price_CPA
-                ("가격표시",   "CVR"): 2,                # product_option_price_CVR
+                ("가격표시",   "CVR"): 1,                # product_option_price_CVR
                 ("쇼룸찾기",   "Actual"): 0,             # find_nearby_showroom
                 ("쇼룸찾기",   "CPA"): 0,                # find_nearby_showroom_CPA
-                ("쇼룸찾기",   "CVR"): 2,                # find_nearby_showroom_CVR
+                ("쇼룸찾기",   "CVR"): 1,                # find_nearby_showroom_CVR
                 ("장바구니",   "Actual"): 0,             # add_to_cart
                 ("장바구니",   "CPA"): 0,                # add_to_cart_CPA
-                ("장바구니",   "CVR"): 2,                # add_to_cart_CVR
+                ("장바구니",   "CVR"): 1,                # add_to_cart_CVR
                 ("쇼룸10초",   "Actual"): 0,             # showroom_10s
                 ("쇼룸10초",   "CPA"): 0,                # showroom_10s_CPA
-                ("쇼룸10초",   "CVR"): 2,                # showroom_10s_CVR
+                ("쇼룸10초",   "CVR"): 1,                # showroom_10s_CVR
                 ("쇼룸예약",   "Actual"): 0,             # showroom_leads
                 ("쇼룸예약",   "CPA"): 0,                # showroom_leads_CPA
-                ("쇼룸예약",   "CVR"): 2,                # showroom_leads_CVR
+                ("쇼룸예약",   "CVR"): 1,                # showroom_leads_CVR
                 ("구매완료",   "Actual"): 0,             # purchase
                 ("구매완료",   "CPA"): 0,                # purchase_CPA
-                ("구매완료",   "CVR1"): 2,               # purchase_CVR1
-                ("구매완료",   "CVR2"): 2,               # purchase_CVR2
+                ("구매완료",   "CVR1"): 1,               # purchase_CVR1
+                ("구매완료",   "CVR2"): 1,               # purchase_CVR2
             },
             suffix_map={
                 ("PDP조회",   "CVR"): " %",                 # view_item_CVR
@@ -477,7 +477,7 @@ def main():
             ]
         )
         
-        st.dataframe(styled2, use_container_width=True,  row_height=30, hide_index=True)
+        st.dataframe(styled2, use_container_width=True, row_height=30, hide_index=True)
 
 
     # def render_aggrid(
@@ -814,8 +814,8 @@ def main():
     # ────────────────────────────────────────────────────────────────
     # 통합 액션 리포트 
     # ────────────────────────────────────────────────────────────────
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 액션 리포트</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **광고비, 세션수, 주요 액션별 효율** 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>통합 액션 리포트</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **통합** 데이터와 효율 추이를 확인할 수 있습니다. ", unsafe_allow_html=True)
     with st.popover("지표 설명"):
         st.markdown("""
         - **CPA** (Cost Per Action) : **행동당 비용** (광고비 ÷ 전환수)  
@@ -834,8 +834,18 @@ def main():
     # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>슬립퍼</span> 액션 리포트</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
-    
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **품목** 데이터와 효율 추이를 확인할 수 있습니다. <span style='color:#8E9097;'>(15시 이후 D-1 데이터 제공)</span> ", unsafe_allow_html=True)
+    with st.popover("지표 설명"):
+        st.markdown("""
+        - **CPA** (Cost Per Action) : **행동당 비용** (광고비 ÷ 전환수)  
+        - **액션별 CVR**은 **이전행동**에서 **다음행동**으로 넘어가는 비율을 나타냅니다.  
+            - PDP조회는 **전체 세션**을 기준으로,  
+            - 이후 액션은 **PDP조회**를 기준으로,  
+            - 구매완료는 2가지로 측정합니다.  
+                - CVR1 : **PDP조회** → 구매완료  
+                - CVR2 : **쇼룸예약** → 구매완료  
+        """)
+        
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 PAID", "슬립퍼 매트리스", "슬립퍼 매트리스 PAID", "슬립퍼 프레임", "슬립퍼 프레임 PAID"])
     with tabs[0]:
         render_style(df_slp)
@@ -856,8 +866,18 @@ def main():
     # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>누어</span> 액션 리포트</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
-
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **품목** 데이터와 효율 추이를 확인할 수 있습니다. <span style='color:#8E9097;'>(15시 이후 D-1 데이터 제공)</span> ", unsafe_allow_html=True)
+    with st.popover("지표 설명"):
+        st.markdown("""
+        - **CPA** (Cost Per Action) : **행동당 비용** (광고비 ÷ 전환수)  
+        - **액션별 CVR**은 **이전행동**에서 **다음행동**으로 넘어가는 비율을 나타냅니다.  
+            - PDP조회는 **전체 세션**을 기준으로,  
+            - 이후 액션은 **PDP조회**를 기준으로,  
+            - 구매완료는 2가지로 측정합니다.  
+                - CVR1 : **PDP조회** → 구매완료  
+                - CVR2 : **쇼룸예약** → 구매완료  
+        """)
+        
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
     with tabs[0]:
         render_style(df_nor)

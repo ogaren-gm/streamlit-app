@@ -55,14 +55,13 @@ def main():
         ">
         이 대시보드는 <b>매출 · 매체 · 유입</b> 데이터를 일자별로 한눈에 보여주는 
         <b>가장 개괄적인 대시보드</b>입니다.<br>
-        여기서는 일자/브랜드/품목별로 “<b>얼마 벌었고, 얼마 썼고, 얼마 유입됐고</b>”를 
-        효율 지표(AOV, ROAS, CVR)와 함께 확인할 수 있습니다.
+        여기서는 <b>"얼마 벌었고, 얼마 썼고, 얼마 유입됐고"</b>를 
+        효율 지표와 함께 확인할 수 있습니다.
         </div>
         """,
         unsafe_allow_html=True
     )
     st.divider()
-
 
     # ────────────────────────────────────────────────────────────────
     # 사이드바 필터 설정
@@ -71,7 +70,7 @@ def main():
     
     today = datetime.now().date()
     default_end = today - timedelta(days=1)
-    default_start = today - timedelta(days=9)
+    default_start = today - timedelta(days=7)
     start_date, end_date = st.sidebar.date_input(
         "기간 선택",
         value=[default_start, default_end],
@@ -254,6 +253,8 @@ def main():
         ], columns=df.columns)
         
         return summary
+
+
 
     # ────────────────────────────────────────────────────────────────
     # 데이터프레임 생성 (JOIN인 경우는 고의로 "주문일" 컬럼 떨굴 목적)
@@ -557,12 +558,12 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-
+    
     # ────────────────────────────────────────────────────────────────
-    # 통합 매출 리포트 (FF4B4B -> FF804B)
+    # 통합 매출 리포트 
     # ────────────────────────────────────────────────────────────────
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>통합</span> 매출 리포트</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ날짜별 **매출 · 매체 · 유입** 데이터와 **효율 지표**를 확인할 수 있습니다.", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>통합 매출 리포트</h5>", unsafe_allow_html=True)  
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **통합** 데이터와 효율 추이를 확인할 수 있습니다. ", unsafe_allow_html=True)
     with st.popover("지표 설명"):
         st.markdown("""
                     - **AOV** (Average Order Value) : **평균주문금액** (매출 ÷ 주문수)  
@@ -577,7 +578,13 @@ def main():
     # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>슬립퍼</span> 매출 리포트</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다. ", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **품목** 데이터와 효율 추이를 확인할 수 있습니다. <span style='color:#8E9097;'>(15시 이후 D-1 데이터 제공)</span> ", unsafe_allow_html=True)
+    with st.popover("지표 설명"):
+        st.markdown("""
+                    - **AOV** (Average Order Value) : **평균주문금액** (매출 ÷ 주문수)  
+                    - **ROAS** (Return On Ad Spend) : **광고 수익률** (매출 ÷ 광고비 × 100)  
+                    - **CVR** (Conversion Rate) : **전환율** (주문수 ÷ 세션수 × 100)  
+                    """)
 
     tabs = st.tabs(["슬립퍼 통합", "슬립퍼 매트리스", "슬립퍼 프레임"])
     with tabs[0]:
@@ -593,7 +600,13 @@ def main():
     # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>누어</span> 매출 리포트</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ탭을 클릭하여, 품목별 데이터를 확인할 수 있습니다.", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **품목** 데이터와 효율 추이를 확인할 수 있습니다. <span style='color:#8E9097;'>(15시 이후 D-1 데이터 제공)</span> ", unsafe_allow_html=True)
+    with st.popover("지표 설명"):
+        st.markdown("""
+                    - **AOV** (Average Order Value) : **평균주문금액** (매출 ÷ 주문수)  
+                    - **ROAS** (Return On Ad Spend) : **광고 수익률** (매출 ÷ 광고비 × 100)  
+                    - **CVR** (Conversion Rate) : **전환율** (주문수 ÷ 세션수 × 100)  
+                    """)
 
     tabs = st.tabs(["누어 통합", "누어 매트리스", "누어 프레임"])
     with tabs[0]:
