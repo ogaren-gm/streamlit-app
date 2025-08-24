@@ -602,17 +602,17 @@ def main():
         styled2 = style_cmap(
             styled,
             gradient_rules=[
-                {"col": ("MEDIA", "노출수"), "cmap":"Blues", "vmax":1000000, "low":0.0, "high":0.3},
-                {"col": ("MEDIA", "클릭수"), "cmap":"Blues", "vmax":20000, "low":0.0, "high":0.3},
-                {"col": ("전체 세션수", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
-                {"col": ("PDP조회", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
-                {"col": ("PDPscr50", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
-                {"col": ("가격표시", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
-                {"col": ("쇼룸찾기", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
-                {"col": ("장바구니", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
-                {"col": ("쇼룸10초", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
-                {"col": ("쇼룸예약", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
-                {"col": ("구매완료", "Actual"), "cmap":"OrRd", "vmax":18000, "low":0.0, "high":0.3},
+                {"col": ("MEDIA", "노출수"), "cmap":"Blues",  "low":0.0, "high":0.3},
+                {"col": ("MEDIA", "클릭수"), "cmap":"PuBu",  "low":0.0, "high":0.3},
+                {"col": ("전체 세션수", "Actual"), "cmap":"OrRd", "low":0.0, "high":0.3},
+                {"col": ("PDP조회", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+                {"col": ("PDPscr50", "Actual"), "cmap":"OrRd", "low":0.0, "high":0.3},
+                {"col": ("가격표시", "Actual"), "cmap":"OrRd", "low":0.0, "high":0.3},
+                {"col": ("쇼룸찾기", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+                {"col": ("장바구니", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+                {"col": ("쇼룸10초", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+                {"col": ("쇼룸예약", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+                {"col": ("구매완료", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
             ],
         )
         st.dataframe(styled2, use_container_width=True, height=470, row_height=30, hide_index=True)

@@ -245,13 +245,13 @@ def main():
                 ("슬립퍼"): 0,
             },
         )
-        styled2 = style_cmap(
-            styled,
-            gradient_rules=[
-                {"col": "슬립퍼", "cmap":"Purples", "vmax":6000, "low":0.0, "high":0.3},
-            ]
-        )
-        st.dataframe(styled2, row_height=30,  hide_index=True)
+        # styled2 = style_cmap(
+        #     styled,
+        #     gradient_rules=[
+        #         {"col": "슬립퍼", "cmap":"Purples", "low":0.0, "high":0.3},
+        #     ]
+        # )
+        st.dataframe(styled, row_height=30,  hide_index=True)
     
     # ──────────────────────────────────
     # 2) 카테고리별 추이
@@ -354,13 +354,13 @@ def main():
                 ("프레임"): 0,
             },
         )
-        styled2 = style_cmap(
-            styled,
-            gradient_rules=[
-                {"col": "매트리스", "cmap":"Purples", "vmax":3000, "low":0.0, "high":0.3},
-            ]
-        )
-        st.dataframe(styled2, row_height=30,  hide_index=True)
+        # styled2 = style_cmap(
+        #     styled,
+        #     gradient_rules=[
+        #         {"col": "매트리스", "cmap":"Purples", "low":0.0, "high":0.3},
+        #     ]
+        # )
+        st.dataframe(styled, row_height=30,  hide_index=True)
         
         
         

@@ -378,9 +378,10 @@ def main():
         styled2 = style_cmap(
             styled,
             gradient_rules=[
-                {"col": ("COST",         "매출"), "cmap":"Greens", "vmax":200000000, "low":0.0, "high":0.3},
-                {"col": ("MEDIA", "광고비"), "cmap":"Blues", "vmax":50000000, "low":0.0, "high":0.3},
-                {"col": ("GA",          "세션수"), "cmap":"OrRd", "vmax":20000, "low":0.0, "high":0.3},
+                {"col": ("COST",   "매출"), "cmap":"Greens", "low":0.0, "high":0.3},
+                {"col": ("MEDIA", "광고비"), "cmap":"Blues", "low":0.0, "high":0.3},
+                {"col": ("GA",          "세션수"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+
             ],
         )
         st.dataframe(styled2, use_container_width=True, hide_index=True, row_height=30)

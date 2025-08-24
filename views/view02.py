@@ -465,15 +465,15 @@ def main():
         styled2 = style_cmap(
             styled,
             gradient_rules=[
-                {"col": ("유입 세션수", "Actual"), "cmap":"OrRd", "vmax":20000, "low":0.0, "high":0.3},
-                {"col": ("PDP조회", "Actual"), "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
-                {"col": ("PDPscr50", "Actual"), "cmap":"OrRd", "vmax":3000, "low":0.0, "high":0.3},
-                {"col": ("가격표시", "Actual"), "cmap":"OrRd", "vmax":2000, "low":0.0, "high":0.3},
-                {"col": ("쇼룸찾기", "Actual"), "cmap":"OrRd", "vmax":1000, "low":0.0, "high":0.3},
-                {"col": ("장바구니", "Actual"), "cmap":"OrRd", "vmax":1000, "low":0.0, "high":0.3},
-                {"col": ("쇼룸10초", "Actual"), "cmap":"OrRd", "vmax":2000, "low":0.0, "high":0.3},
-                {"col": ("쇼룸예약", "Actual"), "cmap":"OrRd", "vmax":200, "low":0.0, "high":0.3},
-                {"col": ("구매완료", "Actual"), "cmap":"OrRd", "vmax":100, "low":0.0, "high":0.3},
+                {"col": ("유입 세션수", "Actual"), "cmap":"OrRd", "low":0.0, "high":0.3},
+                {"col": ("PDP조회", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+                {"col": ("PDPscr50", "Actual"), "cmap":"OrRd", "low":0.0, "high":0.3},
+                {"col": ("가격표시", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+                {"col": ("쇼룸찾기", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+                {"col": ("장바구니", "Actual"), "cmap":"OrRd", "low":0.0, "high":0.3},
+                {"col": ("쇼룸10초", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+                {"col": ("쇼룸예약", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
+                {"col": ("구매완료", "Actual"), "cmap":"OrRd",  "low":0.0, "high":0.3},
             ]
         )
         

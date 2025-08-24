@@ -407,7 +407,7 @@ def main():
         styled2 = style_cmap(
             styled,
             gradient_rules=[
-                {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
+                {"col": "방문수", "cmap":"OrRd", "low":0.0, "high":0.3},
             ]
         )
         st.dataframe(styled2, row_height=30,  hide_index=True)
@@ -447,7 +447,7 @@ def main():
             styled2 = style_cmap(
                 styled,
                 gradient_rules=[
-                    {"col": "방문수", "cmap":"OrRd", "vmax":20000, "low":0.0, "high":0.3},
+                    {"col": "방문수", "cmap":"OrRd",  "low":0.0, "high":0.3},
                 ]
             )
             st.dataframe(styled2,  row_height=30,  hide_index=True)
@@ -477,7 +477,7 @@ def main():
             styled2 = style_cmap(
                 styled,
                 gradient_rules=[
-                    {"col": "방문수", "cmap":"OrRd", "vmax":20000, "low":0.0, "high":0.3},
+                    {"col": "방문수", "cmap":"OrRd",  "low":0.0, "high":0.3},
                 ]
             )
             st.dataframe(styled2,  row_height=30,  hide_index=True)
@@ -507,7 +507,7 @@ def main():
             styled2 = style_cmap(
                 styled,
                 gradient_rules=[
-                    {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
+                    {"col": "방문수", "cmap":"OrRd", "low":0.0, "high":0.3},
                 ]
             )
             st.dataframe(styled2,  row_height=30,  hide_index=True)
@@ -537,7 +537,7 @@ def main():
             styled2 = style_cmap(
                 styled,
                 gradient_rules=[
-                    {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
+                    {"col": "방문수", "cmap":"OrRd",  "low":0.0, "high":0.3},
                 ]
             )
             st.dataframe(styled2,  row_height=30,  hide_index=True)
@@ -568,7 +568,7 @@ def main():
             styled2 = style_cmap(
                 styled,
                 gradient_rules=[
-                    {"col": "방문수", "cmap":"OrRd", "vmax":15000, "low":0.0, "high":0.3},
+                    {"col": "방문수", "cmap":"OrRd", "low":0.0, "high":0.3},
                 ]
             )
             st.dataframe(styled2,  row_height=30,  hide_index=True)
@@ -632,15 +632,15 @@ def main():
             ("쇼룸예약_세션수"): 0,
         },
     )
-    styled2 = style_cmap(
-        styled,
-        gradient_rules=[
-            {"col": "쇼룸찾기_세션수", "cmap":"OrRd", "vmax":400, "low":0.0, "high":0.3},
-            {"col": "쇼룸10초_세션수", "cmap":"OrRd", "vmax":800, "low":0.0, "high":0.3},
-            {"col": "쇼룸예약_세션수", "cmap":"OrRd", "vmax":100, "low":0.0, "high":0.3},
-        ]
-    )
-    st.dataframe(styled2,  row_height=30,  hide_index=True)
+    # styled2 = style_cmap(
+    #     styled,
+    #     gradient_rules=[
+    #         {"col": "쇼룸찾기_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+    #         {"col": "쇼룸10초_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+    #         {"col": "쇼룸예약_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+    #     ]
+    # )
+    st.dataframe(styled,  row_height=30,  hide_index=True)
 
 
     # ──────────────────────────────────
