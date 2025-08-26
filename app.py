@@ -83,7 +83,7 @@ with st.sidebar:
     #     unsafe_allow_html=True
     # )
     st.markdown(" ")
-    st.link_button("🍊 대시보드 활용 가이드", "https://www.notion.so/ORANGE-241521e07c7680df86eecf5c5f8da4af?source=copy_link", type="secondary")
+    st.link_button("🍊 대시보드 활용 가이드", "https://www.notion.so/25b5927da69980ddbafee03fad072d68?source=copy_link", type="secondary")
 
     st.divider()
     st.sidebar.header("Menu")
