@@ -572,6 +572,76 @@ def main():
             st.dataframe(styled2,  row_height=30,  hide_index=True)
 
 
+    # # ──────────────────────────────────
+    # # 3) 주요 이벤트 현황
+    # # ──────────────────────────────────
+    # st.header(" ")
+    # st.markdown("<h5 style='margin:0'>이벤트 현황</h5>", unsafe_allow_html=True)
+    # st.markdown(":gray-badge[:material/Info: Info]ㅤ**PDP 조회**부터 **쇼룸 예약**에 대한 세션 추이를 확인할 수 있습니다.")
+
+    # # 매핑 명칭 일괄 선언
+    # col_map = {
+    #     "_view_item_sessionCnt":             "PDP조회_세션수",
+    #     "_product_page_scroll_50_sessionCnt":"PDPscr50_세션수",
+    #     "_product_option_price_sessionCnt":  "가격표시_세션수",
+    #     "_find_nearby_showroom_sessionCnt":  "쇼룸찾기_세션수",
+    #     "_showroom_10s_sessionCnt":          "쇼룸10초_세션수",
+    #     "_add_to_cart_sessionCnt":           "장바구니_세션수",
+    #     "_showroom_leads_sessionCnt":        "쇼룸예약_세션수",
+    # }
+
+    # # metrics_df
+    # metrics_df = (
+    #     df_psi
+    #     .groupby("event_date", as_index=False)
+    #     .agg(**{ new_name: (orig_name, "sum")
+    #             for orig_name, new_name in col_map.items() })
+    # )
+    # # 날짜 형식 변경, event_date Drop
+    # metrics_df["날짜"] = metrics_df["event_date"].dt.strftime("%Y-%m-%d")
+    # metrics_df = metrics_df.drop(columns=["event_date"])
+    # metrics_df = metrics_df[['날짜','PDP조회_세션수','PDPscr50_세션수','가격표시_세션수','쇼룸찾기_세션수','쇼룸10초_세션수','장바구니_세션수','쇼룸예약_세션수']]
+
+    # # — 제품탐색
+    # col_a, col_b, col_c = st.columns(3)
+    # with col_a:
+    #     y_cols = ["PDP조회_세션수","PDPscr50_세션수"]
+    #     render_line_chart(metrics_df, x="날짜", y=y_cols, title="🔍 제품탐색")
+        
+    # # — 관심표현
+    # with col_b:
+    #     y_cols = ["가격표시_세션수","쇼룸찾기_세션수","쇼룸10초_세션수"]
+    #     render_line_chart(metrics_df, x="날짜", y=y_cols, title="❤️ 관심표현")
+
+    # # — 전환의도
+    # with col_c:
+    #     y_cols = ["장바구니_세션수","쇼룸예약_세션수"]
+    #     render_line_chart(metrics_df, x="날짜", y=y_cols, title="🛒 전환의도")
+
+    # styled = style_format(
+    #     summary_row(metrics_df),
+    #     decimals_map={
+    #         ("PDP조회_세션수"): 0,
+    #         ("PDPscr50_세션수"): 0,
+    #         ("가격표시_세션수"): 0,
+    #         ("쇼룸찾기_세션수"): 0,
+    #         ("쇼룸10초_세션수"): 0,
+    #         ("장바구니_세션수"): 0,
+    #         ("쇼룸예약_세션수"): 0,
+    #     },
+    # )
+    # # styled2 = style_cmap(
+    # #     styled,
+    # #     gradient_rules=[
+    # #         {"col": "쇼룸찾기_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+    # #         {"col": "쇼룸10초_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+    # #         {"col": "쇼룸예약_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+    # #     ]
+    # # )
+    # st.dataframe(styled,  row_height=30,  hide_index=True)
+
+
+
     # ──────────────────────────────────
     # 3) 주요 이벤트 현황
     # ──────────────────────────────────
@@ -581,23 +651,85 @@ def main():
 
     # 매핑 명칭 일괄 선언
     col_map = {
-        "_view_item_sessionCnt":             "PDP조회_세션수",
-        "_product_page_scroll_50_sessionCnt":"PDPscr50_세션수",
-        "_product_option_price_sessionCnt":  "가격표시_세션수",
-        "_find_nearby_showroom_sessionCnt":  "쇼룸찾기_세션수",
-        "_showroom_10s_sessionCnt":          "쇼룸10초_세션수",
-        "_add_to_cart_sessionCnt":           "장바구니_세션수",
-        "_showroom_leads_sessionCnt":        "쇼룸예약_세션수",
+        "_view_item_sessionCnt":              "PDP조회_세션수",
+        "_product_page_scroll_50_sessionCnt": "PDPscr50_세션수",
+        "_product_option_price_sessionCnt":   "가격표시_세션수",
+        "_find_nearby_showroom_sessionCnt":   "쇼룸찾기_세션수",
+        "_showroom_10s_sessionCnt":           "쇼룸10초_세션수",
+        "_add_to_cart_sessionCnt":            "장바구니_세션수",
+        "_showroom_leads_sessionCnt":         "쇼룸예약_세션수",
     }
 
-    # metrics_df
+    # [추가] ----------------------------------------------------------
+    SRC_COL = "collected_traffic_source__manual_source"
+    MDM_COL = "collected_traffic_source__manual_medium"
+    CMP_COL = "collected_traffic_source__manual_campaign_name"
+    CON_COL = "collected_traffic_source__manual_content"
+
+    # 결측 안전 처리
+    df_psi[SRC_COL] = df_psi[SRC_COL].fillna("(not set)") if SRC_COL in df_psi.columns else "(not set)"
+    df_psi[MDM_COL] = df_psi[MDM_COL].fillna("(not set)") if MDM_COL in df_psi.columns else "(not set)"
+    df_psi[CMP_COL] = df_psi[CMP_COL].fillna("(not set)") if CMP_COL in df_psi.columns else "(not set)"
+    df_psi[CON_COL] = df_psi[CON_COL].fillna("(not set)") if CON_COL in df_psi.columns else "(not set)"
+
+    # ✅ (이동) 추가 피벗을 '매체 필터'보다 먼저 배치
+    pivot_map = {
+        "소스": SRC_COL,
+        "매체": MDM_COL,
+        "캠페인": CMP_COL,
+        "컨텐츠": CON_COL,
+    }
+
+    # 여기서는 '선택'만 받고, 실제 그룹 계산은 필터 적용 후에 합니다.
+
+    # ── 매체 필터 (그 다음에 위치)
+    with st.expander("매체 필터", expanded=False):
+        sel_pivots = st.multiselect("행 필드 추가 선택", list(pivot_map.keys()), default=[])
+        
+        c1, c2, c3, c4 = st.columns([1,1,1,1])
+
+        with c1:
+            src_counts = df_psi[SRC_COL].astype(str).value_counts(dropna=False).sort_values(ascending=False)
+            src_options = src_counts.index.tolist()
+            sel_sources = st.multiselect("소스 선택 (다중)", options=src_options, default=[])
+
+        with c2:
+            mdm_counts = df_psi[MDM_COL].astype(str).value_counts(dropna=False).sort_values(ascending=False)
+            mdm_options = mdm_counts.index.tolist()
+            sel_mediums = st.multiselect("미디엄 선택 (다중)", options=mdm_options, default=[])
+
+        with c3:
+            cmp_counts = df_psi[CMP_COL].astype(str).value_counts(dropna=False).sort_values(ascending=False)
+            cmp_options = cmp_counts.index.tolist()
+            sel_campaigns = st.multiselect("캠페인 선택 (다중)", options=cmp_options, default=[])
+
+        with c4:
+            con_counts = df_psi[CON_COL].astype(str).value_counts(dropna=False).sort_values(ascending=False)
+            con_options = con_counts.index.tolist()
+            sel_contents = st.multiselect("컨텐츠 선택 (다중)", options=con_options, default=[])
+
+    # 필터 적용
+    df_psi_f = df_psi.copy()
+    if sel_sources:   df_psi_f = df_psi_f[df_psi_f[SRC_COL].isin(sel_sources)]
+    if sel_mediums:   df_psi_f = df_psi_f[df_psi_f[MDM_COL].isin(sel_mediums)]
+    if sel_campaigns: df_psi_f = df_psi_f[df_psi_f[CMP_COL].isin(sel_campaigns)]
+    if sel_contents:  df_psi_f = df_psi_f[df_psi_f[CON_COL].isin(sel_contents)]
+
+    # ✅ (유지) 여기서 선택된 피벗으로 그룹 구성 & 차트 그룹 1개 선택
+    grp_cols = [pivot_map[k] for k in sel_pivots] if sel_pivots else []
+    
+    # 차트는 항상 전체(필터만 반영), 추가 피벗은 '표'에만 반영
+    df_for_chart = df_psi_f
+
+    # -------------------------------------------------------------------
+    
+
+    # ── 차트용 집계: 날짜 기준(그룹 1개 선택 반영)
     metrics_df = (
-        df_psi
+        df_for_chart
         .groupby("event_date", as_index=False)
-        .agg(**{ new_name: (orig_name, "sum")
-                for orig_name, new_name in col_map.items() })
+        .agg(**{ new_name: (orig_name, "sum") for orig_name, new_name in col_map.items() })
     )
-    # 날짜 형식 변경, event_date Drop
     metrics_df["날짜"] = metrics_df["event_date"].dt.strftime("%Y-%m-%d")
     metrics_df = metrics_df.drop(columns=["event_date"])
     metrics_df = metrics_df[['날짜','PDP조회_세션수','PDPscr50_세션수','가격표시_세션수','쇼룸찾기_세션수','쇼룸10초_세션수','장바구니_세션수','쇼룸예약_세션수']]
@@ -607,81 +739,63 @@ def main():
     with col_a:
         y_cols = ["PDP조회_세션수","PDPscr50_세션수"]
         render_line_chart(metrics_df, x="날짜", y=y_cols, title="🔍 제품탐색")
-        
-    # — 관심표현
     with col_b:
         y_cols = ["가격표시_세션수","쇼룸찾기_세션수","쇼룸10초_세션수"]
         render_line_chart(metrics_df, x="날짜", y=y_cols, title="❤️ 관심표현")
-
-    # — 전환의도
     with col_c:
         y_cols = ["장바구니_세션수","쇼룸예약_세션수"]
         render_line_chart(metrics_df, x="날짜", y=y_cols, title="🛒 전환의도")
 
+    # ── 표용 집계: 날짜 + 선택 피벗(grp_cols) 반영
+    groupby_cols = ["event_date"] + grp_cols   # ← 날짜 + 추가 피벗
+    metrics_tbl = (
+        df_psi_f
+        .groupby(groupby_cols, as_index=False)
+        .agg(**{ new_name: (orig_name, "sum") for orig_name, new_name in col_map.items() })
+    )
+
+    # 날짜 포맷
+    metrics_tbl["날짜"] = metrics_tbl["event_date"].dt.strftime("%Y-%m-%d")
+    metrics_tbl = metrics_tbl.drop(columns=["event_date"])
+
+    # 보기 좋게 한글 컬럼명으로 바꿔서 표에 노출
+    rename_map = {
+        SRC_COL: "소스",
+        MDM_COL: "매체",
+        CMP_COL: "캠페인",
+        CON_COL: "컨텐츠",
+    }
+    metrics_tbl = metrics_tbl.rename(columns=rename_map)
+
+    # 표 컬럼 순서: (선택된 피벗들) + 날짜 + 지표들
+    pivot_display_cols = [rename_map[c] for c in grp_cols if c in rename_map]  # 선택된 것만
+    base_cols = ['날짜','PDP조회_세션수','PDPscr50_세션수','가격표시_세션수','쇼룸찾기_세션수','쇼룸10초_세션수','장바구니_세션수','쇼룸예약_세션수']
+    table_cols = pivot_display_cols + base_cols
+    metrics_tbl = metrics_tbl[table_cols].sort_values(pivot_display_cols + ['날짜'] if pivot_display_cols else ['날짜'])
+
     styled = style_format(
-        summary_row(metrics_df),
+        summary_row(metrics_tbl),
         decimals_map={
-            ("PDP조회_세션수"): 0,
-            ("PDPscr50_세션수"): 0,
-            ("가격표시_세션수"): 0,
-            ("쇼룸찾기_세션수"): 0,
-            ("쇼룸10초_세션수"): 0,
-            ("장바구니_세션수"): 0,
-            ("쇼룸예약_세션수"): 0,
+            "PDP조회_세션수": 0,
+            "PDPscr50_세션수": 0,
+            "가격표시_세션수": 0,
+            "쇼룸찾기_세션수": 0,
+            "쇼룸10초_세션수": 0,
+            "장바구니_세션수": 0,
+            "쇼룸예약_세션수": 0,
         },
     )
-    # styled2 = style_cmap(
-    #     styled,
-    #     gradient_rules=[
-    #         {"col": "쇼룸찾기_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
-    #         {"col": "쇼룸10초_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
-    #         {"col": "쇼룸예약_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
-    #     ]
+
+    # # 상태 캡션
+    # st.caption(
+    #     "[선택된 데이터] "
+    #     f"source={', '.join(sel_sources) if sel_sources else '전체'} / "
+    #     f"medium={', '.join(sel_mediums) if sel_mediums else '전체'} / "
+    #     f"campaign={', '.join(sel_campaigns) if sel_campaigns else '전체'} / "
+    #     f"content={', '.join(sel_contents) if sel_contents else '전체'}"
     # )
-    st.dataframe(styled,  row_height=30,  hide_index=True)
 
-
-    # ──────────────────────────────────
-    # 4) 소스·매체별 현황
-    # ──────────────────────────────────
-    st.header(" ")
-    st.markdown("<h5 style='margin:0'>유입매체별 현황 (기획중)</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ.")
-
-    # tab_paid, tab_device, tab_geo, tab_event = st.tabs(["광고유무", "디바이스", "접속지역", "이벤트별"])
-
-    # # — 광고유무 
-    # with tab_paid:
-    #     df_paid_wide = pivot_bySource(df_psi, index="_sourceMedium", columns="isPaid_4")
-    #     render_aggrid(df_paid_wide)
-
-    # # — 디바이스
-    # with tab_device:
-    #     df_dev_wide = pivot_bySource(df_psi, index="_sourceMedium", columns="device__category")
-    #     render_aggrid(df_dev_wide)
-        
-    # # — 접속지역
-    # with tab_geo:
-    #     df_geo_wide = pivot_bySource(df_psi, index="_sourceMedium", columns="geo__city")
-    #     render_aggrid(df_geo_wide)
-        
-    # # — 이벤트별
-    # with tab_event:
-    #     df_evt = df_psi.melt(
-    #         id_vars=['_sourceMedium'],
-    #         value_vars=list(col_map.keys()),
-    #         var_name='event',
-    #         value_name='count'
-    #     )
-    #     df_evt['count'] = df_evt['count'].astype(int)
-    #     df_evt_wide = df_evt.pivot_table(
-    #         index="_sourceMedium",
-    #         columns="event",
-    #         values="count",
-    #         aggfunc="sum",
-    #         fill_value=0
-    #     ).reset_index()
-    #     render_aggrid(df_evt_wide)
+    st.dataframe(styled, row_height=30, hide_index=True)
 
 
 
