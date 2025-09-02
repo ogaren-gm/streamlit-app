@@ -421,17 +421,17 @@ def main():
         if brand == "sleeper":
             # 키에러 방지
             required = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-                        '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']            
+                        '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중', '홈스타일링연구소', '홈스타일링연구소_비중']            
             for c in required:
                 if c not in df.columns:
                     df[c] = 0
             num_cols = ['검색량', '기본 검색량', '기본 검색량_비중',
-                        '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중'] 
+                        '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중', '홈스타일링연구소', '홈스타일링연구소_비중'] 
             df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
             # 컬럼 순서 지정
             df = df[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-                    '노홍철 유튜브', '노홍철 유튜브_비중', '태요미네', '태요미네_비중',  '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
+                     '홈스타일링연구소', '홈스타일링연구소_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '태요미네', '태요미네_비중',  '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
             
             # 자료형 워싱
             df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
@@ -444,6 +444,8 @@ def main():
                 ("기본정보",        "전체 검색량"),      
                 ("기본 검색량",        "검색량"),         
                 ("기본 검색량",        "비중(%)"),  
+                ("홈스타일링연구소",        "검색량"),         
+                ("홈스타일링연구소",        "비중(%)"), 
                 ("노홍철 유튜브",        "검색량"),         
                 ("노홍철 유튜브",        "비중(%)"), 
                 ("태요미네",        "검색량"),         
@@ -492,6 +494,7 @@ def main():
             decimals_map={
                 ("기본정보",        "전체 검색량"): 0,
                 ("기본 검색량",        "비중(%)"): 1,  
+                ("홈스타일링연구소",        "비중(%)"): 1,
                 ("노홍철 유튜브",        "비중(%)"): 1,
                 ("태요미네",        "비중(%)"): 1,
                 ("아울디자인",        "비중(%)"): 1,
@@ -501,6 +504,7 @@ def main():
             suffix_map={
                 ("기본 검색량",        "비중(%)"): " %",
                 ("기본 검색량",        "비중(%)"): " %",  
+                ("홈스타일링연구소",        "비중(%)"): " %",
                 ("노홍철 유튜브",        "비중(%)"): " %",
                 ("태요미네",        "비중(%)"): " %",
                 ("아울디자인",        "비중(%)"): " %",
@@ -1588,12 +1592,29 @@ def main():
     df_verymj  = df_merged_t[df_merged_t["채널명"] == "베리엠제이"].copy()
     df_taeyomine = df_merged_t[df_merged_t["채널명"] == "태요미네"].copy()
     df_hongchul  = df_merged_t[df_merged_t["채널명"] == "노홍철 유튜브"].copy()
+    df_homestyling  = df_merged_t[df_merged_t["채널명"] == "홈스타일링연구소"].copy()
 
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["노홍철 유튜브", "태요미네", "베리엠제이", "아울디자인", "알쓸물치"])
+
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["홈스타일링연구소", "노홍철 유튜브", "태요미네", "베리엠제이", "아울디자인", "알쓸물치"])
     
     # check box -> CVR, CPA
     with tab1:
+        c1, c2, _ = st.columns([1,1,11])
+        add_cvr = c1.checkbox("CVR 추가", key="homestyling_cvr", value=False)
+        add_cpa = c2.checkbox("CPA 추가", key="homestyling_cpa", value=False)
+        if add_cvr and add_cpa:
+            opt = 4
+        elif add_cvr:
+            opt = 2
+        elif add_cpa:
+            opt = 3
+        else:
+            opt = 1
+        render_style_eng(df_homestyling, select_option=opt)
+    
+    
+    with tab2:
         c1, c2, _ = st.columns([1,1,11])
         add_cvr = c1.checkbox("CVR 추가", key="hongchul_cvr", value=False)
         add_cpa = c2.checkbox("CPA 추가", key="hongchul_cpa", value=False)
@@ -1608,7 +1629,7 @@ def main():
         render_style_eng(df_hongchul, select_option=opt)
         
     
-    with tab2:    
+    with tab3:    
         c1, c2, _ = st.columns([1,1,11])
         add_cvr = c1.checkbox("CVR 추가", key="taeyomine_cvr", value=False)
         add_cpa = c2.checkbox("CPA 추가", key="taeyomine_cpa", value=False)
@@ -1622,7 +1643,7 @@ def main():
             opt = 1
         render_style_eng(df_taeyomine, select_option=opt)
         
-    with tab3: 
+    with tab4: 
         c1, c2, _ = st.columns([1,1,11])
         add_cvr = c1.checkbox("CVR 추가", key="verymj_cvr", value=False)
         add_cpa = c2.checkbox("CPA 추가", key="verymj_cpa", value=False)
@@ -1636,7 +1657,7 @@ def main():
             opt = 1
         render_style_eng(df_verymj, select_option=opt)
         
-    with tab4: 
+    with tab5: 
         c1, c2, _ = st.columns([1,1,11])
         add_cvr = c1.checkbox("CVR 추가", key="owldesign_cvr", value=False)
         add_cpa = c2.checkbox("CPA 추가", key="owldesign_cpa", value=False)
@@ -1650,7 +1671,7 @@ def main():
             opt = 1
         render_style_eng(df_owldesign, select_option=opt)
         
-    with tab5: 
+    with tab6: 
         c1, c2, _ = st.columns([1,1,11])
         add_cvr = c1.checkbox("CVR 추가", key="usefulpt_cvr", value=False)
         add_cpa = c2.checkbox("CPA 추가", key="usefulpt_cpa", value=False)
@@ -1687,23 +1708,23 @@ def main():
         df_QueryContribution     = ppl_action3.merge(query_sum_slp[['날짜', '검색량']], on='날짜', how='outer')  # 데이터 생성 
         
         # 데이터 전처리 1
-        cols_to_int = ['태요미네', '노홍철 유튜브', '아울디자인', '알쓸물치', '검색량']
+        cols_to_int = ['홈스타일링연구소', '태요미네', '노홍철 유튜브', '아울디자인', '알쓸물치', '검색량']
         df_QueryContribution[cols_to_int] = df_QueryContribution[cols_to_int].apply(
             lambda s: pd.to_numeric(s, errors='coerce')   # 숫자로 변환, 에러나면 NaN
                         .fillna(0)                        # NaN → 0
                         .astype(int)                      # int 로 캐스팅
         )
         # 신규컬럼 생성 - 기본 검색량
-        df_QueryContribution["기본 검색량"] = df_QueryContribution["검색량"] - df_QueryContribution[['태요미네','노홍철 유튜브', '아울디자인', '알쓸물치']].sum(axis=1)
+        df_QueryContribution["기본 검색량"] = df_QueryContribution["검색량"] - df_QueryContribution[['홈스타일링연구소', '태요미네','노홍철 유튜브', '아울디자인', '알쓸물치']].sum(axis=1)
         # 신규컬럼 생성 - 비중
-        cols = ['노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
+        cols = ['홈스타일링연구소', '노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
         for col in cols:
             df_QueryContribution[f"{col}_비중"] = (
                 df_QueryContribution[col] / df_QueryContribution['검색량'] * 100
             ).round(2)
         df_QueryContribution[[f"{c}_비중" for c in cols]] = df_QueryContribution[[f"{c}_비중" for c in cols]].fillna(0) # 다시 검색량이 0이었던 곳은 0% 처리
         df_QueryContribution = df_QueryContribution[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-                                                        '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중','아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
+                                                        '태요미네', '태요미네_비중', '홈스타일링연구소', '홈스타일링연구소_비중',  '노홍철 유튜브', '노홍철 유튜브_비중','아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
         df_QueryContribution = df_QueryContribution.sort_values("날짜", ascending=True)
         
         from pandas.tseries.offsets import MonthEnd
@@ -1746,7 +1767,7 @@ def main():
         df_filtered["날짜"] = df_filtered["날짜_dt"].dt.strftime("%Y-%m-%d")
 
         # 6) long 포맷 변환 및 렌더링
-        cols    = ['노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
+        cols    = ['홈스타일링연구소', '노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
         df_long = df_filtered.melt(
             id_vars='날짜',
             value_vars=cols,
