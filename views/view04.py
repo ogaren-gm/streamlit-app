@@ -1878,7 +1878,7 @@ def main():
         ft1, _p, ft2 = st.columns([3, 0.3, 1])
         with ft1: 
             keywords     = df['키워드'].unique().tolist()
-            default_kw   = [kw for kw in keywords if ('슬리퍼' in kw) or ('슬립퍼' in kw)]
+            default_kw   = [kw for kw in keywords if ('슬리퍼' in kw) or ('슬립퍼' in kw) or ('SLEEPER' in kw)] # SLEEPER 추까 (25.09.02)
             sel_keywords = st.multiselect(
                 "키워드 선택", 
                 keywords, 
