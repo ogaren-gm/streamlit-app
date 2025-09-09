@@ -1,4 +1,4 @@
-# 서희_최신수정일_25-08-20
+# 서희_최신수정일_25-08-19
 
 import streamlit as st
 import pandas as pd
@@ -11,7 +11,10 @@ importlib.reload(modules.bigquery)
 from modules.bigquery import BigQuery
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import JsCode
-import plotly.graph_objects as go
+import io
+from google.oauth2.service_account import Credentials
+import gspread
+import re
 import sys
 import modules.style
 importlib.reload(sys.modules['modules.style'])
@@ -19,7 +22,7 @@ from modules.style import style_format, style_cmap
 
 def main():
     # ──────────────────────────────────
-    # 스트림릿 페이지 설정 (반드시 최상단)
+    # 스트림릿 페이지 설정
     # ──────────────────────────────────
 
     st.markdown(
@@ -38,7 +41,7 @@ def main():
         unsafe_allow_html=True
     )  
 
-    st.subheader('GA PDP 대시보드')
+    st.subheader('GA 트래픽 대시보드')
     st.markdown(
         """
         <div style="
@@ -46,81 +49,266 @@ def main():
             font-size:14px;       
             line-height:1.5;      
         ">
-        이 대시보드에서는 <b>브랜드/카테고리/제품</b> 단위의 
-        <b>제품 상세 페이지(PDP) 조회량</b>을 확인할 수 있습니다.<br>
-        해당 대시보드는 view_item 이벤트를 발생시킨 세션 데이터를 기반으로 구성되어 있습니다.
+        이 대시보드는 <b>자사몰 트래픽</b>의 방문 유형, 광고 유무, 접속 지역, 주요 이벤트 세션수 등을 
+        한눈에 보여주는 <b>GA 대시보드</b>입니다.<br>
+        여기서는 "<b>얼마나 방문했는지, 어떤 사용자가 방문했는지, 
+        어떤 이벤트를 발생시켰는지</b>"의 추이를 확인할 수 있습니다.
         </div>
         """,
         unsafe_allow_html=True
     )
 
     st.divider()
-
-
-    # ──────────────────────────────────
+    
+    
+    # ────────────────────────────────────────────────────────────────
     # 사이드바 필터 설정
-    # ──────────────────────────────────
+    # ────────────────────────────────────────────────────────────────
     st.sidebar.header("Filter")
-    today         = datetime.now().date()
-    default_end   = today - timedelta(days=1)
+    
+    today = datetime.now().date()
+    default_end = today - timedelta(days=1)
     default_start = today - timedelta(days=7)
-
     start_date, end_date = st.sidebar.date_input(
         "기간 선택",
-        value=[default_start, default_end]
+        value=[default_start, default_end],
+        max_value=default_end
     )
     cs = start_date.strftime("%Y%m%d")
     ce = end_date.strftime("%Y%m%d")
-    
+
+
     @st.cache_data(ttl=3600)
     def load_data(cs: str, ce: str) -> pd.DataFrame:
         
-        # tb_sleeper_product
+        # tb_sleeper_psi
         bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
-        df = bq.get_data("tb_sleeper_product")
-        df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d")
-
+        df_psi = bq.get_data("tb_sleeper_psi")
+        df_psi["event_date"] = pd.to_datetime(df_psi["event_date"], format="%Y%m%d")
+        
         def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
-            df["_sourceMedium"] = (df["traffic_source__source"].astype(str) + " / " + df["traffic_source__medium"].astype(str))
-            # df["isPaid_4"]    = categorize_paid(df)
+            """
+            1. 파생 컬럼 생성 : _isUserNew_y, _isUserNew_n, _sourceMedium, _engagement_time_sec_sum
+            2. 이벤트 플래그 생성
+            3. isPaid_4 컬럼 생성 -> categorize_paid 함수로 생성 (추후 확장성 높게 수정하기 위해)
+            """
+            df["_isUserNew_y"] = (df["first_visit"] == 1).astype(int)
+            df["_isUserNew_n"] = (df["first_visit"] == 0).astype(int)
+            df["_sourceMedium"] = (df["collected_traffic_source__manual_source"].astype(str) + " / " + df["collected_traffic_source__manual_medium"].astype(str))
+            df["_engagement_time_sec_sum"] = df["engagement_time_msec_sum"] / 1000
+            events = [
+                ("view_item", "_view_item_sessionCnt"),
+                ("product_page_scroll_50", "_product_page_scroll_50_sessionCnt"),
+                ("product_option_price", "_product_option_price_sessionCnt"),
+                ("find_nearby_showroom", "_find_nearby_showroom_sessionCnt"),
+                ("showroom_10s", "_showroom_10s_sessionCnt"),
+                ("add_to_cart", "_add_to_cart_sessionCnt"),
+                ("showroom_leads", "_showroom_leads_sessionCnt"),
+                ("purchase", "_purchase_sessionCnt")
+            ]
+            for event_name, flag_col in events:
+                df[flag_col] = (df[event_name] > 0).astype(int)
+            df["isPaid_4"]    = categorize_paid(df)
+            df["_geo_region"] = categorize_region(df)
 
             return df
-        
-        # def categorize_paid(df: pd.DataFrame) -> pd.Series:
-        #     paid_sources = ['google','naver','meta','meta_adv','mobon','mobion','naver_gfa','DV360','dv360','fb','sns','IGShopping','criteo']
-        #     owned_sources = ['litt.ly','instagram','l.instagram.com','instagram.com','blog.naver.com','m.blog.naver.com','smartstore.naver.com','m.brand.naver.com']
-        #     earned_sources = ['youtube','youtube.com','m.youtube.com']
-        #     sms_referral = ['m.facebook.com / referral','l.facebook.com / referral','facebook.com / referral']
-        #     conds = [
-        #         # Organic
-        #         df["_sourceMedium"].isin(['google / organic','naver / organic']),
-        #         # Paid (exclude sponsored)
-        #         (df["collected_traffic_source__manual_source"].isin(paid_sources) & ~df["_sourceMedium"].eq('google / sponsored'))
-        #             | df["_sourceMedium"].isin(['youtube / demand_gen','kakako / crm']),
-        #         # Owned
-        #         df["collected_traffic_source__manual_source"].isin(owned_sources)
-        #             | (df["_sourceMedium"] == 'kakao / channel_message'),
-        #         # Earned (include sponsored)
-        #         df["collected_traffic_source__manual_source"].isin(earned_sources)
-        #             | df["_sourceMedium"].isin(sms_referral + ['google / sponsored'])
-        #     ]
-        #     choices = ['ETC','Paid','Owned','Earned']
-        #     return np.select(conds, choices, default='ETC')
-        
-        
-        return preprocess_data(df)
+
+        def categorize_paid(df: pd.DataFrame) -> pd.Series:
+            paid_sources = ['google','naver','meta','meta_adv','mobon','mobion','naver_gfa','DV360','dv360','fb','sns','IGShopping','criteo']
+            owned_sources = ['litt.ly','instagram','l.instagram.com','instagram.com','blog.naver.com','m.blog.naver.com','smartstore.naver.com','m.brand.naver.com']
+            earned_sources = ['youtube','youtube.com','m.youtube.com']
+            sms_referral = ['m.facebook.com / referral','l.facebook.com / referral','facebook.com / referral']
+            conds = [
+                # Organic
+                df["_sourceMedium"].isin(['google / organic','naver / organic']),
+                # Paid (exclude sponsored)
+                (df["collected_traffic_source__manual_source"].isin(paid_sources) & ~df["_sourceMedium"].eq('google / sponsored'))
+                    | df["_sourceMedium"].isin(['youtube / demand_gen','kakako / crm']),
+                # Owned
+                df["collected_traffic_source__manual_source"].isin(owned_sources)
+                    | (df["_sourceMedium"] == 'kakao / channel_message'),
+                # Earned (include sponsored)
+                df["collected_traffic_source__manual_source"].isin(earned_sources)
+                    | df["_sourceMedium"].isin(sms_referral + ['google / sponsored'])
+            ]
+            choices = ['ETC','Paid','Owned','Earned']
+            return np.select(conds, choices, default='ETC')
 
 
-    # ──────────────────────────────────
+        def categorize_region(df: pd.DataFrame,
+                            city_col: str = "geo__city",
+                            default_region: str = "기타") -> pd.Series:
+
+            # 컬럼 없을 경우 전부 기본값으로 채움
+            if city_col not in df.columns:
+                return pd.Series([default_region] * len(df), index=df.index, name="_geo_region")
+
+            # 1) 표준화(소문자, 트림, 다중 공백 축소)
+            def _norm(x):
+                if pd.isna(x):
+                    return None
+                s = str(x).strip()
+                s = re.sub(r"\s+", " ", s)
+                return s.lower()
+
+            # 2) 매핑 딕셔너리
+            norm_map = {
+                "incheon": "수도권",
+                "seoul": "수도권",
+                "gyeonggi-do": "수도권",
+
+                "chungcheongbuk-do": "중부",
+                "chungcheongnam-do": "중부",
+                "daejeon": "중부",
+
+                "gyeongsangbuk-do": "경북",
+                "daegu": "경북",
+                "ulsan": "경북",
+
+                "busan": "경남",
+                "gyeongsangnam-do": "경남",
+
+                "jeollanam-do": "전라",
+                "gwangju": "전라",
+                "jeonbuk state": "전라",
+                "jeollabuk-do": "전라",
+
+                "gangwon-do": "강원",
+
+                "jeju-do": "기타",
+                "(not set)": "기타",
+                "not set": "기타",
+            }
+
+            # 3) 표준화 후 매핑
+            norm = df[city_col].apply(_norm)
+            mapped = norm.map(norm_map).fillna(default_region)
+
+            # 4) 반환 (그냥 문자열 시리즈)
+            return pd.Series(mapped, index=df.index, name="_geo_region")
+
+        
+        return preprocess_data(df_psi)
+
+
+    # ────────────────────────────────────────────────────────────────
     # 데이터 불러오기
-    # ──────────────────────────────────
+    # ────────────────────────────────────────────────────────────────
     st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
     with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df = load_data(cs, ce)
+        df_psi = load_data(cs, ce) # 전처리된 df_psi
 
-    # ──────────────────────────────────
+    # ────────────────────────────────────────────────────────────────
     # 공통 함수
-    # ──────────────────────────────────
+    # ────────────────────────────────────────────────────────────────
+    def pivot_daily(
+        df: pd.DataFrame,
+        group_cols: list[str] | None = None,
+        top_n: int | None = None,
+        기타_label: str = "기타"
+    ) -> pd.DataFrame:
+
+        if group_cols and top_n is not None:
+            key = group_cols[0]
+            # 1) group_cols[0]별 방문수 집계 후 상위 top_n 값 추출
+            top_vals = (
+                df
+                .groupby(key, as_index=False)
+                .agg(방문수_temp = ("pseudo_session_id", "nunique"))
+                .nlargest(top_n, "방문수_temp")[key]
+                .tolist()
+            )
+            # 2) 상위 그룹 외 모든 값을 기타_label로 치환
+            df[key] = df[key].where(df[key].isin(top_vals), 기타_label)
+
+        # 실제 pivot 집계
+        cols = ["event_date"] + (group_cols or [])
+        result = (
+            df
+            .groupby(cols, as_index=False)
+            .agg(
+                방문수    = ("pseudo_session_id", "nunique"),
+                유저수    = ("user_pseudo_id",    "nunique"),
+                신규방문수 = ("_isUserNew_y",      "sum"),
+                재방문수   = ("_isUserNew_n",      "sum"),
+            )
+            .rename(columns={"event_date": "날짜"})
+        )
+        # 날짜 형식 변경
+        result["날짜"] = result["날짜"].dt.strftime("%Y-%m-%d") 
+        return result
+
+
+    def summary_row(df):
+        # 숫자형 컬럼만 자동 추출
+        num_cols = df.select_dtypes(include="number").columns
+        sum_row = df[num_cols].sum().to_frame().T
+        sum_row['날짜'] = "합계"
+        mean_row = df[num_cols].mean().to_frame().T
+        mean_row['날짜'] = "평균"
+        df = pd.concat([df, sum_row, mean_row], ignore_index=True)
+
+        return df     
+
+
+    def pivot_bySource(
+        df: pd.DataFrame,
+        index: str,
+        columns: str,
+        values: str = "pseudo_session_id",
+        aggfunc: str = "nunique"
+        ) -> pd.DataFrame:
+
+        wide = (
+            df
+            .pivot_table(
+                index=index,
+                columns=columns,
+                values=values,
+                aggfunc=aggfunc,
+                fill_value=0
+            )
+            .reset_index()
+        )
+        wide.columns.name = None
+        return wide
+
+
+    def render_stacked_bar(df: pd.DataFrame, x: str, y: str | list[str], color: str | None) -> None:
+        # 숫자형 보정
+        def _to_numeric(cols):
+            for c in cols:
+                df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
+        if isinstance(y, (list, tuple)):   # wide-form 들어오면
+            _to_numeric(list(y))
+            if color is not None and color in df.columns:
+                # y-list + color가 같이 오면 long으로 변환해 확실히 누적
+                long_df = df.melt(id_vars=[x, color], value_vars=list(y),
+                                var_name="__series__", value_name="__value__")
+                fig = px.bar(long_df, x=x, y="__value__", color="__series__", opacity=0.6)
+            else:
+                fig = px.bar(df, x=x, y=list(y), opacity=0.6)
+        else:                               # y가 단일이면 long-form
+            _to_numeric([y])
+            fig = px.bar(df, x=x, y=y, color=color, opacity=0.6)
+
+        # 핵심: 진짜로 누적시키기
+        fig.update_layout(barmode="relative")
+        fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+
+        fig.update_layout(
+            bargap=0.1,
+            bargroupgap=0.2,
+            height=450,
+            xaxis_title=None,
+            yaxis_title=None,
+            legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
+        )
+        fig.update_xaxes(tickformat="%m월 %d일")
+        st.plotly_chart(fig, use_container_width=True)
+
+
     def render_line_chart(
         df: pd.DataFrame,
         x: str,
@@ -167,59 +355,27 @@ def main():
         fig.update_xaxes(tickformat="%m월 %d일")
         st.plotly_chart(fig, use_container_width=True)
 
-    def summary_row(df):
-        # 숫자형 컬럼만 자동 추출
-        num_cols = df.select_dtypes(include="number").columns
-        sum_row = df[num_cols].sum().to_frame().T
-        sum_row['날짜'] = "합계"
-        mean_row = df[num_cols].mean().to_frame().T
-        mean_row['날짜'] = "평균"
-        df = pd.concat([df, sum_row, mean_row], ignore_index=True)
+    # 합계 & 평균 행 추가 (단, num_cols 비정의되어 있을때)
 
-        return df  
+
 
     # 데이터프레임 생성
+    df_daily         =  pivot_daily(df_psi)                                       
+    df_daily_paid    =  pivot_daily(df_psi, group_cols=["isPaid_4"])                              
+    df_daily_device  =  pivot_daily(df_psi, group_cols=["device__category"])
+    df_daily_geo     =  pivot_daily(df_psi, group_cols=["geo__city"],          top_n=6,   기타_label="기타")
+    df_daily_source  =  pivot_daily(df_psi, group_cols=["_sourceMedium"],      top_n=20,   기타_label="기타")
+    df_daily_region  =  pivot_daily(df_psi, group_cols=["_geo_region"])
+
+    # 데이터프레임 별 -> 컬럼명 한글 치환
+    df_daily_paid   = df_daily_paid.rename(columns={"isPaid_4":           "광고유무"})
+    df_daily_device = df_daily_device.rename(columns={"device__category":   "디바이스"})
+    df_daily_geo    = df_daily_geo.rename(columns={"geo__city":           "접속지역"})
+    df_daily_source = df_daily_source.rename(columns={"_sourceMedium":       "유입매체"})
+    df_daily_region = df_daily_region.rename(columns={"_geo_region":       "접속권역"})
+    
     # ──────────────────────────────────
-    # 1) 브랜드별 추이 (df_brand)
-    _df_brand = (
-        df
-        .groupby([df["event_date"], "product_cat_a"])["pseudo_session_id"]
-        .nunique()
-        .reset_index(name="session_count")
-    )
-    df_brand = (
-        _df_brand
-        .pivot(index="event_date", columns="product_cat_a", values="session_count")
-        .fillna(0)
-        .reset_index()
-        .rename(columns={"event_date": "날짜"})
-    )
-    df_brand["날짜"] = df_brand["날짜"].dt.strftime("%Y-%m-%d")
-
-
-    # 2) 카테고리별 추이
-    _df_category = (
-        df
-        .groupby([df["event_date"], "product_cat_a", "product_cat_b"])["pseudo_session_id"]
-        .nunique()
-        .reset_index(name="session_count")
-    )
-    df_category = (
-        _df_category
-        .pivot_table(
-            index=["event_date", "product_cat_a"],
-            columns="product_cat_b",
-            values="session_count",
-            fill_value=0
-        )
-        .reset_index()
-        .rename(columns={"event_date": "날짜"})
-    )
-    df_category["날짜"] = df_category["날짜"].dt.strftime("%Y-%m-%d")
-
-
-    # ──────────────────────────────────
-    # 1) 브랜드별 추이
+    # 1) 방문 추이
     # ──────────────────────────────────
     # 탭 간격 CSS
     st.markdown("""
@@ -228,345 +384,420 @@ def main():
         </style>
     """, unsafe_allow_html=True)
     
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>브랜드별</span> 추이</h5>", unsafe_allow_html=True)      
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ**슬립퍼** 및 **누어** 조회 현황을 일자별로 확인할 수 있습니다.")
-
+    st.markdown("<h5 style='margin:0'>방문 추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **방문수**(세션 기준), **유저수**(중복 제거), **신규 및 재방문수** 추이를 확인할 수 있습니다.")
     # — 시각화
-    col1, _p, col2 = st.columns([6.0, 0.2, 3.8])
-    with col1:
-        y_cols = [c for c in df_brand.columns if c not in "날짜"]
-        render_line_chart(df_brand, x="날짜", y=y_cols)
+    c1, _p, c2 = st.columns([5.0, 0.2, 3.8])
+    with c1:
+        y_cols = [c for c in df_daily.columns if c not in "날짜"]
+        render_line_chart(df_daily, x="날짜", y=y_cols)
     with _p: pass
-    with col2:
+    with c2:
         styled = style_format(
-            summary_row(df_brand),
+            summary_row(df_daily),
             decimals_map={
-                ("누어"): 0,
-                ("슬립퍼"): 0,
+                ("방문수"): 0,
+                ("유저수"): 0,
+                ("신규방문수"): 0,
+                ("재방문수"): 0,
             },
         )
-        # styled2 = style_cmap(
-        #     styled,
-        #     gradient_rules=[
-        #         {"col": "슬립퍼", "cmap":"Purples", "low":0.0, "high":0.3},
-        #     ]
-        # )
-        st.dataframe(styled, row_height=30,  hide_index=True)
-    
-    # ──────────────────────────────────
-    # 2) 카테고리별 추이
-    # ──────────────────────────────────
-    st.markdown(" ")
-    st.markdown(f"<h5 style='margin:0'><h5 style='margin:0'><span style='color:#FF4B4B;'>카테고리별</span> 추이</h5></h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ**프레임** 및 **매트리스** 조회 현황을 일자별로 확인할 수 있습니다.")
-    
-    # — 라디오 버튼
-    cat_a_options = df_category["product_cat_a"].unique().tolist()
-    if "슬립퍼" in cat_a_options: # 항상 "슬립퍼"를 첫번째로 고정
-        cat_a_options.remove("슬립퍼")
-        cat_a_options.insert(0, "슬립퍼")
-    
-    selected_cat_a = st.pills(
-        "브랜드 선택",
-        cat_a_options,
-        selection_mode="single",
-        default=cat_a_options[0]
-    )
-    df_temp = df_category[df_category["product_cat_a"] == selected_cat_a].copy()
-
-    # — 시각화
-    col1, _p, col2 = st.columns([6.0, 0.2, 3.8])
-
-    with col1:
-        fig = go.Figure()
-        # — 중분류만 추출: 선택된 cat_a의 값이 0 이상인 컬럼만 표시 —
-        mid_cats = [
-            c for c in df_temp.columns
-            if c not in ["날짜", "product_cat_a"] and df_temp[c].sum() > 0
-        ]
-        for cat_b in mid_cats:
-            fig.add_trace(go.Bar(
-                x=df_temp["날짜"],
-                y=df_temp[cat_b],
-                name=cat_b,
-                offsetgroup=selected_cat_a,
-                marker_opacity=0.6
-            ))
-
-        # 대분류 라인
-        df_line = (
-            _df_category[_df_category["product_cat_a"] == selected_cat_a]
-            .groupby("event_date")["session_count"]
-            .sum()
-            .reset_index()
+        styled2 = style_cmap(
+            styled,
+            gradient_rules=[
+                {"col": "방문수", "cmap":"OrRd", "low":0.0, "high":0.3},
+            ]
         )
-        fig.add_trace(go.Scatter(
-            x=df_line["event_date"],
-            y=df_line["session_count"],
-            mode="lines+markers",
-            name=selected_cat_a,
-            line=dict(width=2),
-            marker=dict(size=6)
-        ))
-        fig.update_layout(
-            barmode="stack",
-            bargap=0.5, bargroupgap=0.1,
-            height=360,
-            margin=dict(l=10, r=10, t=60, b=30),
-            xaxis=dict(
-                tickvals=df_temp["날짜"],
-                ticktext=df_temp["날짜"],
-                showgrid=False,
-                title=None
-            ),
-            yaxis=dict(showgrid=False, title=None),
-            legend=dict(
-                orientation="h",
-                y=1.02,
-                x=1,
-                xanchor="right",
-                yanchor="bottom",
-                title=None
+        st.dataframe(styled2, row_height=30,  hide_index=True)
+
+
+    # ──────────────────────────────────
+    # 2) 주요 방문 현황
+    # ──────────────────────────────────
+    st.header(" ")
+    st.markdown("<h5 style='margin:0'>방문 현황</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ**광고유무/디바이스/접속지역/유입매체**별 방문 추이를 확인할 수 있습니다.")
+    
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["광고유무", "디바이스", "접속지역", "접속권역", "유입매체"])
+    
+    # — 광고유무 탭
+    with tab1:
+        paid_options = ["전체"] + sorted(df_psi["isPaid_4"].dropna().unique().tolist())
+        sel_paid = st.selectbox("광고유무 선택", paid_options, index=0)
+        if sel_paid == "전체":
+            df_paid_tab = df_daily_paid.copy()
+        else:
+            df_paid_tab = df_daily_paid[df_daily_paid["광고유무"] == sel_paid]
+        c1, _p, c2 = st.columns([5.0, 0.2, 3.8])
+        with c1:
+            render_stacked_bar(df_paid_tab, x="날짜", y="방문수", color="광고유무")
+        with _p: pass
+        with c2:
+            styled = style_format(
+                df_paid_tab,
+                decimals_map={
+                    ("방문수"): 0,
+                    ("유저수"): 0,
+                    ("신규방문수"): 0,
+                    ("재방문수"): 0,
+                },
             )
-        )
-        fig.update_xaxes(tickformat="%m월 %d일")
-        st.plotly_chart(fig, use_container_width=True)
+            styled2 = style_cmap(
+                styled,
+                gradient_rules=[
+                    {"col": "방문수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+                ]
+            )
+            st.dataframe(styled2,  row_height=30,  hide_index=True)
+    
+    # — 디바이스 탭
+    with tab2:
+        device_options = ["전체"] + sorted(df_psi["device__category"].dropna().unique().tolist())
+        sel_device = st.selectbox("디바이스 선택", device_options, index=0)
+        if sel_device == "전체":
+            df_dev_tab = df_daily_device.copy()
+        else:
+            df_dev_tab = df_daily_device[df_daily_device["디바이스"] == sel_device]
+        c1, _p, c2 = st.columns([5.0, 0.2, 3.8])
+        with c1:
+            render_stacked_bar(df_dev_tab, x="날짜", y="방문수", color="디바이스")
+        with _p: pass
+        with c2:
+            styled = style_format(
+                df_dev_tab,
+                decimals_map={
+                    ("방문수"): 0,
+                    ("유저수"): 0,
+                    ("신규방문수"): 0,
+                    ("재방문수"): 0,
+                },
+            )
+            styled2 = style_cmap(
+                styled,
+                gradient_rules=[
+                    {"col": "방문수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+                ]
+            )
+            st.dataframe(styled2,  row_height=30,  hide_index=True)
+    
+    # — 접속지역 탭
+    with tab3:
+        geo_options = ["전체"] + sorted(df_psi["geo__city"].dropna().unique().tolist())
+        sel_geo = st.selectbox("접속지역 선택", geo_options, index=0)
+        if sel_geo == "전체":
+            df_geo_tab = df_daily_geo.copy()
+        else:
+            df_geo_tab = df_daily_geo[df_daily_geo["접속지역"] == sel_geo]
+        c1, _p, c2 = st.columns([5.0, 0.2, 3.8])
+        with c1:
+            render_stacked_bar(df_geo_tab, x="날짜", y="방문수", color="접속지역")
+        with _p: pass
+        with c2:
+            styled = style_format(
+                df_geo_tab,
+                decimals_map={
+                    ("방문수"): 0,
+                    ("유저수"): 0,
+                    ("신규방문수"): 0,
+                    ("재방문수"): 0,
+                },
+            )
+            styled2 = style_cmap(
+                styled,
+                gradient_rules=[
+                    {"col": "방문수", "cmap":"OrRd", "low":0.0, "high":0.3},
+                ]
+            )
+            st.dataframe(styled2,  row_height=30,  hide_index=True)
+    
+    # - 접속권역 탭
+    with tab4: 
+        region_options = ["전체"] + sorted(df_psi["_geo_region"].dropna().unique().tolist())
+        sel_region = st.selectbox("접속권역 선택", region_options, index=0)
+        if sel_region == "전체":
+            df_region_tab = df_daily_region.copy()
+        else:
+            df_region_tab = df_daily_region[df_daily_region["접속권역"] == sel_region]
+        c1, _p, c2 = st.columns([5.0, 0.2, 3.8])
+        with c1:
+            render_stacked_bar(df_region_tab, x="날짜", y="방문수", color="접속권역")
+        with _p: pass
+        with c2:
+            styled = style_format(
+                df_region_tab,
+                decimals_map={
+                    ("방문수"): 0,
+                    ("유저수"): 0,
+                    ("신규방문수"): 0,
+                    ("재방문수"): 0,
+                },
+            )
+            styled2 = style_cmap(
+                styled,
+                gradient_rules=[
+                    {"col": "방문수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+                ]
+            )
+            st.dataframe(styled2,  row_height=30,  hide_index=True)
+    
+            
+    # — 유입매체 탭
+    with tab5:
+        source_options = ["전체"] + sorted(df_psi["_sourceMedium"].dropna().unique().tolist())
+        sel_source = st.selectbox("유입매체 선택", source_options, index=0)
+        if sel_source == "전체":
+            df_source_tab = df_daily_source.copy()
+        else:
+            df_source_tab = df_daily_source[df_daily_source["유입매체"] == sel_source]
+        c1, _p, c2 = st.columns([5.0, 0.2, 3.8])
+        with c1:
+            render_stacked_bar(df_source_tab, x="날짜", y="방문수", color="유입매체")
+        with _p: pass
+        with c2:
+            styled = style_format(
+                df_source_tab,
+                decimals_map={
+                    ("방문수"): 0,
+                    ("유저수"): 0,
+                    ("신규방문수"): 0,
+                    ("재방문수"): 0,
+                },
+            )
+            styled2 = style_cmap(
+                styled,
+                gradient_rules=[
+                    {"col": "방문수", "cmap":"OrRd", "low":0.0, "high":0.3},
+                ]
+            )
+            st.dataframe(styled2,  row_height=30,  hide_index=True)
 
-    with _p: pass
 
-    with col2:
-        mid_cats = [
-            c for c in df_temp.columns
-            if c not in ["날짜", "product_cat_a"] and df_temp[c].sum() > 0
-        ]
-        df_table = df_temp[["날짜"] + mid_cats].copy()
-        col_sums = {col: df_table[col].sum() for col in mid_cats}
-        sorted_cols = sorted(col_sums, key=lambda c: col_sums[c], reverse=True)
-        df_table = df_table[["날짜"] + sorted_cols]
+    # # ──────────────────────────────────
+    # # 3) 주요 이벤트 현황
+    # # ──────────────────────────────────
+    # st.header(" ")
+    # st.markdown("<h5 style='margin:0'>이벤트 현황</h5>", unsafe_allow_html=True)
+    # st.markdown(":gray-badge[:material/Info: Info]ㅤ**PDP 조회**부터 **쇼룸 예약**에 대한 세션 추이를 확인할 수 있습니다.")
 
-        styled = style_format(
-            summary_row(df_table),
-            decimals_map={
-                ("패브릭 침대"): 0,
-                ("매트리스"): 0,
-                ("원목 침대"): 0,
-                ("기타"): 0,
-                ("프레임"): 0,
-            },
-        )
-        # styled2 = style_cmap(
-        #     styled,
-        #     gradient_rules=[
-        #         {"col": "매트리스", "cmap":"Purples", "low":0.0, "high":0.3},
-        #     ]
-        # )
-        st.dataframe(styled, row_height=30,  hide_index=True)
+    # # 매핑 명칭 일괄 선언
+    # col_map = {
+    #     "_view_item_sessionCnt":             "PDP조회_세션수",
+    #     "_product_page_scroll_50_sessionCnt":"PDPscr50_세션수",
+    #     "_product_option_price_sessionCnt":  "가격표시_세션수",
+    #     "_find_nearby_showroom_sessionCnt":  "쇼룸찾기_세션수",
+    #     "_showroom_10s_sessionCnt":          "쇼룸10초_세션수",
+    #     "_add_to_cart_sessionCnt":           "장바구니_세션수",
+    #     "_showroom_leads_sessionCnt":        "쇼룸예약_세션수",
+    # }
+
+    # # metrics_df
+    # metrics_df = (
+    #     df_psi
+    #     .groupby("event_date", as_index=False)
+    #     .agg(**{ new_name: (orig_name, "sum")
+    #             for orig_name, new_name in col_map.items() })
+    # )
+    # # 날짜 형식 변경, event_date Drop
+    # metrics_df["날짜"] = metrics_df["event_date"].dt.strftime("%Y-%m-%d")
+    # metrics_df = metrics_df.drop(columns=["event_date"])
+    # metrics_df = metrics_df[['날짜','PDP조회_세션수','PDPscr50_세션수','가격표시_세션수','쇼룸찾기_세션수','쇼룸10초_세션수','장바구니_세션수','쇼룸예약_세션수']]
+
+    # # — 제품탐색
+    # col_a, col_b, col_c = st.columns(3)
+    # with col_a:
+    #     y_cols = ["PDP조회_세션수","PDPscr50_세션수"]
+    #     render_line_chart(metrics_df, x="날짜", y=y_cols, title="🔍 제품탐색")
         
-        
-        
+    # # — 관심표현
+    # with col_b:
+    #     y_cols = ["가격표시_세션수","쇼룸찾기_세션수","쇼룸10초_세션수"]
+    #     render_line_chart(metrics_df, x="날짜", y=y_cols, title="❤️ 관심표현")
+
+    # # — 전환의도
+    # with col_c:
+    #     y_cols = ["장바구니_세션수","쇼룸예약_세션수"]
+    #     render_line_chart(metrics_df, x="날짜", y=y_cols, title="🛒 전환의도")
+
+    # styled = style_format(
+    #     summary_row(metrics_df),
+    #     decimals_map={
+    #         ("PDP조회_세션수"): 0,
+    #         ("PDPscr50_세션수"): 0,
+    #         ("가격표시_세션수"): 0,
+    #         ("쇼룸찾기_세션수"): 0,
+    #         ("쇼룸10초_세션수"): 0,
+    #         ("장바구니_세션수"): 0,
+    #         ("쇼룸예약_세션수"): 0,
+    #     },
+    # )
+    # # styled2 = style_cmap(
+    # #     styled,
+    # #     gradient_rules=[
+    # #         {"col": "쇼룸찾기_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+    # #         {"col": "쇼룸10초_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+    # #         {"col": "쇼룸예약_세션수", "cmap":"OrRd",  "low":0.0, "high":0.3},
+    # #     ]
+    # # )
+    # st.dataframe(styled,  row_height=30,  hide_index=True)
+
+
+
     # ──────────────────────────────────
-    # 3) 제품별 추이
+    # 3) 주요 이벤트 현황
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown(f"<h5 style='margin:0'><h5 style='margin:0'><span style='color:#FF4B4B;'>제품별</span> 추이</h5></h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ**제품별** 조회 현황을 일자별로 확인하고, 선택한 행 필드를 기준으로 지표들을 피벗하여 조회할 수 있습니다.") #
+    st.markdown("<h5 style='margin:0'>이벤트 현황</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ**PDP 조회**부터 **쇼룸 예약**에 대한 세션 추이를 확인할 수 있습니다.")
 
-    # ---------- 필터 영역 ----------
-    # Pills 필터
-    pills01, pills02 = st.columns([2,3])  
-    with pills01: # Pills 필터 - 브랜드 선택
-        cat_a_opts = sorted([x for x in df["product_cat_a"].unique() if x is not None])
-        sel_cat_a = st.pills(
-            "브랜드 선택",
-            cat_a_opts,
-            selection_mode="multi",
-            default=cat_a_opts
-        ) or cat_a_opts
-        df_a = df[df["product_cat_a"].isin(sel_cat_a)]
-
-    with pills02: # Pills 필터 - 카테고리 선택
-        cat_b_opts = sorted([x for x in df_a["product_cat_b"].unique() if x is not None])
-        sel_cat_b = st.pills(
-            "카테고리 선택",
-            cat_b_opts,
-            selection_mode="multi",
-            default=cat_b_opts
-        ) or cat_b_opts
-        df_ab = df_a[df_a["product_cat_b"].isin(sel_cat_b)]
-
-    # 행필드 선택
-    options = {
-        "제품":             "product_name",
-        "세션 소스":         "traffic_source__source",
-        "세션 매체":         "traffic_source__medium",
-        "세션 캠페인":       "traffic_source__name"
+    # 매핑 명칭 일괄 선언
+    col_map = {
+        "_view_item_sessionCnt":              "PDP조회_세션수",
+        "_product_page_scroll_50_sessionCnt": "PDPscr50_세션수",
+        "_product_option_price_sessionCnt":   "가격표시_세션수",
+        "_find_nearby_showroom_sessionCnt":   "쇼룸찾기_세션수",
+        "_showroom_10s_sessionCnt":           "쇼룸10초_세션수",
+        "_add_to_cart_sessionCnt":            "장바구니_세션수",
+        "_showroom_leads_sessionCnt":         "쇼룸예약_세션수",
     }
-    sel = st.multiselect(
-        "행 필드 선택",
-        options=list(options.keys()),
-        default=["제품"]
+
+    # [추가] ----------------------------------------------------------
+    SRC_COL = "collected_traffic_source__manual_source"
+    MDM_COL = "collected_traffic_source__manual_medium"
+    CMP_COL = "collected_traffic_source__manual_campaign_name"
+    CON_COL = "collected_traffic_source__manual_content"
+
+    # 결측 안전 처리
+    df_psi[SRC_COL] = df_psi[SRC_COL].fillna("(not set)") if SRC_COL in df_psi.columns else "(not set)"
+    df_psi[MDM_COL] = df_psi[MDM_COL].fillna("(not set)") if MDM_COL in df_psi.columns else "(not set)"
+    df_psi[CMP_COL] = df_psi[CMP_COL].fillna("(not set)") if CMP_COL in df_psi.columns else "(not set)"
+    df_psi[CON_COL] = df_psi[CON_COL].fillna("(not set)") if CON_COL in df_psi.columns else "(not set)"
+
+    # ✅ (이동) 추가 피벗을 '매체 필터'보다 먼저 배치
+    pivot_map = {
+        "소스": SRC_COL,
+        "매체": MDM_COL,
+        "캠페인": CMP_COL,
+        "컨텐츠": CON_COL,
+    }
+
+    # 여기서는 '선택'만 받고, 실제 그룹 계산은 필터 적용 후에 합니다.
+
+    # ── 매체 필터 (그 다음에 위치)
+    with st.expander("매체 필터", expanded=False):
+        sel_pivots = st.multiselect("행 필드 추가 선택", list(pivot_map.keys()), default=[])
+        
+        c1, c2, c3, c4 = st.columns([1,1,1,1])
+
+        with c1:
+            src_counts = df_psi[SRC_COL].astype(str).value_counts(dropna=False).sort_values(ascending=False)
+            src_options = src_counts.index.tolist()
+            sel_sources = st.multiselect("소스 선택 (다중)", options=src_options, default=[])
+
+        with c2:
+            mdm_counts = df_psi[MDM_COL].astype(str).value_counts(dropna=False).sort_values(ascending=False)
+            mdm_options = mdm_counts.index.tolist()
+            sel_mediums = st.multiselect("미디엄 선택 (다중)", options=mdm_options, default=[])
+
+        with c3:
+            cmp_counts = df_psi[CMP_COL].astype(str).value_counts(dropna=False).sort_values(ascending=False)
+            cmp_options = cmp_counts.index.tolist()
+            sel_campaigns = st.multiselect("캠페인 선택 (다중)", options=cmp_options, default=[])
+
+        with c4:
+            con_counts = df_psi[CON_COL].astype(str).value_counts(dropna=False).sort_values(ascending=False)
+            con_options = con_counts.index.tolist()
+            sel_contents = st.multiselect("컨텐츠 선택 (다중)", options=con_options, default=[])
+
+    # 필터 적용
+    df_psi_f = df_psi.copy()
+    if sel_sources:   df_psi_f = df_psi_f[df_psi_f[SRC_COL].isin(sel_sources)]
+    if sel_mediums:   df_psi_f = df_psi_f[df_psi_f[MDM_COL].isin(sel_mediums)]
+    if sel_campaigns: df_psi_f = df_psi_f[df_psi_f[CMP_COL].isin(sel_campaigns)]
+    if sel_contents:  df_psi_f = df_psi_f[df_psi_f[CON_COL].isin(sel_contents)]
+
+    # ✅ (유지) 여기서 선택된 피벗으로 그룹 구성 & 차트 그룹 1개 선택
+    grp_cols = [pivot_map[k] for k in sel_pivots] if sel_pivots else []
+    
+    # 차트는 항상 전체(필터만 반영), 추가 피벗은 '표'에만 반영
+    df_for_chart = df_psi_f
+
+    # -------------------------------------------------------------------
+    
+
+    # ── 차트용 집계: 날짜 기준(그룹 1개 선택 반영)
+    metrics_df = (
+        df_for_chart
+        .groupby("event_date", as_index=False)
+        .agg(**{ new_name: (orig_name, "sum") for orig_name, new_name in col_map.items() })
     )
-    group_dims = [options[k] for k in sel]
+    metrics_df["날짜"] = metrics_df["event_date"].dt.strftime("%Y-%m-%d")
+    metrics_df = metrics_df.drop(columns=["event_date"])
+    metrics_df = metrics_df[['날짜','PDP조회_세션수','PDPscr50_세션수','가격표시_세션수','쇼룸찾기_세션수','쇼룸10초_세션수','장바구니_세션수','쇼룸예약_세션수']]
 
-    # 선택 필터
-    col_prod, col_src, col_med, col_name = st.columns([2,1,1,1])
+    # — 제품탐색
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        y_cols = ["PDP조회_세션수","PDPscr50_세션수"]
+        render_line_chart(metrics_df, x="날짜", y=y_cols, title="🔍 제품탐색")
+    with col_b:
+        y_cols = ["가격표시_세션수","쇼룸찾기_세션수","쇼룸10초_세션수"]
+        render_line_chart(metrics_df, x="날짜", y=y_cols, title="❤️ 관심표현")
+    with col_c:
+        y_cols = ["장바구니_세션수","쇼룸예약_세션수"]
+        render_line_chart(metrics_df, x="날짜", y=y_cols, title="🛒 전환의도")
 
-    prod_opts = df_ab["product_name"].value_counts().index.tolist()
-    with col_prod:
-        sel_prod = st.multiselect(
-            "제품 선택",
-            options=prod_opts,
-            default=[],
-            placeholder="전체"
-        )
-        if not sel_prod:
-            sel_prod = prod_opts
-
-    src_opts = df_ab["traffic_source__source"].value_counts().index.tolist()
-    with col_src:
-        sel_src = st.multiselect(
-            "세션 소스 선택",
-            options=src_opts,
-            default=[],
-            placeholder="전체"
-        )
-        if not sel_src:
-            sel_src = src_opts
-
-    med_opts = df_ab["traffic_source__medium"].value_counts().index.tolist()
-    with col_med:
-        sel_med = st.multiselect(
-            "세션 매체 선택",
-            options=med_opts,
-            default=[],
-            placeholder="전체"
-        )
-        if not sel_med:
-            sel_med = med_opts
-
-    name_opts = df_ab["traffic_source__name"].value_counts().index.tolist()
-    with col_name:
-        sel_name = st.multiselect(
-            "세션 캠페인 선택",
-            options=name_opts,
-            default=[],
-            placeholder="전체"
-        )
-        if not sel_name:
-            sel_name = name_opts
-
-    # 최종 필터링
-    df_ab = df_ab[
-        df_ab["product_name"].isin(sel_prod) &
-        df_ab["traffic_source__source"].isin(sel_src) &
-        df_ab["traffic_source__medium"].isin(sel_med) &
-        df_ab["traffic_source__name"].isin(sel_name)
-    ]
-
-    # 데이터프레임 생성
-    _df_product = (
-        df_ab
-        .groupby(["event_date"] + group_dims)["pseudo_session_id"]
-        .nunique()
-        .reset_index(name="유입수")
+    # ── 표용 집계: 날짜 + 선택 피벗(grp_cols) 반영
+    groupby_cols = ["event_date"] + grp_cols   # ← 날짜 + 추가 피벗
+    metrics_tbl = (
+        df_psi_f
+        .groupby(groupby_cols, as_index=False)
+        .agg(**{ new_name: (orig_name, "sum") for orig_name, new_name in col_map.items() })
     )
-    ## 여기서 event_date 형식 바꿔줌 -> 나중에 멜팅되므로.
-    _df_product["event_date"] = _df_product["event_date"].dt.strftime("%Y-%m-%d")
-    
-    df_product = _df_product.pivot_table(
-        index=group_dims,
-        columns="event_date",
-        values="유입수",
-        fill_value=0
-    ).reset_index()
 
-    ## 컬럼명 -> 한글 매핑
-    inv_options = {v: k for k, v in options.items()}
-    df_product.rename(columns=inv_options, inplace=True)
-    st.dataframe(df_product, height=500, hide_index=True)
+    # 날짜 포맷
+    metrics_tbl["날짜"] = metrics_tbl["event_date"].dt.strftime("%Y-%m-%d")
+    metrics_tbl = metrics_tbl.drop(columns=["event_date"])
 
+    # 보기 좋게 한글 컬럼명으로 바꿔서 표에 노출
+    rename_map = {
+        SRC_COL: "소스",
+        MDM_COL: "매체",
+        CMP_COL: "캠페인",
+        CON_COL: "컨텐츠",
+    }
+    metrics_tbl = metrics_tbl.rename(columns=rename_map)
 
+    # 표 컬럼 순서: (선택된 피벗들) + 날짜 + 지표들
+    pivot_display_cols = [rename_map[c] for c in grp_cols if c in rename_map]  # 선택된 것만
+    base_cols = ['날짜','PDP조회_세션수','PDPscr50_세션수','가격표시_세션수','쇼룸찾기_세션수','쇼룸10초_세션수','장바구니_세션수','쇼룸예약_세션수']
+    table_cols = pivot_display_cols + base_cols
+    metrics_tbl = metrics_tbl[table_cols].sort_values(pivot_display_cols + ['날짜'] if pivot_display_cols else ['날짜'])
 
-    # ──────────────────────────────────
-    # 4) 제품별 유입경로
-    # ──────────────────────────────────
-    st.header(" ")
-    st.markdown(f"<h5 style='margin:0'><h5 style='margin:0'><span style='color:#FF4B4B;'>제품별</span> 유입경로</h5></h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ특정 제품의 조회수가 특정 일자에 증가했다면, 해당 유입이 **어떤 경로를 통해 발생했는지** 확인할 수 있습니다.")
-    
-    # 선택 필터
-    prod_opts = sorted([p for p in df["product_name"].unique() if p is not None])
-    default_prod = "튤리아"
-    
-    sel_prods = st.multiselect(
-        "제품 선택",
-        prod_opts,
-        default=[default_prod] if default_prod in prod_opts else []
+    styled = style_format(
+        summary_row(metrics_tbl),
+        decimals_map={
+            "PDP조회_세션수": 0,
+            "PDPscr50_세션수": 0,
+            "가격표시_세션수": 0,
+            "쇼룸찾기_세션수": 0,
+            "쇼룸10초_세션수": 0,
+            "장바구니_세션수": 0,
+            "쇼룸예약_세션수": 0,
+        },
     )
-    
-    if not sel_prods:
-        st.warning("제품을 하나 이상 선택하세요.")
-    else:
-        # (2) 선택 제품으로만 필터
-        df_fs = df[df["product_name"].isin(sel_prods)].copy()
-        df_fs["date_str"] = df_fs["event_date"].dt.strftime("%m월 %d일")
 
-        # (3) source / medium 결합 컬럼 추가
-        df_fs["source_medium"] = (
-            df_fs["traffic_source__source"] + " / " + df_fs["traffic_source__medium"]
-        )
+    # # 상태 캡션
+    # st.caption(
+    #     "[선택된 데이터] "
+    #     f"source={', '.join(sel_sources) if sel_sources else '전체'} / "
+    #     f"medium={', '.join(sel_mediums) if sel_mediums else '전체'} / "
+    #     f"campaign={', '.join(sel_campaigns) if sel_campaigns else '전체'} / "
+    #     f"content={', '.join(sel_contents) if sel_contents else '전체'}"
+    # )
 
-        # (4) 상위 7개 source_medium 추출, 나머지는 '기타'
-        top7 = (
-            df_fs["source_medium"]
-            .value_counts()
-            .nlargest(7)
-            .index
-            .tolist()
-        )
-        df_fs["source_medium"] = df_fs["source_medium"].where(
-            df_fs["source_medium"].isin(top7), "기타"
-        )
-
-        # (5) 일자·source_medium별 고유 세션 수 집계
-        _df_product = (
-            df_fs
-            .groupby(["date_str", "source_medium"])["pseudo_session_id"]
-            .nunique()
-            .reset_index(name="sessions")
-        )
-
-        # (6) 누적막대 그래프 그리기 (opacity 조정 추가)
-        fig9 = px.bar(
-            _df_product,
-            x="date_str",
-            y="sessions",
-            color="source_medium",
-            barmode="relative",
-            labels={
-                "date_str": "",
-                "sessions": "유입수",
-                "source_medium": "소스 / 매체"
-            }
-        )
-        fig9.update_traces(marker_opacity=0.6)
-        # 핵심: 진짜로 누적시키기
+    st.dataframe(styled, row_height=30, hide_index=True)
 
 
-        fig9.update_layout(
-            legend_title_text="",
-            xaxis_title=None,
-            yaxis_title=None,
-            bargap=0.5, bargroupgap=0.2,
-            legend=dict(
-                orientation="h",
-                y=1.02,
-                x=1,
-                xanchor="right",
-                yanchor="bottom"
-            ),
-            margin=dict(l=10, r=10, t=30, b=10)
-        )
-        fig9.update_layout(barmode="relative")
-        fig9.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-        st.plotly_chart(fig9, use_container_width=True)
+
+if __name__ == "__main__":
+    main()

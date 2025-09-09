@@ -41,9 +41,9 @@ view01_name = "매출 종합 대시보드"
 view02_name = "액션 종합 대시보드"
 view03_name = "퍼포먼스 대시보드"
 view04_name = "언드·PPL 대시보드"
-view05_name = "GA 트래픽 대시보드"
-view06_name = "GA PDP 대시보드"
-view07_name = "TEST"
+view05_name = "키워드 대시보드"
+view06_name = "GA 트래픽 대시보드"
+view07_name = "GA PDP 대시보드"
 # border:2px solid #D6D6D9;
 
 with st.sidebar:
