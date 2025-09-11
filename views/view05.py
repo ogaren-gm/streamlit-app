@@ -339,7 +339,24 @@ def main():
                         ), fill_value=0)
                         .reset_index()
                 )
-            else:
+
+            elif granularity == "주":
+                df['주'] = df['날짜'].dt.to_period('W').dt.to_timestamp()
+                min_w, max_w = df['주'].min().to_period('W'), df['주'].max().to_period('W')
+                x_index = pd.period_range(min_w, max_w, freq='W').to_timestamp()
+                x_col = '주'
+                base = df.groupby(['주','키워드유형','키워드'], as_index=False)['abs_age'].sum()
+                kw_list = sorted(base['키워드'].dropna().unique().tolist())
+                work = (
+                    base.set_index(['주','키워드유형','키워드'])
+                        .reindex(pd.MultiIndex.from_product(
+                            [x_index, type_order, kw_list],
+                            names=['주','키워드유형','키워드']
+                        ), fill_value=0)
+                        .reset_index()
+                )
+
+            elif granularity == "월":
                 df['월'] = df['날짜'].dt.to_period('M').dt.to_timestamp()
                 min_m, max_m = df['월'].min().to_period('M'), df['월'].max().to_period('M')
                 x_index = pd.period_range(min_m, max_m, freq='M').to_timestamp()
@@ -354,6 +371,7 @@ def main():
                         ), fill_value=0)
                         .reset_index()
                 )
+
 
             # 값 계산
             y_is_pct = (scale_mode == "백분율")
@@ -489,7 +507,22 @@ def main():
                               fill_value=0)
                      .reset_index()
             )
-        else:
+
+        elif granularity == "주":
+            daily['주'] = daily['날짜_dt'].dt.to_period('W').dt.to_timestamp()
+            min_w, max_w = daily['주'].min().to_period('W'), daily['주'].max().to_period('W')
+            x_index = pd.period_range(min_w, max_w, freq='W').to_timestamp()
+            x_col = '주'
+            week_base = daily.groupby(['주','키워드유형','age_info'], as_index=False)['abs_age'].sum()
+            work = (
+                week_base.set_index(['주','키워드유형','age_info'])
+                        .reindex(pd.MultiIndex.from_product([x_index, type_order, sel_ages],
+                                                            names=['주','키워드유형','age_info']),
+                                fill_value=0)
+                        .reset_index()
+            )
+        
+        elif granularity == "월":
             daily['월'] = daily['날짜_dt'].dt.to_period('M').dt.to_timestamp()
             min_m, max_m = daily['월'].min().to_period('M'), daily['월'].max().to_period('M')
             x_index = pd.period_range(min_m, max_m, freq='M').to_timestamp()
@@ -706,7 +739,7 @@ def main():
     with st.expander("기본 필터", expanded=True):
         c1, c2, c3, c4 = st.columns([2,3,2,3])
         with c1:
-            granularity = st.radio("집계 단위", ["일","월"], horizontal=True, index=0, key="v1_gran")
+            granularity = st.radio("집계 단위", ["일","주","월"], horizontal=True, index=0, key="v1_gran")
         with c2:
             # '연령대 산개' 제거 → 단일 옵션 '전체합'
             view_mode   = st.radio("표시 방식", ["전체합"], horizontal=True, index=0, key="v1_view")
@@ -776,7 +809,7 @@ def main():
             with st.expander("기본 필터", expanded=True):
                 c1, c2, c3, c4 = st.columns([2,3,2,3])
                 with c1:
-                    granularity = st.radio("집계 단위", ["일","월"], horizontal=True, index=0, key=f"v2_gran_{label}")
+                    granularity = st.radio("집계 단위", ["일","주","월"], horizontal=True, index=0, key=f"v2_gran_{label}")
                 with c2:
                     view_mode_ui = st.radio("표시 방식", ["연령대별", "키워드별", "전체합"], horizontal=True, index=0, key=f"v2_view_{label}")
                 with c3:
