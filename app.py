@@ -29,6 +29,10 @@ import views.view07
 importlib.reload(views.view07)
 from views.view07 import main as view07_main
 
+import views.view08
+importlib.reload(views.view08)
+from views.view08 import main as view08_main
+
 from streamlit_option_menu import option_menu
 
 st.set_page_config(
@@ -44,6 +48,7 @@ view04_name = "언드·PPL 대시보드"
 view05_name = "키워드 대시보드"
 view06_name = "GA 트래픽 대시보드"
 view07_name = "GA PDP 대시보드"
+view08_name = "TEST"
 # border:2px solid #D6D6D9;
 
 with st.sidebar:
@@ -111,6 +116,7 @@ with st.sidebar:
             view05_name,
             view06_name,
             view07_name,
+            view08_name,
         ],
         # icons=[
         #     # https://icons.getbootstrap.com
@@ -159,3 +165,5 @@ elif selected == view06_name:
     view06_main()
 elif selected == view07_name:
     view07_main()
+elif selected == view08_name:
+    view08_main()
