@@ -520,7 +520,7 @@ def main():
         top7 = (
             df_fs["source_medium"]
             .value_counts()
-            .nlargest(7)
+            .nlargest(20)
             .index
             .tolist()
         )
