@@ -65,7 +65,6 @@ def main():
 
     st.divider()
     
-    
     # ────────────────────────────────────────────────────────────────
     # 사이드바 필터 설정
     # ────────────────────────────────────────────────────────────────    
@@ -98,8 +97,7 @@ def main():
         # --------------------------------------------------------------
         query_slp      = pd.DataFrame(sh.worksheet('query_슬립퍼').get_all_records())
         query_nor      = pd.DataFrame(sh.worksheet('query_누어').get_all_records())
-        query_sum  = pd.DataFrame(sh.worksheet('query_sum').get_all_records())
-
+        query_sum      = pd.DataFrame(sh.worksheet('query_sum').get_all_records())
         
         # # 3) tb_sleeper_psi
         # bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
@@ -415,151 +413,211 @@ def main():
 
         st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
 
-    # => "채널별 쿼리 기여량"용
-    def decorate_df_ctb(df: pd.DataFrame,
-                    brand: str = 'sleeper') -> None:
-        if brand == "sleeper":
-            # 키에러 방지
-            required = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-                        '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중', '홈스타일링연구소', '홈스타일링연구소_비중', '손태영', '손태영_비중', '제주가장', '제주가장_비중', '굥하우스', '굥하우스_비중']            
-            for c in required:
-                if c not in df.columns:
-                    df[c] = 0
-            num_cols = ['검색량', '기본 검색량', '기본 검색량_비중',
-                        '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중', '홈스타일링연구소', '홈스타일링연구소_비중', '손태영', '손태영_비중', '제주가장', '제주가장_비중', '굥하우스', '굥하우스_비중'] 
-            df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
-            # 컬럼 순서 지정
-            df = df[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-                     '굥하우스', '굥하우스_비중', '제주가장', '제주가장_비중', '손태영', '손태영_비중', '홈스타일링연구소', '홈스타일링연구소_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '태요미네', '태요미네_비중',  '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
-            
-            # 자료형 워싱
-            df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
-            num_cols = df.select_dtypes(include=['number']).columns
-            df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))  
-            
-            # 컬럼 이름 변경 - 멀티 인덱스
-            df.columns = pd.MultiIndex.from_tuples([
-                ("기본정보",      "날짜"),        
-                ("기본정보",        "전체 검색량"),      
-                ("기본 검색량",        "검색량"),         
-                ("기본 검색량",        "비중(%)"),  
-                ("손태영",        "검색량"),         
-                ("손태영",        "비중(%)"),
-                ("제주가장",        "검색량"),         
-                ("제주가장",        "비중(%)"), 
-                ("굥하우스",        "검색량"),         
-                ("굥하우스",        "비중(%)"), 
-                ("홈스타일링연구소",        "검색량"),         
-                ("홈스타일링연구소",        "비중(%)"), 
-                ("노홍철 유튜브",        "검색량"),         
-                ("노홍철 유튜브",        "비중(%)"), 
-                ("태요미네",        "검색량"),         
-                ("태요미네",        "비중(%)"),  
-                ("아울디자인",        "검색량"),         
-                ("아울디자인",        "비중(%)"), 
-                ("알쓸물치",        "검색량"),         
-                ("알쓸물치",        "비중(%)"),
-            ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)  
+    # ──────────────────────────────────
+    # 브랜드별 채널명 자동으로 수집. 하드코딩 제거 
+    # ──────────────────────────────────
+    channel_brand = (
+        PPL_LIST.loc[:, ['채널명', '브랜드', 'order']]
+        .dropna(subset=['채널명', '브랜드'])
+        .assign(order=lambda d: pd.to_numeric(d['order'], errors='coerce'))
+        # order가 비어있거나 숫자 변환 실패 시 맨 뒤로 가도록 아주 작은 값으로 대체
+        .assign(order=lambda d: d['order'].fillna(float('-inf')))
+        # 브랜드 내에서 order 내림차순 정렬
+        .sort_values(['브랜드', 'order'], ascending=[True, False])
+        # 중복 채널명/브랜드 조합 있으면 첫 행(=가장 큰 order)만 보존
+        .drop_duplicates(subset=['브랜드', '채널명'], keep='first')
+    )
 
-        elif brand == "nooer":
-            # 키에러 방지
-            required = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-                        '베리엠제이', '베리엠제이_비중']            
-            for c in required:
-                if c not in df.columns:
-                    df[c] = 0
-            num_cols = ['검색량', '기본 검색량', '기본 검색량_비중',
-                        '베리엠제이', '베리엠제이_비중'] 
-            df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+    CHANNELS_BY_BRAND = {
+        b: g['채널명'].tolist()
+        for b, g in channel_brand.groupby('브랜드', sort=False)
+    }
+    
 
-            # 컬럼 순서 지정
-            df = df[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-                    '베리엠제이', '베리엠제이_비중']]
+
+    # # => "채널별 쿼리 기여량"용
+    # def decorate_df_ctb(df: pd.DataFrame,
+    #                 brand: str = 'sleeper') -> None:
+    #     if brand == "sleeper":
+    #         # 키에러 방지
+    #         required = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
+    #                     '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중', '홈스타일링연구소', '홈스타일링연구소_비중', '손태영', '손태영_비중', '제주가장', '제주가장_비중', '굥하우스', '굥하우스_비중']            
+    #         for c in required:
+    #             if c not in df.columns:
+    #                 df[c] = 0
+    #         num_cols = ['검색량', '기본 검색량', '기본 검색량_비중',
+    #                     '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중', '홈스타일링연구소', '홈스타일링연구소_비중', '손태영', '손태영_비중', '제주가장', '제주가장_비중', '굥하우스', '굥하우스_비중'] 
+    #         df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+
+    #         # 컬럼 순서 지정
+    #         df = df[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
+    #                  '굥하우스', '굥하우스_비중', '제주가장', '제주가장_비중', '손태영', '손태영_비중', '홈스타일링연구소', '홈스타일링연구소_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '태요미네', '태요미네_비중',  '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
             
-            # 자료형 워싱
-            df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
-            num_cols = df.select_dtypes(include=['number']).columns
-            df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))  
+    #         # 자료형 워싱
+    #         df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
+    #         num_cols = df.select_dtypes(include=['number']).columns
+    #         df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))  
             
-            # 컬럼 이름 변경 - 멀티 인덱스
-            df.columns = pd.MultiIndex.from_tuples([
-                ("기본정보",      "날짜"),        
-                ("기본정보",        "전체 검색량"),      
-                ("기본 검색량",        "검색량"),         
-                ("기본 검색량",        "비중(%)"),  
-                ("베리엠제이",        "검색량"),         
-                ("베리엠제이",        "비중(%)"),
-            ], names=["그룹","지표"])  # 상단 레벨 이름(옵션) 
+    #         # 컬럼 이름 변경 - 멀티 인덱스
+    #         df.columns = pd.MultiIndex.from_tuples([
+    #             ("기본정보",      "날짜"),        
+    #             ("기본정보",        "전체 검색량"),      
+    #             ("기본 검색량",        "검색량"),         
+    #             ("기본 검색량",        "비중(%)"),  
+    #             ("손태영",        "검색량"),         
+    #             ("손태영",        "비중(%)"),
+    #             ("제주가장",        "검색량"),         
+    #             ("제주가장",        "비중(%)"), 
+    #             ("굥하우스",        "검색량"),         
+    #             ("굥하우스",        "비중(%)"), 
+    #             ("홈스타일링연구소",        "검색량"),         
+    #             ("홈스타일링연구소",        "비중(%)"), 
+    #             ("노홍철 유튜브",        "검색량"),         
+    #             ("노홍철 유튜브",        "비중(%)"), 
+    #             ("태요미네",        "검색량"),         
+    #             ("태요미네",        "비중(%)"),  
+    #             ("아울디자인",        "검색량"),         
+    #             ("아울디자인",        "비중(%)"), 
+    #             ("알쓸물치",        "검색량"),         
+    #             ("알쓸물치",        "비중(%)"),
+    #         ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)  
+
+    #     elif brand == "nooer":
+    #         # 키에러 방지
+    #         required = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
+    #                     '베리엠제이1', '베리엠제이1_비중']            
+    #         for c in required:
+    #             if c not in df.columns:
+    #                 df[c] = 0
+    #         num_cols = ['검색량', '기본 검색량', '기본 검색량_비중',
+    #                     '베리엠제이1', '베리엠제이1_비중'] 
+    #         df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+
+    #         # 컬럼 순서 지정
+    #         df = df[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
+    #                 '베리엠제이1', '베리엠제이1_비중']]
+            
+    #         # 자료형 워싱
+    #         df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
+    #         num_cols = df.select_dtypes(include=['number']).columns
+    #         df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))  
+            
+    #         # 컬럼 이름 변경 - 멀티 인덱스
+    #         df.columns = pd.MultiIndex.from_tuples([
+    #             ("기본정보",      "날짜"),        
+    #             ("기본정보",        "전체 검색량"),      
+    #             ("기본 검색량",        "검색량"),         
+    #             ("기본 검색량",        "비중(%)"),  
+    #             ("베리엠제이1",        "검색량"),         
+    #             ("베리엠제이1",        "비중(%)"),
+    #         ], names=["그룹","지표"])  # 상단 레벨 이름(옵션) 
         
+    #     return df
+
+
+    # (25.09.18 하드코딩 제거) "채널별 쿼리 기여량"용
+    def decorate_df_ctb(df: pd.DataFrame, brand: str = 'sleeper') -> pd.DataFrame:
+        # 브랜드 라벨 정규화
+        brand_map = {'sleeper': '슬립퍼', 'nooer': '누어'}
+        brand_kor = brand_map.get(brand, brand)  # 이미 한글이면 그대로
+
+        # 채널 목록 자동 로드 (없으면 빈 리스트)
+        channels = CHANNELS_BY_BRAND.get(brand_kor, [])
+
+        # 필요한 기본 컬럼 채우기
+        base_required = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중']
+        # 채널·비중 동적 required
+        dyn_required = [c for ch in channels for c in (ch, f'{ch}_비중')]
+        for c in base_required + dyn_required:
+            if c not in df.columns:
+                df[c] = 0
+
+        # 숫자형 변환
+        num_cols = ['검색량', '기본 검색량', '기본 검색량_비중'] + \
+                [c for ch in channels for c in (ch, f'{ch}_비중')]
+        df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+
+        # 컬럼 순서 동적 구성
+        ordered = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중'] + \
+                [c for pair in [(ch, f'{ch}_비중') for ch in channels] for c in pair]
+        df = df[ordered]
+
+        # 날짜/무한대 처리
+        df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
+        num_cols2 = df.select_dtypes(include=['number']).columns
+        df[num_cols2] = df[num_cols2].replace([np.inf, -np.inf], np.nan).fillna(0)
+
+        # MultiIndex 헤더 구성
+        tuples = [
+            ("기본정보", "날짜"),
+            ("기본정보", "전체 검색량"),
+            ("기본 검색량", "검색량"),
+            ("기본 검색량", "비중(%)"),
+        ]
+        for ch in channels:
+            tuples += [(ch, "검색량"), (ch, "비중(%)")]
+
+        df.columns = pd.MultiIndex.from_tuples(tuples, names=["그룹", "지표"])
         return df
 
+
+    # def render_style_ctb(target_df, brand):
+    #     styled = style_format(
+    #         decorate_df_ctb(target_df, brand),
+    #         decimals_map={
+    #             ("기본정보",        "전체 검색량"): 0,
+    #             ("기본 검색량",        "비중(%)"): 1,  
+    #             ("손태영",        "비중(%)"): 1,
+    #             ("홈스타일링연구소",        "비중(%)"): 1,
+    #             ("노홍철 유튜브",        "비중(%)"): 1,
+    #             ("태요미네",        "비중(%)"): 1,
+    #             ("아울디자인",        "비중(%)"): 1,
+    #             ("알쓸물치",        "비중(%)"): 1,
+    #             ("베리엠제이1",        "비중(%)"): 1,
+    #         },
+    #         suffix_map={
+    #             ("기본 검색량",        "비중(%)"): " %",
+    #             ("기본 검색량",        "비중(%)"): " %",  
+    #             ("손태영",        "비중(%)"): " %",
+    #             ("홈스타일링연구소",        "비중(%)"): " %",
+    #             ("노홍철 유튜브",        "비중(%)"): " %",
+    #             ("태요미네",        "비중(%)"): " %",
+    #             ("아울디자인",        "비중(%)"): " %",
+    #             ("알쓸물치",        "비중(%)"): " %",
+    #             ("베리엠제이1",        "비중(%)"): " %",
+    #     }
+    #     )
+    #     st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
+
+
+    # (25.09.18 하드코딩 제거) 
     def render_style_ctb(target_df, brand):
-        styled = style_format(
-            decorate_df_ctb(target_df, brand),
-            decimals_map={
-                ("기본정보",        "전체 검색량"): 0,
-                ("기본 검색량",        "비중(%)"): 1,  
-                ("손태영",        "비중(%)"): 1,
-                ("홈스타일링연구소",        "비중(%)"): 1,
-                ("노홍철 유튜브",        "비중(%)"): 1,
-                ("태요미네",        "비중(%)"): 1,
-                ("아울디자인",        "비중(%)"): 1,
-                ("알쓸물치",        "비중(%)"): 1,
-                ("베리엠제이",        "비중(%)"): 1,
-            },
-            suffix_map={
-                ("기본 검색량",        "비중(%)"): " %",
-                ("기본 검색량",        "비중(%)"): " %",  
-                ("손태영",        "비중(%)"): " %",
-                ("홈스타일링연구소",        "비중(%)"): " %",
-                ("노홍철 유튜브",        "비중(%)"): " %",
-                ("태요미네",        "비중(%)"): " %",
-                ("아울디자인",        "비중(%)"): " %",
-                ("알쓸물치",        "비중(%)"): " %",
-                ("베리엠제이",        "비중(%)"): " %",
+        # 먼저 데코레이션(여기서 MultiIndex 컬럼 완성됨)
+        decorated = decorate_df_ctb(target_df, brand)
+
+        # 채널 그룹명 동적 추출 (기본정보/기본 검색량 제외)
+        groups = list(decorated.columns.get_level_values(0).unique())
+        channel_groups = [g for g in groups if g not in ["기본정보", "기본 검색량"]]
+
+        # 동적 포맷 맵
+        decimals_map = {
+            ("기본정보", "전체 검색량"): 0,
+            ("기본 검색량", "비중(%)"): 1,
         }
-        )
+        # 채널 비중은 모두 소수 1자리
+        for g in channel_groups:
+            decimals_map[(g, "비중(%)")] = 1
+
+        suffix_map = {
+            ("기본 검색량", "비중(%)"): " %",
+        }
+        for g in channel_groups:
+            suffix_map[(g, "비중(%)")] = " %"
+
+        styled = style_format(decorated, decimals_map=decimals_map, suffix_map=suffix_map)
         st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
 
-    
-    # def render_stacked_bar(
-    #     df: pd.DataFrame,
-    #     x: str,
-    #     y: str | list[str],
-    #     color: str,
-    #     ) -> None:
-
-    #     # y가 단일 문자열이면 리스트로 감싸기
-    #     y_cols = [y] if isinstance(y, str) else y
-
-    #     fig = px.bar(
-    #         df,
-    #         x=x,
-    #         y=y_cols,
-    #         color=color,
-    #         labels={"variable": ""},
-    #         opacity=0.6,
-    #         barmode="relative",
-    #     )
-    #     fig.update_layout(
-    #         barmode="relative",
-    #         bargap=0.1,        # 카테고리 간 간격 (0~1)
-    #         bargroupgap=0.2,   # 같은 카테고리 내 막대 간 간격 (0~1)
-    #         height=400,
-    #         xaxis_title=None,
-    #         yaxis_title=None,
-    #         legend=dict(
-    #             orientation="h",
-    #             y=1.02,
-    #             x=1,
-    #             xanchor="right",
-    #             yanchor="bottom",
-    #             title=None
-    #         )
-    #     )
-    #     fig.update_xaxes(tickformat="%m월 %d일")
-    #     st.plotly_chart(fig, use_container_width=True)
 
 
     def render_stacked_bar(df: pd.DataFrame, x: str, y: str | list[str], color: str | None) -> None:
@@ -595,824 +653,6 @@ def main():
         )
         fig.update_xaxes(tickformat="%m월 %d일")
         st.plotly_chart(fig, use_container_width=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    # def render_aggrid__engag(
-    #     df: pd.DataFrame,
-    #     height: int = 410,
-    #     use_parent: bool = True,
-    #     select_option: int = 1,
-    #     ) -> None:
-    #     """
-    #     use_parent: False / True
-    #     """
-    #     df2 = df.copy()
-        
-    #     # (주의) 누락됱 컬럼히 당연히 있을수 있음, 그래서 fillna만 해주는게 아니라 컬럼 자리를 만들어서 fillna 해야함.
-    #     expected_cols = [
-    #                     "날짜",
-    #                     "채널명",
-    #                     "Cost",
-    #                     "조회수",
-    #                     "좋아요수",
-    #                     "댓글수",
-    #                     "브랜드언급량",
-    #                     "링크 클릭수", 
-    #                     "session_count",
-    #                     "avg_session_duration_sec",
-    #                     "view_item_list_sessions",
-    #                     "view_item_sessions",
-    #                     "scroll_50_sessions",
-    #                     "product_option_price_sessions",
-    #                     "find_showroom_sessions",
-    #                     "add_to_cart_sessions",
-    #                     "sign_up_sessions",
-    #                     "showroom_10s_sessions",
-    #                     "showroom_leads_sessions",
-    #     ]
-    #     for col in expected_cols:
-    #         df2[col] = df2.get(col, 0)
-    #     df2.fillna(0, inplace=True)     # (기존과 동일) 값이 없는 경우 일단 0으로 치환
-        
-
-    #     # 전처리 영역 (파생지표 생성) - CVR
-    #     df2['view_item_list_CVR']         = (df2['view_item_list_sessions']     / df2['session_count']          * 100).round(2)
-    #     df2['view_item_CVR']              = (df2['view_item_sessions']              / df2['view_item_list_sessions']          * 100).round(2)
-    #     df2['scroll_50_CVR']              = (df2['scroll_50_sessions']              / df2['view_item_list_sessions']          * 100).round(2)
-    #     df2['product_option_price_CVR']   = (df2['product_option_price_sessions']   / df2['view_item_list_sessions']          * 100).round(2)
-    #     df2['find_nearby_showroom_CVR']   = (df2['find_showroom_sessions']          / df2['view_item_list_sessions']          * 100).round(2)
-    #     df2['add_to_cart_CVR']            = (df2['add_to_cart_sessions']            / df2['view_item_list_sessions']          * 100).round(2)
-    #     df2['sign_up_CVR']                = (df2['sign_up_sessions']                / df2['view_item_list_sessions']          * 100).round(2)
-    #     df2['showroom_10s_CVR']           = (df2['showroom_10s_sessions']           / df2['view_item_list_sessions']          * 100).round(2)
-    #     df2['showroom_leads_CVR']         = (df2['showroom_leads_sessions']         / df2['view_item_list_sessions']          * 100).round(2)
-
-    #     # 전처리 영역 (파생지표 생성) - CPA
-    #     df2['view_item_list_CPA']         = (df2['Cost']     /  df2['view_item_list_sessions']          * 100).round(0)
-    #     df2['view_item_CPA']              = (df2['Cost']     /  df2['view_item_sessions']               * 100).round(0)
-    #     df2['scroll_50_CPA']              = (df2['Cost']     /  df2['scroll_50_sessions']               * 100).round(0)
-    #     df2['product_option_price_CPA']   = (df2['Cost']     /  df2['product_option_price_sessions']    * 100).round(0)
-    #     df2['find_nearby_showroom_CPA']   = (df2['Cost']     /  df2['find_showroom_sessions']           * 100).round(0)
-    #     df2['add_to_cart_CPA']            = (df2['Cost']     /  df2['add_to_cart_sessions']             * 100).round(0)
-    #     df2['sign_up_CPA']                = (df2['Cost']     /  df2['sign_up_sessions']                 * 100).round(0)
-    #     df2['showroom_10s_CPA']           = (df2['Cost']     /  df2['showroom_10s_sessions']            * 100).round(0)
-    #     df2['showroom_leads_CPA']         = (df2['Cost']     /  df2['showroom_leads_sessions']          * 100).round(0)
-        
-    #     # 컬럼순서 지정
-    #     # (생략)
-
-    #     # (필수함수) make_num_child
-    #     def make_num_child(header, field, fmt_digits=0, suffix=''):
-    #         return {
-    #             "headerName": header, "field": field,
-    #             "type": ["numericColumn","customNumericFormat"],
-    #             "valueFormatter": JsCode(
-    #                 f"function(params){{"
-    #                 f"  return params.value!=null?"
-    #                 f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
-    #                 f"}}"
-    #             ),
-    #             "cellStyle": JsCode("params=>({textAlign:'right'})")
-    #         }
-        
-    #     # (필수함수) add_summary
-    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
-    #         summary: dict[str, float] = {}
-    #         for col, op in agg_map.items():
-    #             if op == 'sum':
-    #                 summary[col] = int(df[col].sum())
-    #             elif op == 'avg':
-    #                 summary[col] = float(df[col].mean())
-    #             elif op == 'mid':
-    #                 summary[col] = float(df[col].median())
-    #             else:
-    #                 summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
-    #         grid_options['pinnedBottomRowData'] = [summary]
-    #         return grid_options
-        
-    #     # date_col
-    #     date_col = {
-    #         "headerName": "날짜",
-    #         "field": "날짜",
-    #         "pinned": "left",
-    #         "width": 100,
-    #         "cellStyle": JsCode("params=>({textAlign:'left'})"),
-    #         # "sort": "desc"
-    #     }
-    #     # channel_col
-    #     channel_col = {
-    #         "headerName": "채널",
-    #         "field": "채널명",
-    #         "pinned": "left",
-    #         "width": 100,
-    #         "cellStyle": JsCode("params=>({textAlign:'left'})"),
-    #         # "sort": "desc"
-    #     }
-        
-    #     flat_cols = [
-    #         date_col,
-    #         channel_col,
-    #         make_num_child("일할비용",     "Cost"),
-    #         make_num_child("조회수",       "조회수"),
-    #         make_num_child("좋아요수",     "좋아요수"),
-    #         make_num_child("댓글수",       "댓글수"),
-    #         make_num_child("브랜드언급량",  "브랜드언급량"),
-    #         make_num_child("링크클릭수",   "링크 클릭수"),
-    #         make_num_child("세션수",                       "session_count"),
-    #         make_num_child("평균세션시간(초)",    "avg_session_duration_sec"),
-    #         make_num_child("PLP조회",                      "view_item_list_sessions"),
-    #         make_num_child("PLP조회 CVR",                  "view_item_list_CVR", fmt_digits=2, suffix="%"),
-    #         make_num_child("PDP조회",                      "view_item_sessions"),
-    #         make_num_child("PDP조회 CVR",                  "view_item_CVR", fmt_digits=2, suffix="%"),
-    #         make_num_child("PDPscr50",                    "scroll_50_sessions"),
-    #         make_num_child("PDPscr50 CVR",                "scroll_50_CVR", fmt_digits=2, suffix="%"),
-    #         make_num_child("가격표시",                      "product_option_price_sessions"),
-    #         make_num_child("가격표시 CVR",                  "product_option_price_CVR", fmt_digits=2, suffix="%"),
-    #         make_num_child("쇼룸찾기",                      "find_showroom_sessions"),
-    #         make_num_child("쇼룸찾기 CVR",                  "find_nearby_showroom_CVR", fmt_digits=2, suffix="%"),
-    #         make_num_child("장바구니",                      "add_to_cart_sessions"),
-    #         make_num_child("장바구니 CVR",                  "add_to_cart_CVR", fmt_digits=2, suffix="%"),
-    #         make_num_child("회원가입",                      "sign_up_sessions"),
-    #         make_num_child("회원가입 CVR",                  "sign_up_CVR", fmt_digits=2, suffix="%"),
-    #         make_num_child("쇼룸10초",                      "showroom_10s_sessions"),
-    #         make_num_child("쇼룸10초 CVR",                  "showroom_10s_CVR", fmt_digits=2, suffix="%"),
-    #         make_num_child("쇼룸예약",                      "showroom_leads_sessions"),
-    #         make_num_child("쇼룸예약 CVR",                  "showroom_leads_CVR", fmt_digits=2, suffix="%"),
-    #     ]
-
-    #     # (use_parent) grouped_cols
-    #     grouped_cols = [
-    #         date_col,
-    #         channel_col,
-    #         make_num_child("일할비용", "Cost"),
-    #         # 인게이지먼트
-    #         {
-    #             "headerName": "Engagement",
-    #             "children": [
-    #                 make_num_child("조회수",           "조회수"),
-    #                 make_num_child("좋아요수",         "좋아요수"),
-    #                 make_num_child("댓글수",           "댓글수"),
-    #                 make_num_child("브랜드언급량",      "브랜드언급량"),
-    #                 make_num_child("링크클릭수",        "링크 클릭수"),
-    #             ]
-    #         },
-    #         # GA 후속 액션
-    #         {
-    #             "headerName": "GA Actions",
-    #             "children": [
-    #                 make_num_child("세션수",                       "session_count"),
-    #                 make_num_child("평균세션시간(초)",    "avg_session_duration_sec"),
-    #                 make_num_child("PLP조회",                      "view_item_list_sessions"),
-    #                 make_num_child("PDP조회",                      "view_item_sessions"),
-    #                 make_num_child("PDPscr50",                    "scroll_50_sessions"),
-    #                 make_num_child("가격표시",                      "product_option_price_sessions"),
-    #                 make_num_child("쇼룸찾기",                      "find_showroom_sessions"),
-    #                 make_num_child("장바구니",                      "add_to_cart_sessions"),
-    #                 make_num_child("회원가입",                      "sign_up_sessions"),
-    #                 make_num_child("쇼룸10초",                      "showroom_10s_sessions"),
-    #                 make_num_child("쇼룸예약",                      "showroom_leads_sessions"),
-    #             ]
-    #         },
-    #     ]
-
-    #     grouped_cols_CVR = [
-    #         date_col,
-    #         channel_col,
-    #         make_num_child("일할비용", "Cost"),
-    #         # 인게이지먼트
-    #         {
-    #             "headerName": "Engagement",
-    #             "children": [
-    #                 make_num_child("조회수",           "조회수"),
-    #                 make_num_child("좋아요수",         "좋아요수"),
-    #                 make_num_child("댓글수",           "댓글수"),
-    #                 make_num_child("브랜드언급량",      "브랜드언급량"),
-    #                 make_num_child("링크클릭수",        "링크 클릭수"),
-    #             ]
-    #         },
-    #         # GA 후속 액션
-    #         {
-    #             "headerName": "GA Actions",
-    #             "children": [
-    #                 make_num_child("세션수",                       "session_count"),
-    #                 make_num_child("평균세션시간(초)",    "avg_session_duration_sec"),
-    #                 make_num_child("PLP조회",                      "view_item_list_sessions"),
-    #                 make_num_child("PLP조회 CVR",                  "view_item_list_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("PDP조회",                      "view_item_sessions"),
-    #                 make_num_child("PDP조회 CVR",                  "view_item_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("PDPscr50",                    "scroll_50_sessions"),
-    #                 make_num_child("PDPscr50 CVR",                "scroll_50_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("가격표시",                      "product_option_price_sessions"),
-    #                 make_num_child("가격표시 CVR",                  "product_option_price_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("쇼룸찾기",                      "find_showroom_sessions"),
-    #                 make_num_child("쇼룸찾기 CVR",                  "find_nearby_showroom_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("장바구니",                      "add_to_cart_sessions"),
-    #                 make_num_child("장바구니 CVR",                  "add_to_cart_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("회원가입",                      "sign_up_sessions"),
-    #                 make_num_child("회원가입 CVR",                  "sign_up_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("쇼룸10초",                      "showroom_10s_sessions"),
-    #                 make_num_child("쇼룸10초 CVR",                  "showroom_10s_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("쇼룸예약",                      "showroom_leads_sessions"),
-    #                 make_num_child("쇼룸예약 CVR",                  "showroom_leads_CVR", fmt_digits=2, suffix="%"),
-    #             ]
-    #         },
-    #     ]
-
-    #     grouped_cols_CPA = [
-    #         date_col,
-    #         channel_col,
-    #         make_num_child("일할비용", "Cost"),
-    #         # 인게이지먼트
-    #         {
-    #             "headerName": "Engagement",
-    #             "children": [
-    #                 make_num_child("조회수",           "조회수"),
-    #                 make_num_child("좋아요수",         "좋아요수"),
-    #                 make_num_child("댓글수",           "댓글수"),
-    #                 make_num_child("브랜드언급량",      "브랜드언급량"),
-    #                 make_num_child("링크클릭수",        "링크 클릭수"),
-    #             ]
-    #         },
-    #         # GA 후속 액션
-    #         {
-    #             "headerName": "GA Actions",
-    #             "children": [
-    #                 make_num_child("세션수",                       "session_count"),
-    #                 make_num_child("평균세션시간(초)",    "avg_session_duration_sec"),
-    #                 make_num_child("PLP조회",                      "view_item_list_sessions"),
-    #                 make_num_child("PLP조회 CPA",                  "view_item_list_CPA", fmt_digits=0),
-    #                 make_num_child("PDP조회",                      "view_item_sessions"),
-    #                 make_num_child("PDP조회 CPA",                  "view_item_CPA", fmt_digits=0),
-    #                 make_num_child("PDPscr50",                    "scroll_50_sessions"),
-    #                 make_num_child("PDPscr50 CPA",                "scroll_50_CPA", fmt_digits=0),
-    #                 make_num_child("가격표시",                      "product_option_price_sessions"),
-    #                 make_num_child("가격표시 CPA",                  "product_option_price_CPA", fmt_digits=0),
-    #                 make_num_child("쇼룸찾기",                      "find_showroom_sessions"),
-    #                 make_num_child("쇼룸찾기 CPA",                  "find_nearby_showroom_CPA", fmt_digits=0),
-    #                 make_num_child("장바구니",                      "add_to_cart_sessions"),
-    #                 make_num_child("장바구니 CPA",                  "add_to_cart_CPA", fmt_digits=0),
-    #                 make_num_child("회원가입",                      "sign_up_sessions"),
-    #                 make_num_child("회원가입 CPA",                  "sign_up_CPA", fmt_digits=0),
-    #                 make_num_child("쇼룸10초",                      "showroom_10s_sessions"),
-    #                 make_num_child("쇼룸10초 CPA",                  "showroom_10s_CPA", fmt_digits=0),
-    #                 make_num_child("쇼룸예약",                      "showroom_leads_sessions"),
-    #                 make_num_child("쇼룸예약 CPA",                  "showroom_leads_CPA", fmt_digits=0),
-    #             ]
-    #         },
-    #     ]
-
-    #     grouped_cols_CVRCPA = [
-    #         date_col,
-    #         channel_col,
-    #         make_num_child("일할비용", "Cost"),
-    #         # 인게이지먼트
-    #         {
-    #             "headerName": "Engagement",
-    #             "children": [
-    #                 make_num_child("조회수",           "조회수"),
-    #                 make_num_child("좋아요수",         "좋아요수"),
-    #                 make_num_child("댓글수",           "댓글수"),
-    #                 make_num_child("브랜드언급량",      "브랜드언급량"),
-    #                 make_num_child("링크클릭수",        "링크 클릭수"),
-    #             ]
-    #         },
-    #         # GA 후속 액션
-    #         {
-    #             "headerName": "GA Actions",
-    #             "children": [
-    #                 make_num_child("세션수",                       "session_count"),
-    #                 make_num_child("평균세션시간(초)",    "avg_session_duration_sec"),
-    #                 make_num_child("PLP조회",                      "view_item_list_sessions"),
-    #                 make_num_child("PLP조회 CVR",                  "view_item_list_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("PLP조회 CPA",                  "view_item_list_CPA", fmt_digits=0),
-    #                 make_num_child("PDP조회",                      "view_item_sessions"),
-    #                 make_num_child("PDP조회 CVR",                  "view_item_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("PDP조회 CPA",                  "view_item_CPA", fmt_digits=0),
-    #                 make_num_child("PDPscr50",                    "scroll_50_sessions"),
-    #                 make_num_child("PDPscr50 CVR",                "scroll_50_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("PDPscr50 CPA",                "scroll_50_CPA", fmt_digits=0),
-    #                 make_num_child("가격표시",                      "product_option_price_sessions"),
-    #                 make_num_child("가격표시 CVR",                  "product_option_price_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("가격표시 CPA",                  "product_option_price_CPA", fmt_digits=0),
-    #                 make_num_child("쇼룸찾기",                      "find_showroom_sessions"),
-    #                 make_num_child("쇼룸찾기 CVR",                  "find_nearby_showroom_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("쇼룸찾기 CPA",                  "find_nearby_showroom_CPA", fmt_digits=0),
-    #                 make_num_child("장바구니",                      "add_to_cart_sessions"),
-    #                 make_num_child("장바구니 CVR",                  "add_to_cart_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("장바구니 CPA",                  "add_to_cart_CPA", fmt_digits=0),
-    #                 make_num_child("회원가입",                      "sign_up_sessions"),
-    #                 make_num_child("회원가입 CVR",                  "sign_up_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("회원가입 CPA",                  "sign_up_CPA", fmt_digits=0),
-    #                 make_num_child("쇼룸10초",                      "showroom_10s_sessions"),
-    #                 make_num_child("쇼룸10초 CVR",                  "showroom_10s_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("쇼룸10초 CPA",                  "showroom_10s_CPA", fmt_digits=0),
-    #                 make_num_child("쇼룸예약",                      "showroom_leads_sessions"),
-    #                 make_num_child("쇼룸예약 CVR",                  "showroom_leads_CVR", fmt_digits=2, suffix="%"),
-    #                 make_num_child("쇼룸예약 CPA",                  "showroom_leads_CPA", fmt_digits=0),
-    #             ]
-    #         },
-    #     ]
-
-    #     # (use_parent)
-    #     if use_parent:
-    #         if select_option == 1:
-    #             column_defs = grouped_cols
-    #         elif select_option == 2:
-    #             column_defs = grouped_cols_CVR
-    #         elif select_option == 3:
-    #             column_defs = grouped_cols_CPA
-    #         elif select_option == 4:
-    #             column_defs = grouped_cols_CVRCPA
-    #     else:
-    #         column_defs = flat_cols
-    
-    #     # grid_options & 렌더링
-    #     grid_options = {
-    #     "columnDefs": column_defs,
-    #     "defaultColDef": {
-    #         "sortable": True,
-    #         "filter": True,
-    #         "resizable": True,
-    #         "flex": 1,       # flex:1 이면 나머지 공간을 컬럼 개수만큼 균등 분배
-    #         "minWidth": 90,   # 최소 너비
-    #         "wrapHeaderText": True,
-    #         "autoHeaderHeight": True
-    #     },
-    #     "onGridReady": JsCode(
-    #         "function(params){ params.api.sizeColumnsToFit(); }"
-    #     ),
-    #     "headerHeight": 60,
-    #     "groupHeaderHeight": 30,
-    #     }        
-
-    #     AgGrid(
-    #         df2,
-    #         gridOptions=grid_options,
-    #         height=height,
-    #         fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
-    #         theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-    #         allow_unsafe_jscode=True
-    #     )
-
-
-    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
-    #         summary: dict[str, float | str] = {}
-    #         for col, op in agg_map.items():
-    #             val = None
-    #             try:
-    #                 if op == 'sum':
-    #                     val = df[col].sum()
-    #                 elif op == 'avg':
-    #                     val = df[col].mean()
-    #                 elif op == 'mid':
-    #                     val = df[col].median()
-    #                 elif op == 'max':
-    #                     val = df[col].max()
-    #             except:
-    #                 val = None
-
-    #             # NaN / Inf / numpy 타입 → None or native 타입으로 처리
-    #             if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-    #                 summary[col] = None
-    #             else:
-    #                 # numpy 타입 제거
-    #                 if isinstance(val, (np.integer, np.int64, np.int32)):
-    #                     summary[col] = int(val)
-    #                 elif isinstance(val, (np.floating, np.float64, np.float32)):
-    #                     summary[col] = float(round(val, 2))
-    #                 else:
-    #                     summary[col] = val
-
-    #         grid_options['pinnedBottomRowData'] = [summary]
-    #         return grid_options
-        
-    #     # # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-    #     # grid_options = add_summary(
-    #     #     grid_options,
-    #     #     df2,
-    #     #     {
-    #     #         '조회수': 'max',
-    #     #         '좋아요수': 'max',
-    #     #         '댓글수': 'max',
-    #     #         '브랜드언급량': 'max',
-    #     #         '링크 클릭수': 'max',
-    #     #         'session_count': 'sum',
-    #     #         'avg_session_duration_sec': 'avg',
-    #     #         'view_item_list_sessions': 'sum',
-    #     #         'view_item_list_CVR': 'avg',
-    #     #         'view_item_sessions': 'sum',
-    #     #         'view_item_CVR': 'avg',
-    #     #         'scroll_50_sessions': 'sum',
-    #     #         'scroll_50_CVR': 'avg',
-    #     #         'product_option_price_sessions': 'sum',
-    #     #         'product_option_price_CVR': 'avg',
-    #     #         'find_showroom_sessions': 'sum',
-    #     #         'find_nearby_showroom_CVR': 'avg',
-    #     #         'add_to_cart_sessions': 'sum',
-    #     #         'add_to_cart_CVR': 'avg',
-    #     #         'sign_up_sessions': 'sum',
-    #     #         'sign_up_CVR': 'avg',
-    #     #         'showroom_10s_sessions': 'sum',
-    #     #         'showroom_10s_CVR': 'avg',
-    #     #         'showroom_leads_sessions': 'sum',
-    #     #         'showroom_leads_CVR': 'avg',
-    #     #     }
-    #     # )
-        
-
-        
-    #     # AgGrid(
-    #     #     df2,
-    #     #     gridOptions=grid_options,
-    #     #     height=height,
-    #     #     fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
-    #     #     theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-    #     #     allow_unsafe_jscode=True
-    #     # )
-
-    # def render_aggrid__contri(
-    #     df: pd.DataFrame,
-    #     height: int = 323,
-    #     use_parent: bool = True,
-    #     brand: str = 'sleeper'
-    #     ) -> None:
-    #     """
-    #     use_parent: False / True
-    #     """
-    #     df2 = df.copy()
-
-    #     # (필수함수) make_num_child
-    #     def make_num_child(header, field, fmt_digits=0, suffix=''):
-    #         return {
-    #             "headerName": header, "field": field,
-    #             "type": ["numericColumn","customNumericFormat"],
-    #             "valueFormatter": JsCode(
-    #                 f"function(params){{"
-    #                 f"  return params.value!=null?"
-    #                 f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
-    #                 f"}}"
-    #             ),
-    #             "cellStyle": JsCode("params=>({textAlign:'right'})")
-    #         }
-        
-    #     # (필수함수) add_summary
-    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
-    #         summary: dict[str, float] = {}
-    #         for col, op in agg_map.items():
-    #             if op == 'sum':
-    #                 summary[col] = int(df[col].sum())
-    #             elif op == 'avg':
-    #                 summary[col] = float(df[col].mean())
-    #             elif op == 'mid':
-    #                 summary[col] = float(df[col].median())
-    #             else:
-    #                 summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
-    #         grid_options['pinnedBottomRowData'] = [summary]
-    #         return grid_options
-        
-    #     # date_col
-    #     date_col = {
-    #         "headerName": "날짜",
-    #         "field": "날짜",
-    #         "pinned": "left",
-    #         "width": 100,
-    #         "cellStyle": JsCode("params=>({textAlign:'left'})"),
-    #         # "sort": "desc"
-    #     }
-        
-    #     flat_cols = [
-    #     ]
-
-    #     if brand == "sleeper":
-    #         expected_cols = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-    #                             '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']            
-            
-    #         for col in expected_cols:
-    #             df2[col] = df2.get(col, 0)
-            
-    #         df2.fillna(0, inplace=True)     # (기존과 동일) 값이 없는 경우 일단 0으로 치환
-
-
-    #         # (use_parent) grouped_cols
-    #         grouped_cols = [
-    #             date_col,
-    #             make_num_child("전체 검색량", "검색량"),
-    #             # 검색량 차집합
-    #             {
-    #                 "headerName": "기본 검색량",
-    #                 "children": [
-    #                     make_num_child("검색량",      "기본 검색량"),
-    #                     make_num_child("비중(%)",     "기본 검색량_비중", fmt_digits=2, suffix="%"),
-    #                 ]
-    #             },
-    #             # 노홍철 유튜브
-    #             {
-    #                 "headerName": "노홍철 유튜브",
-    #                 "children": [
-    #                     make_num_child("검색량",      "노홍철 유튜브"),
-    #                     make_num_child("비중(%)",     "노홍철 유튜브_비중", fmt_digits=2, suffix="%"),
-    #                 ]
-    #             },
-    #             # 태요미네
-    #             {
-    #                 "headerName": "태요미네",
-    #                 "children": [
-    #                     make_num_child("검색량",      "태요미네"),
-    #                     make_num_child("비중(%)",     "태요미네_비중", fmt_digits=2, suffix="%"),
-    #                 ]
-    #             },
-    #             # 아울디자인
-    #             {
-    #                 "headerName": "아울디자인",
-    #                 "children": [
-    #                     make_num_child("검색량",      "아울디자인"),
-    #                     make_num_child("비중(%)",     "아울디자인_비중", fmt_digits=2, suffix="%"),
-    #                 ]
-    #             },
-    #             # 알쓸물치
-    #             {
-    #                 "headerName": "알쓸물치",
-    #                 "children": [
-    #                     make_num_child("검색량",      "알쓸물치"),
-    #                     make_num_child("비중(%)",     "알쓸물치_비중", fmt_digits=2, suffix="%"),
-    #                 ]
-    #             },
-    #         ]
-
-    #     elif brand == "nooer": 
-    #         expected_cols = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중', '베리엠제이', '베리엠제이_비중']            
-            
-    #         for col in expected_cols:
-    #             df2[col] = df2.get(col, 0)
-            
-    #         df2.fillna(0, inplace=True)     # (기존과 동일) 값이 없는 경우 일단 0으로 치환
-
-
-    #         # (use_parent) grouped_cols
-    #         grouped_cols = [
-    #             date_col,
-    #             make_num_child("전체 검색량", "검색량"),
-    #             # 검색량 차집합
-    #             {
-    #                 "headerName": "기본 검색량",
-    #                 "children": [
-    #                     make_num_child("검색량",      "기본 검색량"),
-    #                     make_num_child("비중(%)",     "기본 검색량_비중", fmt_digits=2, suffix="%"),
-    #                 ]
-    #             },
-    #             # 베리엠제이
-    #             {
-    #                 "headerName": "베리엠제이",
-    #                 "children": [
-    #                     make_num_child("검색량",      "베리엠제이"),
-    #                     make_num_child("비중(%)",     "베리엠제이_비중", fmt_digits=2, suffix="%"),
-    #                 ]
-    #             },
-    #         ]
-            
-    #     # (use_parent)
-    #     column_defs = grouped_cols if use_parent else flat_cols
-    
-    #     # grid_options & 렌더링
-    #     grid_options = {
-    #     "columnDefs": column_defs,
-    #     "defaultColDef": {
-    #         "sortable": True,
-    #         "filter": True,
-    #         "resizable": True,
-    #         "flex": 1,       # flex:1 이면 나머지 공간을 컬럼 개수만큼 균등 분배
-    #         "minWidth": 90,   # 최소 너비
-    #         "wrapHeaderText": True,
-    #         "autoHeaderHeight": True
-    #     },
-    #     "onGridReady": JsCode(
-    #         "function(params){ params.api.sizeColumnsToFit(); }"
-    #     ),
-    #     "headerHeight": 30,
-    #     "groupHeaderHeight": 30,
-    #     }        
-
-    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
-    #         summary: dict[str, float | str] = {}
-    #         for col, op in agg_map.items():
-    #             val = None
-    #             try:
-    #                 if op == 'sum':
-    #                     val = df[col].sum()
-    #                 elif op == 'avg':
-    #                     val = df[col].mean()
-    #                 elif op == 'mid':
-    #                     val = df[col].median()
-    #             except:
-    #                 val = None
-
-    #             # NaN / Inf / numpy 타입 → None or native 타입으로 처리
-    #             if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-    #                 summary[col] = None
-    #             else:
-    #                 # numpy 타입 제거
-    #                 if isinstance(val, (np.integer, np.int64, np.int32)):
-    #                     summary[col] = int(val)
-    #                 elif isinstance(val, (np.floating, np.float64, np.float32)):
-    #                     summary[col] = float(round(val, 2))
-    #                 else:
-    #                     summary[col] = val
-
-    #         grid_options['pinnedBottomRowData'] = [summary]
-    #         return grid_options
-
-    #     if brand == "sleeper": 
-    #         # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-    #         grid_options = add_summary(
-    #             grid_options,
-    #             df2,
-    #             {
-    #                 '검색량': 'sum',
-    #                 '기본 검색량': 'sum',
-    #                 '태요미네': 'sum',
-    #                 '노홍철 유튜브': 'sum',
-    #                 '아울디자인': 'sum',
-    #                 '알쓸물치': 'sum',
-    #             }
-    #         )
-    #     elif brand == "nooer":
-    #         # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-    #         grid_options = add_summary(
-    #             grid_options,
-    #             df2,
-    #             {
-    #                 '검색량': 'sum',
-    #                 '기본 검색량': 'sum',
-    #                 '베리엠제이': 'sum',
-    #             }
-    #         )
-        
-    #     AgGrid(
-    #         df2,
-    #         gridOptions=grid_options,
-    #         height=height,
-    #         fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
-    #         theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-    #         allow_unsafe_jscode=True
-    #     )
-
-    # def render_aggrid__kwd(
-    #     df: pd.DataFrame,
-    #     height: int = 292,
-    #     use_parent: bool = False
-    #     ) -> None:
-    #     """
-    #     use_parent: False / True
-    #     """
-    #     df2 = df.copy()
-        
-    #     # (주의) 누락됱 컬럼히 당연히 있을수 있음, 그래서 fillna만 해주는게 아니라 컬럼 자리를 만들어서 fillna 해야함.
-    #     expected_cols = ['날짜', '키워드', '검색량']
-        
-    #     for col in expected_cols:
-    #         df2[col] = df2.get(col, 0)
-    #     df2.fillna(0, inplace=True)     # (기존과 동일) 값이 없는 경우 일단 0으로 치환
-
-    #     # (필수함수) make_num_child
-    #     def make_num_child(header, field, fmt_digits=0, suffix=''):
-    #         return {
-    #             "headerName": header, "field": field,
-    #             "type": ["numericColumn","customNumericFormat"],
-    #             "valueFormatter": JsCode(
-    #                 f"function(params){{"
-    #                 f"  return params.value!=null?"
-    #                 f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
-    #                 f"}}"
-    #             ),
-    #             "cellStyle": JsCode("params=>({textAlign:'right'})")
-    #         }
-        
-    #     # (필수함수) add_summary
-    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
-    #         summary: dict[str, float] = {}
-    #         for col, op in agg_map.items():
-    #             if op == 'sum':
-    #                 summary[col] = int(df[col].sum())
-    #             elif op == 'avg':
-    #                 summary[col] = float(df[col].mean())
-    #             elif op == 'mid':
-    #                 summary[col] = float(df[col].median())
-    #             else:
-    #                 summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
-    #         grid_options['pinnedBottomRowData'] = [summary]
-    #         return grid_options
-        
-    #     # date_col
-    #     date_col = {
-    #         "headerName": "날짜",
-    #         "field": "날짜",
-    #         "pinned": "left",
-    #         "width": 100,
-    #         "cellStyle": JsCode("params=>({textAlign:'left'})"),
-    #         # "sort": "desc"
-    #     }
-    #     kwd_col = {
-    #         "headerName": "키워드",
-    #         "field": "키워드",
-    #         "pinned": "left",
-    #         "width": 100,
-    #         "cellStyle": JsCode("params=>({textAlign:'left'})"),
-    #         # "sort": "desc"
-    #     }
-        
-    #     flat_cols = [
-    #         date_col,
-    #         kwd_col,
-    #         make_num_child("검색량",     "검색량"),
-    #     ]
-
-    #     # (use_parent) grouped_cols
-    #     grouped_cols = [
-    #     ]
-
-    #     # (use_parent)
-    #     column_defs = grouped_cols if use_parent else flat_cols
-    
-    #     # grid_options & 렌더링
-    #     grid_options = {
-    #     "columnDefs": column_defs,
-    #     "defaultColDef": {
-    #         "sortable": True,
-    #         "filter": True,
-    #         "resizable": True,
-    #         "flex": 1,       # flex:1 이면 나머지 공간을 컬럼 개수만큼 균등 분배
-    #         "minWidth": 90,   # 최소 너비
-    #         "wrapHeaderText": True,
-    #         "autoHeaderHeight": True
-    #     },
-    #     "onGridReady": JsCode(
-    #         "function(params){ params.api.sizeColumnsToFit(); }"
-    #     ),
-    #     "headerHeight": 30,
-    #     "groupHeaderHeight": 30,
-    #     }        
-
-    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
-    #         summary: dict[str, float | str] = {}
-    #         for col, op in agg_map.items():
-    #             val = None
-    #             try:
-    #                 if op == 'sum':
-    #                     val = df[col].sum()
-    #                 elif op == 'avg':
-    #                     val = df[col].mean()
-    #                 elif op == 'mid':
-    #                     val = df[col].median()
-    #             except:
-    #                 val = None
-
-    #             # NaN / Inf / numpy 타입 → None or native 타입으로 처리
-    #             if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-    #                 summary[col] = None
-    #             else:
-    #                 # numpy 타입 제거
-    #                 if isinstance(val, (np.integer, np.int64, np.int32)):
-    #                     summary[col] = int(val)
-    #                 elif isinstance(val, (np.floating, np.float64, np.float32)):
-    #                     summary[col] = float(round(val, 2))
-    #                 else:
-    #                     summary[col] = val
-
-    #         grid_options['pinnedBottomRowData'] = [summary]
-    #         return grid_options
-
-    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-    #     grid_options = add_summary(
-    #         grid_options,
-    #         df2,
-    #         {
-    #             '검색량': 'sum',
-    #         }
-    #     )
-        
-    #     AgGrid(
-    #         df2,
-    #         gridOptions=grid_options,
-    #         height=height,
-    #         fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
-    #         theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-    #         allow_unsafe_jscode=True
-    #     )
 
 
 
@@ -1594,150 +834,193 @@ def main():
     df_merged_t[numeric_cols] = df_merged_t[numeric_cols].apply(lambda col: pd.to_numeric(col, errors="coerce").fillna(0))
     df_merged_t[numeric_cols] = df_merged_t[numeric_cols].astype(int)
 
-    # 채널별 데이터프레임 분리
-    df_usefulpt  = df_merged_t[df_merged_t["채널명"] == "알쓸물치"].copy()
-    df_owldesign  = df_merged_t[df_merged_t["채널명"] == "아울디자인"].copy()
-    df_verymj  = df_merged_t[df_merged_t["채널명"] == "베리엠제이"].copy()
-    df_taeyomine = df_merged_t[df_merged_t["채널명"] == "태요미네"].copy()
-    df_hongchul  = df_merged_t[df_merged_t["채널명"] == "노홍철 유튜브"].copy()
-    df_homestyling  = df_merged_t[df_merged_t["채널명"] == "홈스타일링연구소"].copy()
-    df_son  = df_merged_t[df_merged_t["채널명"] == "손태영"].copy()
-    df_jeju  = df_merged_t[df_merged_t["채널명"] == "제주가장"].copy()
-    df_ggong  = df_merged_t[df_merged_t["채널명"] == "굥하우스"].copy()
+    # # 채널별 데이터프레임 분리
+    # df_usefulpt  = df_merged_t[df_merged_t["채널명"] == "알쓸물치"].copy()
+    # df_owldesign  = df_merged_t[df_merged_t["채널명"] == "아울디자인"].copy()
+    # df_verymj  = df_merged_t[df_merged_t["채널명"] == "베리엠제이1"].copy()
+    # df_taeyomine = df_merged_t[df_merged_t["채널명"] == "태요미네"].copy()
+    # df_hongchul  = df_merged_t[df_merged_t["채널명"] == "노홍철 유튜브"].copy()
+    # df_homestyling  = df_merged_t[df_merged_t["채널명"] == "홈스타일링연구소"].copy()
+    # df_son  = df_merged_t[df_merged_t["채널명"] == "손태영"].copy()
+    # df_jeju  = df_merged_t[df_merged_t["채널명"] == "제주가장"].copy()
+    # df_ggong  = df_merged_t[df_merged_t["채널명"] == "굥하우스"].copy()
 
 
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(["굥하우스", "제주가장", "손태영", "홈스타일링연구소", "노홍철 유튜브", "태요미네", "베리엠제이", "아울디자인", "알쓸물치"])
+    # tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(["굥하우스", "제주가장", "손태영", "홈스타일링연구소", "노홍철 유튜브", "태요미네", "베리엠제이1", "아울디자인", "알쓸물치"])
     
-    # check box -> CVR, CPA
-    with tab1:
-        c1, c2, _ = st.columns([1,1,11])
-        add_cvr = c1.checkbox("CVR 추가", key="jeju_cvr", value=False)
-        add_cpa = c2.checkbox("CPA 추가", key="jeju_cpa", value=False)
-        if add_cvr and add_cpa:
-            opt = 4
-        elif add_cvr:
-            opt = 2
-        elif add_cpa:
-            opt = 3
-        else:
-            opt = 1
-        render_style_eng(df_jeju, select_option=opt)
+    # # check box -> CVR, CPA
+    # with tab1:
+    #     c1, c2, _ = st.columns([1,1,11])
+    #     add_cvr = c1.checkbox("CVR 추가", key="jeju_cvr", value=False)
+    #     add_cpa = c2.checkbox("CPA 추가", key="jeju_cpa", value=False)
+    #     if add_cvr and add_cpa:
+    #         opt = 4
+    #     elif add_cvr:
+    #         opt = 2
+    #     elif add_cpa:
+    #         opt = 3
+    #     else:
+    #         opt = 1
+    #     render_style_eng(df_jeju, select_option=opt)
 
-    with tab2:
-        c1, c2, _ = st.columns([1,1,11])
-        add_cvr = c1.checkbox("CVR 추가", key="ggong_cvr", value=False)
-        add_cpa = c2.checkbox("CPA 추가", key="ggong_cpa", value=False)
-        if add_cvr and add_cpa:
-            opt = 4
-        elif add_cvr:
-            opt = 2
-        elif add_cpa:
-            opt = 3
-        else:
-            opt = 1
-        render_style_eng(df_ggong, select_option=opt)    
+    # with tab2:
+    #     c1, c2, _ = st.columns([1,1,11])
+    #     add_cvr = c1.checkbox("CVR 추가", key="ggong_cvr", value=False)
+    #     add_cpa = c2.checkbox("CPA 추가", key="ggong_cpa", value=False)
+    #     if add_cvr and add_cpa:
+    #         opt = 4
+    #     elif add_cvr:
+    #         opt = 2
+    #     elif add_cpa:
+    #         opt = 3
+    #     else:
+    #         opt = 1
+    #     render_style_eng(df_ggong, select_option=opt)    
     
 
-    with tab3:
-        c1, c2, _ = st.columns([1,1,11])
-        add_cvr = c1.checkbox("CVR 추가", key="son_cvr", value=False)
-        add_cpa = c2.checkbox("CPA 추가", key="son_cpa", value=False)
-        if add_cvr and add_cpa:
-            opt = 4
-        elif add_cvr:
-            opt = 2
-        elif add_cpa:
-            opt = 3
-        else:
-            opt = 1
-        render_style_eng(df_son, select_option=opt)    
+    # with tab3:
+    #     c1, c2, _ = st.columns([1,1,11])
+    #     add_cvr = c1.checkbox("CVR 추가", key="son_cvr", value=False)
+    #     add_cpa = c2.checkbox("CPA 추가", key="son_cpa", value=False)
+    #     if add_cvr and add_cpa:
+    #         opt = 4
+    #     elif add_cvr:
+    #         opt = 2
+    #     elif add_cpa:
+    #         opt = 3
+    #     else:
+    #         opt = 1
+    #     render_style_eng(df_son, select_option=opt)    
 
-    with tab4:
-        c1, c2, _ = st.columns([1,1,11])
-        add_cvr = c1.checkbox("CVR 추가", key="homestyling_cvr", value=False)
-        add_cpa = c2.checkbox("CPA 추가", key="homestyling_cpa", value=False)
-        if add_cvr and add_cpa:
-            opt = 4
-        elif add_cvr:
-            opt = 2
-        elif add_cpa:
-            opt = 3
-        else:
-            opt = 1
-        render_style_eng(df_homestyling, select_option=opt)
+    # with tab4:
+    #     c1, c2, _ = st.columns([1,1,11])
+    #     add_cvr = c1.checkbox("CVR 추가", key="homestyling_cvr", value=False)
+    #     add_cpa = c2.checkbox("CPA 추가", key="homestyling_cpa", value=False)
+    #     if add_cvr and add_cpa:
+    #         opt = 4
+    #     elif add_cvr:
+    #         opt = 2
+    #     elif add_cpa:
+    #         opt = 3
+    #     else:
+    #         opt = 1
+    #     render_style_eng(df_homestyling, select_option=opt)
     
     
-    with tab5:
-        c1, c2, _ = st.columns([1,1,11])
-        add_cvr = c1.checkbox("CVR 추가", key="hongchul_cvr", value=False)
-        add_cpa = c2.checkbox("CPA 추가", key="hongchul_cpa", value=False)
-        if add_cvr and add_cpa:
-            opt = 4
-        elif add_cvr:
-            opt = 2
-        elif add_cpa:
-            opt = 3
-        else:
-            opt = 1
-        render_style_eng(df_hongchul, select_option=opt)
+    # with tab5:
+    #     c1, c2, _ = st.columns([1,1,11])
+    #     add_cvr = c1.checkbox("CVR 추가", key="hongchul_cvr", value=False)
+    #     add_cpa = c2.checkbox("CPA 추가", key="hongchul_cpa", value=False)
+    #     if add_cvr and add_cpa:
+    #         opt = 4
+    #     elif add_cvr:
+    #         opt = 2
+    #     elif add_cpa:
+    #         opt = 3
+    #     else:
+    #         opt = 1
+    #     render_style_eng(df_hongchul, select_option=opt)
         
     
-    with tab6:    
-        c1, c2, _ = st.columns([1,1,11])
-        add_cvr = c1.checkbox("CVR 추가", key="taeyomine_cvr", value=False)
-        add_cpa = c2.checkbox("CPA 추가", key="taeyomine_cpa", value=False)
-        if add_cvr and add_cpa:
-            opt = 4
-        elif add_cvr:
-            opt = 2
-        elif add_cpa:
-            opt = 3
-        else:
-            opt = 1
-        render_style_eng(df_taeyomine, select_option=opt)
+    # with tab6:    
+    #     c1, c2, _ = st.columns([1,1,11])
+    #     add_cvr = c1.checkbox("CVR 추가", key="taeyomine_cvr", value=False)
+    #     add_cpa = c2.checkbox("CPA 추가", key="taeyomine_cpa", value=False)
+    #     if add_cvr and add_cpa:
+    #         opt = 4
+    #     elif add_cvr:
+    #         opt = 2
+    #     elif add_cpa:
+    #         opt = 3
+    #     else:
+    #         opt = 1
+    #     render_style_eng(df_taeyomine, select_option=opt)
         
-    with tab7: 
-        c1, c2, _ = st.columns([1,1,11])
-        add_cvr = c1.checkbox("CVR 추가", key="verymj_cvr", value=False)
-        add_cpa = c2.checkbox("CPA 추가", key="verymj_cpa", value=False)
-        if add_cvr and add_cpa:
-            opt = 4
-        elif add_cvr:
-            opt = 2
-        elif add_cpa:
-            opt = 3
-        else:
-            opt = 1
-        render_style_eng(df_verymj, select_option=opt)
+    # with tab7: 
+    #     c1, c2, _ = st.columns([1,1,11])
+    #     add_cvr = c1.checkbox("CVR 추가", key="verymj_cvr", value=False)
+    #     add_cpa = c2.checkbox("CPA 추가", key="verymj_cpa", value=False)
+    #     if add_cvr and add_cpa:
+    #         opt = 4
+    #     elif add_cvr:
+    #         opt = 2
+    #     elif add_cpa:
+    #         opt = 3
+    #     else:
+    #         opt = 1
+    #     render_style_eng(df_verymj, select_option=opt)
         
-    with tab8: 
-        c1, c2, _ = st.columns([1,1,11])
-        add_cvr = c1.checkbox("CVR 추가", key="owldesign_cvr", value=False)
-        add_cpa = c2.checkbox("CPA 추가", key="owldesign_cpa", value=False)
-        if add_cvr and add_cpa:
-            opt = 4
-        elif add_cvr:
-            opt = 2
-        elif add_cpa:
-            opt = 3
-        else:
-            opt = 1
-        render_style_eng(df_owldesign, select_option=opt)
+    # with tab8: 
+    #     c1, c2, _ = st.columns([1,1,11])
+    #     add_cvr = c1.checkbox("CVR 추가", key="owldesign_cvr", value=False)
+    #     add_cpa = c2.checkbox("CPA 추가", key="owldesign_cpa", value=False)
+    #     if add_cvr and add_cpa:
+    #         opt = 4
+    #     elif add_cvr:
+    #         opt = 2
+    #     elif add_cpa:
+    #         opt = 3
+    #     else:
+    #         opt = 1
+    #     render_style_eng(df_owldesign, select_option=opt)
         
-    with tab9: 
-        c1, c2, _ = st.columns([1,1,11])
-        add_cvr = c1.checkbox("CVR 추가", key="usefulpt_cvr", value=False)
-        add_cpa = c2.checkbox("CPA 추가", key="usefulpt_cpa", value=False)
-        if add_cvr and add_cpa:
-            opt = 4
-        elif add_cvr:
-            opt = 2
-        elif add_cpa:
-            opt = 3
-        else:
-            opt = 1
-        render_style_eng(df_usefulpt, select_option=opt)
+    # with tab9: 
+    #     c1, c2, _ = st.columns([1,1,11])
+    #     add_cvr = c1.checkbox("CVR 추가", key="usefulpt_cvr", value=False)
+    #     add_cpa = c2.checkbox("CPA 추가", key="usefulpt_cpa", value=False)
+    #     if add_cvr and add_cpa:
+    #         opt = 4
+    #     elif add_cvr:
+    #         opt = 2
+    #     elif add_cpa:
+    #         opt = 3
+    #     else:
+    #         opt = 1
+    #     render_style_eng(df_usefulpt, select_option=opt)
+    
+    
+    # 탭 라벨: 실제로 데이터가 있는 채널만, order 내림차순
+    order_map = (
+        PPL_LIST.loc[:, ["채널명","order"]]
+        .assign(order=lambda d: pd.to_numeric(d["order"], errors="coerce"))
+        .assign(order=lambda d: d["order"].fillna(float("-inf")))
+        .drop_duplicates(subset=["채널명"], keep="first")
+        .set_index("채널명")["order"]
+        .to_dict()
+    )
+
+    channels_present = (
+        df_merged_t["채널명"]
+        .dropna()
+        .drop_duplicates()
+        .tolist()
+    )
+
+    tab_labels = sorted(
+        channels_present,
+        key=lambda ch: order_map.get(ch, float("-inf")),
+        reverse=True  # 큰 order 먼저
+    )
+
+    if not tab_labels:
+        st.info("표시할 채널 데이터가 없습니다.")
+    else:
+        tabs = st.tabs(tab_labels)
+        for ch, t in zip(tab_labels, tabs):
+            with t:
+                c1, c2, _ = st.columns([1,1,11])
+                add_cvr = c1.checkbox("CVR 추가", key=f"{ch}_cvr", value=False)
+                add_cpa = c2.checkbox("CPA 추가", key=f"{ch}_cpa", value=False)
+                if add_cvr and add_cpa: opt = 4
+                elif add_cvr:           opt = 2
+                elif add_cpa:           opt = 3
+                else:                   opt = 1
+
+                render_style_eng(
+                    df_merged_t[df_merged_t["채널명"] == ch].copy(),
+                    select_option=opt
+                )
 
 
     # ────────────────────────────────────────────────────────────────
@@ -1757,61 +1040,150 @@ def main():
     
 
     tab1, tab2 = st.tabs(["슬립퍼", "누어"])
-    # ---- 슬립퍼
+
+
+    # with tab1:
+    #     df_QueryContribution     = ppl_action3.merge(query_sum_slp[['날짜', '검색량']], on='날짜', how='outer')  # 데이터 생성 
+        
+    #     # 데이터 전처리 1
+    #     cols_to_int = ['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '태요미네', '노홍철 유튜브', '아울디자인', '알쓸물치', '검색량']
+    #     df_QueryContribution[cols_to_int] = df_QueryContribution[cols_to_int].apply(
+    #         lambda s: pd.to_numeric(s, errors='coerce')   # 숫자로 변환, 에러나면 NaN
+    #                     .fillna(0)                        # NaN → 0
+    #                     .astype(int)                      # int 로 캐스팅
+    #     )
+    #     # 신규컬럼 생성 - 기본 검색량
+    #     df_QueryContribution["기본 검색량"] = df_QueryContribution["검색량"] - df_QueryContribution[['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '태요미네','노홍철 유튜브', '아울디자인', '알쓸물치']].sum(axis=1)
+    #     # 신규컬럼 생성 - 비중
+    #     cols = ['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
+    #     for col in cols:
+    #         df_QueryContribution[f"{col}_비중"] = (
+    #             df_QueryContribution[col] / df_QueryContribution['검색량'] * 100
+    #         ).round(2)
+    #     df_QueryContribution[[f"{c}_비중" for c in cols]] = df_QueryContribution[[f"{c}_비중" for c in cols]].fillna(0) # 다시 검색량이 0이었던 곳은 0% 처리
+    #     df_QueryContribution = df_QueryContribution[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
+    #                                                  '굥하우스', '굥하우스_비중', '제주가장', '제주가장_비중',
+    #                                                  '손태영', '손태영_비중', '태요미네', '태요미네_비중', '홈스타일링연구소', '홈스타일링연구소_비중',  '노홍철 유튜브', '노홍철 유튜브_비중','아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
+    #     df_QueryContribution = df_QueryContribution.sort_values("날짜", ascending=True)
+        
+    #     from pandas.tseries.offsets import MonthEnd
+    #     # 1) “날짜” → datetime 변환
+    #     df_QueryContribution["날짜_dt"] = pd.to_datetime(
+    #         df_QueryContribution["날짜"], format="%Y-%m-%d", errors="coerce"
+    #     )
+
+    #     # 슬라이더 -> 데이터 전체 범위
+    #     start_period = df_QueryContribution["날짜_dt"].min().to_period("M")  # 데이터 최소월
+    #     # end_period = df_QueryContribution["날짜_dt"].max().to_period("M")  # 데이터 최소월
+    #     curr_period  = pd.Timestamp.now().to_period("M")                     # 이번달
+    #     all_periods  = pd.period_range(start=start_period, end=curr_period, freq="M")
+    #     month_options = [p.to_timestamp() for p in all_periods]
+
+    #     # 데이터 선택 범위 디폴트 -> 지난달 ~ 이번달
+    #     now     = pd.Timestamp.now()
+    #     curr_ts = now.to_period("M").to_timestamp()         # 이번달 첫날
+    #     prev_ts = (now.to_period("M") - 1).to_timestamp()   # 이전월 첫날
+
+    #     # 슬라이더 렌더링
+    #     st.markdown(" ")
+    #     selected_range = st.select_slider(
+    #         "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
+    #         options=month_options,                  # 전체 데이터 기간 옵션
+    #         value=(prev_ts, curr_ts),               # 기본: 이전월→이번달
+    #         format_func=lambda x: x.strftime("%Y-%m"),
+    #         key="slider_01"
+    #     )
+    #     start_sel, end_sel = selected_range
+
+    #     # 5) 필터링 구간(1일~말일)
+    #     period_start = start_sel
+    #     period_end   = end_sel + MonthEnd(0)
+
+    #     df_filtered = df_QueryContribution[
+    #         (df_QueryContribution["날짜_dt"] >= period_start) &
+    #         (df_QueryContribution["날짜_dt"] <= period_end)
+    #     ].copy()
+    #     df_filtered["날짜"] = df_filtered["날짜_dt"].dt.strftime("%Y-%m-%d")
+
+    #     # 6) long 포맷 변환 및 렌더링
+    #     cols    = ['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
+    #     df_long = df_filtered.melt(
+    #         id_vars='날짜',
+    #         value_vars=cols,
+    #         var_name='콘텐츠',
+    #         value_name='기여량'
+    #     )
+    #     # 렌더링
+    #     render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
+    #     render_style_ctb(df_filtered, brand='sleeper')
+        
     with tab1:
-        df_QueryContribution     = ppl_action3.merge(query_sum_slp[['날짜', '검색량']], on='날짜', how='outer')  # 데이터 생성 
-        
-        # 데이터 전처리 1
-        cols_to_int = ['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '태요미네', '노홍철 유튜브', '아울디자인', '알쓸물치', '검색량']
-        df_QueryContribution[cols_to_int] = df_QueryContribution[cols_to_int].apply(
-            lambda s: pd.to_numeric(s, errors='coerce')   # 숫자로 변환, 에러나면 NaN
-                        .fillna(0)                        # NaN → 0
-                        .astype(int)                      # int 로 캐스팅
+        # 동적 채널 목록
+        channels_slp = CHANNELS_BY_BRAND.get('슬립퍼', [])
+
+        # 슬립퍼 데이터 결합
+        df_QueryContribution = ppl_action3.merge(
+            query_sum_slp[['날짜','검색량']], on='날짜', how='outer'
         )
-        # 신규컬럼 생성 - 기본 검색량
-        df_QueryContribution["기본 검색량"] = df_QueryContribution["검색량"] - df_QueryContribution[['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '태요미네','노홍철 유튜브', '아울디자인', '알쓸물치']].sum(axis=1)
-        # 신규컬럼 생성 - 비중
-        cols = ['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
-        for col in cols:
-            df_QueryContribution[f"{col}_비중"] = (
-                df_QueryContribution[col] / df_QueryContribution['검색량'] * 100
+
+        # 누락 채널 컬럼 0으로 생성
+        for ch in channels_slp:
+            if ch not in df_QueryContribution.columns:
+                df_QueryContribution[ch] = 0
+
+        # 숫자형 변환
+        cols_to_int = channels_slp + ['검색량']
+        if cols_to_int:
+            df_QueryContribution[cols_to_int] = (
+                df_QueryContribution[cols_to_int]
+                .apply(pd.to_numeric, errors='coerce')
+                .fillna(0).astype(int)
+            )
+        else:
+            df_QueryContribution['검색량'] = pd.to_numeric(
+                df_QueryContribution.get('검색량', 0), errors='coerce'
+            ).fillna(0).astype(int)
+
+        # 기본 검색량 및 비중
+        df_QueryContribution["기본 검색량"] = (
+            df_QueryContribution["검색량"] - df_QueryContribution[channels_slp].sum(axis=1)
+        ).clip(lower=0)
+
+        for col in (channels_slp + ['기본 검색량']):
+            df_QueryContribution[f"{col}_비중"] = np.where(
+                df_QueryContribution['검색량'] > 0,
+                df_QueryContribution[col] / df_QueryContribution['검색량'] * 100,
+                0.0
             ).round(2)
-        df_QueryContribution[[f"{c}_비중" for c in cols]] = df_QueryContribution[[f"{c}_비중" for c in cols]].fillna(0) # 다시 검색량이 0이었던 곳은 0% 처리
-        df_QueryContribution = df_QueryContribution[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-                                                     '굥하우스', '굥하우스_비중', '제주가장', '제주가장_비중',
-                                                     '손태영', '손태영_비중', '태요미네', '태요미네_비중', '홈스타일링연구소', '홈스타일링연구소_비중',  '노홍철 유튜브', '노홍철 유튜브_비중','아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
-        df_QueryContribution = df_QueryContribution.sort_values("날짜", ascending=True)
-        
-        from pandas.tseries.offsets import MonthEnd
-        # 1) “날짜” → datetime 변환
-        df_QueryContribution["날짜_dt"] = pd.to_datetime(
-            df_QueryContribution["날짜"], format="%Y-%m-%d", errors="coerce"
+
+        # 컬럼 순서 동적
+        ordered_cols = (
+            ['날짜','검색량','기본 검색량','기본 검색량_비중'] +
+            [c for pair in [(ch, f"{ch}_비중") for ch in channels_slp] for c in pair]
         )
+        df_QueryContribution = df_QueryContribution[ordered_cols].sort_values("날짜", ascending=True)
 
-        # 슬라이더 -> 데이터 전체 범위
-        start_period = df_QueryContribution["날짜_dt"].min().to_period("M")  # 데이터 최소월
-        # end_period = df_QueryContribution["날짜_dt"].max().to_period("M")  # 데이터 최소월
-        curr_period  = pd.Timestamp.now().to_period("M")                     # 이번달
-        all_periods  = pd.period_range(start=start_period, end=curr_period, freq="M")
-        month_options = [p.to_timestamp() for p in all_periods]
+        # 기간 슬라이더 (키 유지: slider_01)
+        from pandas.tseries.offsets import MonthEnd
+        df_QueryContribution["날짜_dt"] = pd.to_datetime(df_QueryContribution["날짜"], format="%Y-%m-%d", errors="coerce")
+        start_period = (df_QueryContribution["날짜_dt"].min().to_period("M")
+                        if df_QueryContribution["날짜_dt"].notna().any()
+                        else pd.Timestamp.now().to_period("M"))
+        curr_period  = pd.Timestamp.now().to_period("M")
+        month_options = [p.to_timestamp() for p in pd.period_range(start=start_period, end=curr_period, freq="M")]
+        now = pd.Timestamp.now()
+        curr_ts = now.to_period("M").to_timestamp()
+        prev_ts = (now.to_period("M") - 1).to_timestamp()
 
-        # 데이터 선택 범위 디폴트 -> 지난달 ~ 이번달
-        now     = pd.Timestamp.now()
-        curr_ts = now.to_period("M").to_timestamp()         # 이번달 첫날
-        prev_ts = (now.to_period("M") - 1).to_timestamp()   # 이전월 첫날
-
-        # 슬라이더 렌더링
         st.markdown(" ")
         selected_range = st.select_slider(
             "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
-            options=month_options,                  # 전체 데이터 기간 옵션
-            value=(prev_ts, curr_ts),               # 기본: 이전월→이번달
+            options=month_options,
+            value=(prev_ts, curr_ts),
             format_func=lambda x: x.strftime("%Y-%m"),
             key="slider_01"
         )
         start_sel, end_sel = selected_range
-
-        # 5) 필터링 구간(1일~말일)
         period_start = start_sel
         period_end   = end_sel + MonthEnd(0)
 
@@ -1821,70 +1193,149 @@ def main():
         ].copy()
         df_filtered["날짜"] = df_filtered["날짜_dt"].dt.strftime("%Y-%m-%d")
 
-        # 6) long 포맷 변환 및 렌더링
-        cols    = ['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
-        df_long = df_filtered.melt(
-            id_vars='날짜',
-            value_vars=cols,
-            var_name='콘텐츠',
-            value_name='기여량'
-        )
-        # 렌더링
+        # 차트(채널들 + 기본 검색량)
+        plot_cols = channels_slp + ['기본 검색량']
+        df_long = df_filtered.melt(id_vars='날짜', value_vars=plot_cols, var_name='콘텐츠', value_name='기여량')
         render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
-        render_style_ctb(df_filtered, brand='sleeper')
-    
-    # ---- 누어
-    with tab2:
-        df_QueryContribution_nor = ppl_action3.merge(query_sum_nor[['날짜', '검색량']], on='날짜', how='outer')
-        # 데이터 전처리 1
-        cols_to_int = ['베리엠제이', '검색량']
-        df_QueryContribution_nor[cols_to_int] = df_QueryContribution_nor[cols_to_int].apply(
-            lambda s: pd.to_numeric(s, errors='coerce')   # 숫자로 변환, 에러나면 NaN
-                        .fillna(0)                        # NaN → 0
-                        .astype(int)                      # int 로 캐스팅
-        )
-        # 신규컬럼 생성 - 기본 검색량
-        df_QueryContribution_nor["기본 검색량"] = df_QueryContribution_nor["검색량"] - df_QueryContribution_nor[['베리엠제이']].sum(axis=1)
-        # 신규컬럼 생성 - 비중
-        cols = ['베리엠제이', '기본 검색량']
-        for col in cols:
-            df_QueryContribution_nor[f"{col}_비중"] = (
-                df_QueryContribution_nor[col] / df_QueryContribution_nor['검색량'] * 100
-            ).round(2)
-        df_QueryContribution_nor[[f"{c}_비중" for c in cols]] = df_QueryContribution_nor[[f"{c}_비중" for c in cols]].fillna(0) # 다시 검색량이 0이었던 곳은 0% 처리
-        df_QueryContribution_nor = df_QueryContribution_nor[['날짜', '검색량', '기본 검색량', '기본 검색량_비중', '베리엠제이', '베리엠제이_비중']]
-        df_QueryContribution_nor = df_QueryContribution_nor.sort_values("날짜", ascending=True)
+
+        # 테이블 (동적 포맷)
+        render_style_ctb(df_filtered.drop(columns=['날짜_dt']), brand='슬립퍼')
+
         
-        from pandas.tseries.offsets import MonthEnd
-        # 1) “날짜” → datetime 변환
-        df_QueryContribution_nor["날짜_dt"] = pd.to_datetime(
-            df_QueryContribution_nor["날짜"], format="%Y-%m-%d", errors="coerce"
+
+    # with tab2:
+    #     df_QueryContribution_nor = ppl_action3.merge(query_sum_nor[['날짜', '검색량']], on='날짜', how='outer')
+    #     # 데이터 전처리 1
+    #     cols_to_int = ['베리엠제이1', '검색량']
+    #     df_QueryContribution_nor[cols_to_int] = df_QueryContribution_nor[cols_to_int].apply(
+    #         lambda s: pd.to_numeric(s, errors='coerce')   # 숫자로 변환, 에러나면 NaN
+    #                     .fillna(0)                        # NaN → 0
+    #                     .astype(int)                      # int 로 캐스팅
+    #     )
+    #     # 신규컬럼 생성 - 기본 검색량
+    #     df_QueryContribution_nor["기본 검색량"] = df_QueryContribution_nor["검색량"] - df_QueryContribution_nor[['베리엠제이1']].sum(axis=1)
+    #     # 신규컬럼 생성 - 비중
+    #     cols = ['베리엠제이1', '기본 검색량']
+    #     for col in cols:
+    #         df_QueryContribution_nor[f"{col}_비중"] = (
+    #             df_QueryContribution_nor[col] / df_QueryContribution_nor['검색량'] * 100
+    #         ).round(2)
+    #     df_QueryContribution_nor[[f"{c}_비중" for c in cols]] = df_QueryContribution_nor[[f"{c}_비중" for c in cols]].fillna(0) # 다시 검색량이 0이었던 곳은 0% 처리
+    #     df_QueryContribution_nor = df_QueryContribution_nor[['날짜', '검색량', '기본 검색량', '기본 검색량_비중', '베리엠제이1', '베리엠제이1_비중']]
+    #     df_QueryContribution_nor = df_QueryContribution_nor.sort_values("날짜", ascending=True)
+        
+    #     from pandas.tseries.offsets import MonthEnd
+    #     # 1) “날짜” → datetime 변환
+    #     df_QueryContribution_nor["날짜_dt"] = pd.to_datetime(
+    #         df_QueryContribution_nor["날짜"], format="%Y-%m-%d", errors="coerce"
+    #     )
+
+    #     # 슬라이더 -> 데이터 전체 범위
+    #     start_period = df_QueryContribution_nor["날짜_dt"].min().to_period("M")  # 데이터 최소월
+    #     # end_period = df_QueryContribution["날짜_dt"].max().to_period("M")  # 데이터 최소월
+    #     curr_period  = pd.Timestamp.now().to_period("M")                     # 이번달
+    #     all_periods  = pd.period_range(start=start_period, end=curr_period, freq="M")
+    #     month_options = [p.to_timestamp() for p in all_periods]
+
+    #     # 데이터 선택 범위 디폴트 -> 지난달 ~ 이번달
+    #     now     = pd.Timestamp.now()
+    #     curr_ts = now.to_period("M").to_timestamp()         # 이번달 첫날
+    #     prev_ts = (now.to_period("M") - 1).to_timestamp()   # 이전월 첫날
+
+    #     # 슬라이더 렌더링
+    #     st.markdown(" ")
+    #     selected_range = st.select_slider(
+    #         "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
+    #         options=month_options,                  # 전체 데이터 기간 옵션
+    #         value=(prev_ts, curr_ts),               # 기본: 이전월→이번달
+    #         format_func=lambda x: x.strftime("%Y-%m"),
+    #         key="slider_02"
+    #     )
+    #     start_sel, end_sel = selected_range
+
+    #     # 5) 필터링 구간(1일~말일)
+    #     period_start = start_sel
+    #     period_end   = end_sel + MonthEnd(0)
+
+    #     df_filtered_nor = df_QueryContribution_nor[
+    #         (df_QueryContribution_nor["날짜_dt"] >= period_start) &
+    #         (df_QueryContribution_nor["날짜_dt"] <= period_end)
+    #     ].copy()
+    #     df_filtered_nor["날짜"] = df_filtered_nor["날짜_dt"].dt.strftime("%Y-%m-%d")
+
+    #     # 6) long 포맷 변환 및 렌더링
+    #     cols    = ['베리엠제이1', '기본 검색량']
+    #     df_long = df_filtered_nor.melt(
+    #         id_vars='날짜',
+    #         value_vars=cols,
+    #         var_name='콘텐츠',
+    #         value_name='기여량'
+    #     )
+    #     # 렌더링
+    #     render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
+    #     render_style_ctb(df_filtered_nor, brand='nooer')
+    
+    with tab2:
+        channels_nor = CHANNELS_BY_BRAND.get('누어', [])
+
+        df_QueryContribution_nor = ppl_action3.merge(
+            query_sum_nor[['날짜','검색량']], on='날짜', how='outer'
         )
 
-        # 슬라이더 -> 데이터 전체 범위
-        start_period = df_QueryContribution_nor["날짜_dt"].min().to_period("M")  # 데이터 최소월
-        # end_period = df_QueryContribution["날짜_dt"].max().to_period("M")  # 데이터 최소월
-        curr_period  = pd.Timestamp.now().to_period("M")                     # 이번달
-        all_periods  = pd.period_range(start=start_period, end=curr_period, freq="M")
-        month_options = [p.to_timestamp() for p in all_periods]
+        for ch in channels_nor:
+            if ch not in df_QueryContribution_nor.columns:
+                df_QueryContribution_nor[ch] = 0
 
-        # 데이터 선택 범위 디폴트 -> 지난달 ~ 이번달
-        now     = pd.Timestamp.now()
-        curr_ts = now.to_period("M").to_timestamp()         # 이번달 첫날
-        prev_ts = (now.to_period("M") - 1).to_timestamp()   # 이전월 첫날
+        cols_to_int = channels_nor + ['검색량']
+        if cols_to_int:
+            df_QueryContribution_nor[cols_to_int] = (
+                df_QueryContribution_nor[cols_to_int]
+                .apply(pd.to_numeric, errors='coerce')
+                .fillna(0).astype(int)
+            )
+        else:
+            df_QueryContribution_nor['검색량'] = pd.to_numeric(
+                df_QueryContribution_nor.get('검색량', 0), errors='coerce'
+            ).fillna(0).astype(int)
 
-        # 슬라이더 렌더링
+        df_QueryContribution_nor["기본 검색량"] = (
+            df_QueryContribution_nor["검색량"] - df_QueryContribution_nor[channels_nor].sum(axis=1)
+        ).clip(lower=0)
+
+        for col in (channels_nor + ['기본 검색량']):
+            df_QueryContribution_nor[f"{col}_비중"] = np.where(
+                df_QueryContribution_nor['검색량'] > 0,
+                df_QueryContribution_nor[col] / df_QueryContribution_nor['검색량'] * 100,
+                0.0
+            ).round(2)
+
+        ordered_cols_nor = (
+            ['날짜','검색량','기본 검색량','기본 검색량_비중'] +
+            [c for pair in [(ch, f"{ch}_비중") for ch in channels_nor] for c in pair]
+        )
+        df_QueryContribution_nor = df_QueryContribution_nor[ordered_cols_nor].sort_values("날짜", ascending=True)
+
+        # 기간 슬라이더 (키 유지: slider_02)
+        from pandas.tseries.offsets import MonthEnd
+        df_QueryContribution_nor["날짜_dt"] = pd.to_datetime(df_QueryContribution_nor["날짜"], format="%Y-%m-%d", errors="coerce")
+        start_period = (df_QueryContribution_nor["날짜_dt"].min().to_period("M")
+                        if df_QueryContribution_nor["날짜_dt"].notna().any()
+                        else pd.Timestamp.now().to_period("M"))
+        curr_period  = pd.Timestamp.now().to_period("M")
+        month_options = [p.to_timestamp() for p in pd.period_range(start=start_period, end=curr_period, freq="M")]
+        now = pd.Timestamp.now()
+        curr_ts = now.to_period("M").to_timestamp()
+        prev_ts = (now.to_period("M") - 1).to_timestamp()
+
         st.markdown(" ")
         selected_range = st.select_slider(
             "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
-            options=month_options,                  # 전체 데이터 기간 옵션
-            value=(prev_ts, curr_ts),               # 기본: 이전월→이번달
+            options=month_options,
+            value=(prev_ts, curr_ts),
             format_func=lambda x: x.strftime("%Y-%m"),
             key="slider_02"
         )
         start_sel, end_sel = selected_range
-
-        # 5) 필터링 구간(1일~말일)
         period_start = start_sel
         period_end   = end_sel + MonthEnd(0)
 
@@ -1894,18 +1345,13 @@ def main():
         ].copy()
         df_filtered_nor["날짜"] = df_filtered_nor["날짜_dt"].dt.strftime("%Y-%m-%d")
 
-        # 6) long 포맷 변환 및 렌더링
-        cols    = ['베리엠제이', '기본 검색량']
-        df_long = df_filtered_nor.melt(
-            id_vars='날짜',
-            value_vars=cols,
-            var_name='콘텐츠',
-            value_name='기여량'
-        )
-        # 렌더링
+        plot_cols = channels_nor + ['기본 검색량']
+        df_long = df_filtered_nor.melt(id_vars='날짜', value_vars=plot_cols, var_name='콘텐츠', value_name='기여량')
         render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
-        render_style_ctb(df_filtered_nor, brand='nooer')
-    
+
+        render_style_ctb(df_filtered_nor.drop(columns=['날짜_dt']), brand='누어')
+
+        
     
     # ────────────────────────────────────────────────────────────────
     # 키워드별 검색량
