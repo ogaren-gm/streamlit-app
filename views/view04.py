@@ -620,11 +620,55 @@ def main():
 
 
 
-    def render_stacked_bar(df: pd.DataFrame, x: str, y: str | list[str], color: str | None) -> None:
+    # def render_stacked_bar(df: pd.DataFrame, x: str, y: str | list[str], color: str | None) -> None:
+    #     # 숫자형 보정
+    #     def _to_numeric(cols):
+    #         for c in cols:
+    #             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
+    #     if isinstance(y, (list, tuple)):   # wide-form 들어오면
+    #         _to_numeric(list(y))
+    #         if color is not None and color in df.columns:
+    #             # y-list + color가 같이 오면 long으로 변환해 확실히 누적
+    #             long_df = df.melt(id_vars=[x, color], value_vars=list(y),
+    #                             var_name="__series__", value_name="__value__")
+    #             fig = px.bar(long_df, x=x, y="__value__", color="__series__", opacity=0.6)
+    #         else:
+    #             fig = px.bar(df, x=x, y=list(y), opacity=0.6)
+    #     else:                               # y가 단일이면 long-form
+    #         _to_numeric([y])
+    #         fig = px.bar(df, x=x, y=y, color=color, opacity=0.6)
+
+    #     # 핵심: 진짜로 누적시키기
+    #     fig.update_layout(barmode="relative")
+    #     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+
+    #     fig.update_layout(
+    #         bargap=0.1,
+    #         bargroupgap=0.2,
+    #         height=400,
+    #         xaxis_title=None,
+    #         yaxis_title=None,
+    #         legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
+    #     )
+    #     fig.update_xaxes(tickformat="%m월 %d일")
+    #     st.plotly_chart(fig, use_container_width=True)
+
+
+    def render_stacked_bar(
+        df: pd.DataFrame,
+        x: str,
+        y: str | list[str],
+        color: str | None,
+        fixed_label: str = "기본 검색량",
+        fixed_color: str = "#D5DAE5",  # 회색 비스므레 하게 고정 ~~ㅜㅜ
+    ) -> None:
         # 숫자형 보정
         def _to_numeric(cols):
             for c in cols:
                 df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
+        color_map = {fixed_label: fixed_color} if color is not None else None
 
         if isinstance(y, (list, tuple)):   # wide-form 들어오면
             _to_numeric(list(y))
@@ -632,27 +676,31 @@ def main():
                 # y-list + color가 같이 오면 long으로 변환해 확실히 누적
                 long_df = df.melt(id_vars=[x, color], value_vars=list(y),
                                 var_name="__series__", value_name="__value__")
-                fig = px.bar(long_df, x=x, y="__value__", color="__series__", opacity=0.6)
+                fig = px.bar(
+                    long_df, x=x, y="__value__", color="__series__", opacity=0.6,
+                    color_discrete_map=color_map
+                )
             else:
                 fig = px.bar(df, x=x, y=list(y), opacity=0.6)
         else:                               # y가 단일이면 long-form
             _to_numeric([y])
-            fig = px.bar(df, x=x, y=y, color=color, opacity=0.6)
+            fig = px.bar(
+                df, x=x, y=y, color=color, opacity=0.6,
+                color_discrete_map=color_map
+            )
 
-        # 핵심: 진짜로 누적시키기
+        # 진짜로 누적
         fig.update_layout(barmode="relative")
         fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
 
         fig.update_layout(
-            bargap=0.1,
-            bargroupgap=0.2,
-            height=400,
-            xaxis_title=None,
-            yaxis_title=None,
+            bargap=0.1, bargroupgap=0.2, height=400,
+            xaxis_title=None, yaxis_title=None,
             legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
         )
         fig.update_xaxes(tickformat="%m월 %d일")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
@@ -833,151 +881,6 @@ def main():
     numeric_cols = df_merged_t.columns.difference(["날짜", "채널명"])
     df_merged_t[numeric_cols] = df_merged_t[numeric_cols].apply(lambda col: pd.to_numeric(col, errors="coerce").fillna(0))
     df_merged_t[numeric_cols] = df_merged_t[numeric_cols].astype(int)
-
-    # # 채널별 데이터프레임 분리
-    # df_usefulpt  = df_merged_t[df_merged_t["채널명"] == "알쓸물치"].copy()
-    # df_owldesign  = df_merged_t[df_merged_t["채널명"] == "아울디자인"].copy()
-    # df_verymj  = df_merged_t[df_merged_t["채널명"] == "베리엠제이1"].copy()
-    # df_taeyomine = df_merged_t[df_merged_t["채널명"] == "태요미네"].copy()
-    # df_hongchul  = df_merged_t[df_merged_t["채널명"] == "노홍철 유튜브"].copy()
-    # df_homestyling  = df_merged_t[df_merged_t["채널명"] == "홈스타일링연구소"].copy()
-    # df_son  = df_merged_t[df_merged_t["채널명"] == "손태영"].copy()
-    # df_jeju  = df_merged_t[df_merged_t["채널명"] == "제주가장"].copy()
-    # df_ggong  = df_merged_t[df_merged_t["채널명"] == "굥하우스"].copy()
-
-
-
-    # tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(["굥하우스", "제주가장", "손태영", "홈스타일링연구소", "노홍철 유튜브", "태요미네", "베리엠제이1", "아울디자인", "알쓸물치"])
-    
-    # # check box -> CVR, CPA
-    # with tab1:
-    #     c1, c2, _ = st.columns([1,1,11])
-    #     add_cvr = c1.checkbox("CVR 추가", key="jeju_cvr", value=False)
-    #     add_cpa = c2.checkbox("CPA 추가", key="jeju_cpa", value=False)
-    #     if add_cvr and add_cpa:
-    #         opt = 4
-    #     elif add_cvr:
-    #         opt = 2
-    #     elif add_cpa:
-    #         opt = 3
-    #     else:
-    #         opt = 1
-    #     render_style_eng(df_jeju, select_option=opt)
-
-    # with tab2:
-    #     c1, c2, _ = st.columns([1,1,11])
-    #     add_cvr = c1.checkbox("CVR 추가", key="ggong_cvr", value=False)
-    #     add_cpa = c2.checkbox("CPA 추가", key="ggong_cpa", value=False)
-    #     if add_cvr and add_cpa:
-    #         opt = 4
-    #     elif add_cvr:
-    #         opt = 2
-    #     elif add_cpa:
-    #         opt = 3
-    #     else:
-    #         opt = 1
-    #     render_style_eng(df_ggong, select_option=opt)    
-    
-
-    # with tab3:
-    #     c1, c2, _ = st.columns([1,1,11])
-    #     add_cvr = c1.checkbox("CVR 추가", key="son_cvr", value=False)
-    #     add_cpa = c2.checkbox("CPA 추가", key="son_cpa", value=False)
-    #     if add_cvr and add_cpa:
-    #         opt = 4
-    #     elif add_cvr:
-    #         opt = 2
-    #     elif add_cpa:
-    #         opt = 3
-    #     else:
-    #         opt = 1
-    #     render_style_eng(df_son, select_option=opt)    
-
-    # with tab4:
-    #     c1, c2, _ = st.columns([1,1,11])
-    #     add_cvr = c1.checkbox("CVR 추가", key="homestyling_cvr", value=False)
-    #     add_cpa = c2.checkbox("CPA 추가", key="homestyling_cpa", value=False)
-    #     if add_cvr and add_cpa:
-    #         opt = 4
-    #     elif add_cvr:
-    #         opt = 2
-    #     elif add_cpa:
-    #         opt = 3
-    #     else:
-    #         opt = 1
-    #     render_style_eng(df_homestyling, select_option=opt)
-    
-    
-    # with tab5:
-    #     c1, c2, _ = st.columns([1,1,11])
-    #     add_cvr = c1.checkbox("CVR 추가", key="hongchul_cvr", value=False)
-    #     add_cpa = c2.checkbox("CPA 추가", key="hongchul_cpa", value=False)
-    #     if add_cvr and add_cpa:
-    #         opt = 4
-    #     elif add_cvr:
-    #         opt = 2
-    #     elif add_cpa:
-    #         opt = 3
-    #     else:
-    #         opt = 1
-    #     render_style_eng(df_hongchul, select_option=opt)
-        
-    
-    # with tab6:    
-    #     c1, c2, _ = st.columns([1,1,11])
-    #     add_cvr = c1.checkbox("CVR 추가", key="taeyomine_cvr", value=False)
-    #     add_cpa = c2.checkbox("CPA 추가", key="taeyomine_cpa", value=False)
-    #     if add_cvr and add_cpa:
-    #         opt = 4
-    #     elif add_cvr:
-    #         opt = 2
-    #     elif add_cpa:
-    #         opt = 3
-    #     else:
-    #         opt = 1
-    #     render_style_eng(df_taeyomine, select_option=opt)
-        
-    # with tab7: 
-    #     c1, c2, _ = st.columns([1,1,11])
-    #     add_cvr = c1.checkbox("CVR 추가", key="verymj_cvr", value=False)
-    #     add_cpa = c2.checkbox("CPA 추가", key="verymj_cpa", value=False)
-    #     if add_cvr and add_cpa:
-    #         opt = 4
-    #     elif add_cvr:
-    #         opt = 2
-    #     elif add_cpa:
-    #         opt = 3
-    #     else:
-    #         opt = 1
-    #     render_style_eng(df_verymj, select_option=opt)
-        
-    # with tab8: 
-    #     c1, c2, _ = st.columns([1,1,11])
-    #     add_cvr = c1.checkbox("CVR 추가", key="owldesign_cvr", value=False)
-    #     add_cpa = c2.checkbox("CPA 추가", key="owldesign_cpa", value=False)
-    #     if add_cvr and add_cpa:
-    #         opt = 4
-    #     elif add_cvr:
-    #         opt = 2
-    #     elif add_cpa:
-    #         opt = 3
-    #     else:
-    #         opt = 1
-    #     render_style_eng(df_owldesign, select_option=opt)
-        
-    # with tab9: 
-    #     c1, c2, _ = st.columns([1,1,11])
-    #     add_cvr = c1.checkbox("CVR 추가", key="usefulpt_cvr", value=False)
-    #     add_cpa = c2.checkbox("CPA 추가", key="usefulpt_cpa", value=False)
-    #     if add_cvr and add_cpa:
-    #         opt = 4
-    #     elif add_cvr:
-    #         opt = 2
-    #     elif add_cpa:
-    #         opt = 3
-    #     else:
-    #         opt = 1
-    #     render_style_eng(df_usefulpt, select_option=opt)
     
     
     # 탭 라벨: 실제로 데이터가 있는 채널만, order 내림차순
@@ -1041,81 +944,6 @@ def main():
 
     tab1, tab2 = st.tabs(["슬립퍼", "누어"])
 
-
-    # with tab1:
-    #     df_QueryContribution     = ppl_action3.merge(query_sum_slp[['날짜', '검색량']], on='날짜', how='outer')  # 데이터 생성 
-        
-    #     # 데이터 전처리 1
-    #     cols_to_int = ['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '태요미네', '노홍철 유튜브', '아울디자인', '알쓸물치', '검색량']
-    #     df_QueryContribution[cols_to_int] = df_QueryContribution[cols_to_int].apply(
-    #         lambda s: pd.to_numeric(s, errors='coerce')   # 숫자로 변환, 에러나면 NaN
-    #                     .fillna(0)                        # NaN → 0
-    #                     .astype(int)                      # int 로 캐스팅
-    #     )
-    #     # 신규컬럼 생성 - 기본 검색량
-    #     df_QueryContribution["기본 검색량"] = df_QueryContribution["검색량"] - df_QueryContribution[['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '태요미네','노홍철 유튜브', '아울디자인', '알쓸물치']].sum(axis=1)
-    #     # 신규컬럼 생성 - 비중
-    #     cols = ['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
-    #     for col in cols:
-    #         df_QueryContribution[f"{col}_비중"] = (
-    #             df_QueryContribution[col] / df_QueryContribution['검색량'] * 100
-    #         ).round(2)
-    #     df_QueryContribution[[f"{c}_비중" for c in cols]] = df_QueryContribution[[f"{c}_비중" for c in cols]].fillna(0) # 다시 검색량이 0이었던 곳은 0% 처리
-    #     df_QueryContribution = df_QueryContribution[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-    #                                                  '굥하우스', '굥하우스_비중', '제주가장', '제주가장_비중',
-    #                                                  '손태영', '손태영_비중', '태요미네', '태요미네_비중', '홈스타일링연구소', '홈스타일링연구소_비중',  '노홍철 유튜브', '노홍철 유튜브_비중','아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
-    #     df_QueryContribution = df_QueryContribution.sort_values("날짜", ascending=True)
-        
-    #     from pandas.tseries.offsets import MonthEnd
-    #     # 1) “날짜” → datetime 변환
-    #     df_QueryContribution["날짜_dt"] = pd.to_datetime(
-    #         df_QueryContribution["날짜"], format="%Y-%m-%d", errors="coerce"
-    #     )
-
-    #     # 슬라이더 -> 데이터 전체 범위
-    #     start_period = df_QueryContribution["날짜_dt"].min().to_period("M")  # 데이터 최소월
-    #     # end_period = df_QueryContribution["날짜_dt"].max().to_period("M")  # 데이터 최소월
-    #     curr_period  = pd.Timestamp.now().to_period("M")                     # 이번달
-    #     all_periods  = pd.period_range(start=start_period, end=curr_period, freq="M")
-    #     month_options = [p.to_timestamp() for p in all_periods]
-
-    #     # 데이터 선택 범위 디폴트 -> 지난달 ~ 이번달
-    #     now     = pd.Timestamp.now()
-    #     curr_ts = now.to_period("M").to_timestamp()         # 이번달 첫날
-    #     prev_ts = (now.to_period("M") - 1).to_timestamp()   # 이전월 첫날
-
-    #     # 슬라이더 렌더링
-    #     st.markdown(" ")
-    #     selected_range = st.select_slider(
-    #         "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
-    #         options=month_options,                  # 전체 데이터 기간 옵션
-    #         value=(prev_ts, curr_ts),               # 기본: 이전월→이번달
-    #         format_func=lambda x: x.strftime("%Y-%m"),
-    #         key="slider_01"
-    #     )
-    #     start_sel, end_sel = selected_range
-
-    #     # 5) 필터링 구간(1일~말일)
-    #     period_start = start_sel
-    #     period_end   = end_sel + MonthEnd(0)
-
-    #     df_filtered = df_QueryContribution[
-    #         (df_QueryContribution["날짜_dt"] >= period_start) &
-    #         (df_QueryContribution["날짜_dt"] <= period_end)
-    #     ].copy()
-    #     df_filtered["날짜"] = df_filtered["날짜_dt"].dt.strftime("%Y-%m-%d")
-
-    #     # 6) long 포맷 변환 및 렌더링
-    #     cols    = ['굥하우스', '제주가장', '손태영', '홈스타일링연구소', '노홍철 유튜브', '태요미네', '아울디자인', '알쓸물치', '기본 검색량']
-    #     df_long = df_filtered.melt(
-    #         id_vars='날짜',
-    #         value_vars=cols,
-    #         var_name='콘텐츠',
-    #         value_name='기여량'
-    #     )
-    #     # 렌더링
-    #     render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
-    #     render_style_ctb(df_filtered, brand='sleeper')
         
     with tab1:
         # 동적 채널 목록
@@ -1201,79 +1029,6 @@ def main():
         # 테이블 (동적 포맷)
         render_style_ctb(df_filtered.drop(columns=['날짜_dt']), brand='슬립퍼')
 
-        
-
-    # with tab2:
-    #     df_QueryContribution_nor = ppl_action3.merge(query_sum_nor[['날짜', '검색량']], on='날짜', how='outer')
-    #     # 데이터 전처리 1
-    #     cols_to_int = ['베리엠제이1', '검색량']
-    #     df_QueryContribution_nor[cols_to_int] = df_QueryContribution_nor[cols_to_int].apply(
-    #         lambda s: pd.to_numeric(s, errors='coerce')   # 숫자로 변환, 에러나면 NaN
-    #                     .fillna(0)                        # NaN → 0
-    #                     .astype(int)                      # int 로 캐스팅
-    #     )
-    #     # 신규컬럼 생성 - 기본 검색량
-    #     df_QueryContribution_nor["기본 검색량"] = df_QueryContribution_nor["검색량"] - df_QueryContribution_nor[['베리엠제이1']].sum(axis=1)
-    #     # 신규컬럼 생성 - 비중
-    #     cols = ['베리엠제이1', '기본 검색량']
-    #     for col in cols:
-    #         df_QueryContribution_nor[f"{col}_비중"] = (
-    #             df_QueryContribution_nor[col] / df_QueryContribution_nor['검색량'] * 100
-    #         ).round(2)
-    #     df_QueryContribution_nor[[f"{c}_비중" for c in cols]] = df_QueryContribution_nor[[f"{c}_비중" for c in cols]].fillna(0) # 다시 검색량이 0이었던 곳은 0% 처리
-    #     df_QueryContribution_nor = df_QueryContribution_nor[['날짜', '검색량', '기본 검색량', '기본 검색량_비중', '베리엠제이1', '베리엠제이1_비중']]
-    #     df_QueryContribution_nor = df_QueryContribution_nor.sort_values("날짜", ascending=True)
-        
-    #     from pandas.tseries.offsets import MonthEnd
-    #     # 1) “날짜” → datetime 변환
-    #     df_QueryContribution_nor["날짜_dt"] = pd.to_datetime(
-    #         df_QueryContribution_nor["날짜"], format="%Y-%m-%d", errors="coerce"
-    #     )
-
-    #     # 슬라이더 -> 데이터 전체 범위
-    #     start_period = df_QueryContribution_nor["날짜_dt"].min().to_period("M")  # 데이터 최소월
-    #     # end_period = df_QueryContribution["날짜_dt"].max().to_period("M")  # 데이터 최소월
-    #     curr_period  = pd.Timestamp.now().to_period("M")                     # 이번달
-    #     all_periods  = pd.period_range(start=start_period, end=curr_period, freq="M")
-    #     month_options = [p.to_timestamp() for p in all_periods]
-
-    #     # 데이터 선택 범위 디폴트 -> 지난달 ~ 이번달
-    #     now     = pd.Timestamp.now()
-    #     curr_ts = now.to_period("M").to_timestamp()         # 이번달 첫날
-    #     prev_ts = (now.to_period("M") - 1).to_timestamp()   # 이전월 첫날
-
-    #     # 슬라이더 렌더링
-    #     st.markdown(" ")
-    #     selected_range = st.select_slider(
-    #         "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
-    #         options=month_options,                  # 전체 데이터 기간 옵션
-    #         value=(prev_ts, curr_ts),               # 기본: 이전월→이번달
-    #         format_func=lambda x: x.strftime("%Y-%m"),
-    #         key="slider_02"
-    #     )
-    #     start_sel, end_sel = selected_range
-
-    #     # 5) 필터링 구간(1일~말일)
-    #     period_start = start_sel
-    #     period_end   = end_sel + MonthEnd(0)
-
-    #     df_filtered_nor = df_QueryContribution_nor[
-    #         (df_QueryContribution_nor["날짜_dt"] >= period_start) &
-    #         (df_QueryContribution_nor["날짜_dt"] <= period_end)
-    #     ].copy()
-    #     df_filtered_nor["날짜"] = df_filtered_nor["날짜_dt"].dt.strftime("%Y-%m-%d")
-
-    #     # 6) long 포맷 변환 및 렌더링
-    #     cols    = ['베리엠제이1', '기본 검색량']
-    #     df_long = df_filtered_nor.melt(
-    #         id_vars='날짜',
-    #         value_vars=cols,
-    #         var_name='콘텐츠',
-    #         value_name='기여량'
-    #     )
-    #     # 렌더링
-    #     render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
-    #     render_style_ctb(df_filtered_nor, brand='nooer')
     
     with tab2:
         channels_nor = CHANNELS_BY_BRAND.get('누어', [])
