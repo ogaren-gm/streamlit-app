@@ -656,43 +656,53 @@ def main():
 
 
     def render_stacked_bar(
-        df: pd.DataFrame,
-        x: str,
-        y: str | list[str],
-        color: str | None,
-        fixed_label: str = "기본 검색량",
-        fixed_color: str = "#D5DAE5",  # 회색 비스므레 하게 고정 ~~ㅜㅜ
-    ) -> None:
+        df, x, y, color,
+        fixed_label="기본 검색량",
+        fixed_color="#D5DAE5",  # 회색 고정, 회색 다신 등장 ㄴㄴ
+    ):
         # 숫자형 보정
         def _to_numeric(cols):
             for c in cols:
                 df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-        color_map = {fixed_label: fixed_color} if color is not None else None
+        # 회색 제외 팔레트
+        palette = px.colors.qualitative.Plotly
+        color_map = {fixed_label: fixed_color}
 
-        if isinstance(y, (list, tuple)):   # wide-form 들어오면
+        # ← 여기만 변경: fixed_label을 항상 "마지막"으로 보냄
+        def _category_order(series_name):
+            cats = df[series_name].dropna().astype(str).unique().tolist()
+            if fixed_label in cats:
+                cats = [c for c in cats if c != fixed_label] + [fixed_label]
+            return cats
+
+        if isinstance(y, (list, tuple)):
             _to_numeric(list(y))
             if color is not None and color in df.columns:
-                # y-list + color가 같이 오면 long으로 변환해 확실히 누적
                 long_df = df.melt(id_vars=[x, color], value_vars=list(y),
                                 var_name="__series__", value_name="__value__")
+                order = _category_order("__series__")
                 fig = px.bar(
                     long_df, x=x, y="__value__", color="__series__", opacity=0.6,
-                    color_discrete_map=color_map
+                    color_discrete_map=color_map,
+                    color_discrete_sequence=palette,
+                    category_orders={"__series__": order},
                 )
             else:
-                fig = px.bar(df, x=x, y=list(y), opacity=0.6)
-        else:                               # y가 단일이면 long-form
+                fig = px.bar(df, x=x, y=list(y), opacity=0.6,
+                            color_discrete_sequence=palette)
+        else:
             _to_numeric([y])
+            order = _category_order(color) if color else None
             fig = px.bar(
                 df, x=x, y=y, color=color, opacity=0.6,
-                color_discrete_map=color_map
+                color_discrete_map=color_map,
+                color_discrete_sequence=palette,
+                category_orders=({color: order} if order else None),
             )
 
-        # 진짜로 누적
         fig.update_layout(barmode="relative")
         fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-
         fig.update_layout(
             bargap=0.1, bargroupgap=0.2, height=400,
             xaxis_title=None, yaxis_title=None,
@@ -700,6 +710,7 @@ def main():
         )
         fig.update_xaxes(tickformat="%m월 %d일")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
