@@ -134,7 +134,6 @@ def main():
             choices = ['ETC','Paid','Owned','Earned']
             return np.select(conds, choices, default='ETC')
 
-
         def categorize_region(df: pd.DataFrame,
                             city_col: str = "geo__city",
                             default_region: str = "기타") -> pd.Series:
@@ -153,29 +152,92 @@ def main():
 
             # 2) 매핑 딕셔너리
             norm_map = {
-                "incheon": "수도권",
+                # 수도권
                 "seoul": "수도권",
-                "gyeonggi-do": "수도권",
-
-                "chungcheongbuk-do": "중부",
-                "chungcheongnam-do": "중부",
-                "daejeon": "중부",
-
-                "gyeongsangbuk-do": "경북",
-                "daegu": "경북",
-                "ulsan": "경북",
-
-                "busan": "경남",
-                "gyeongsangnam-do": "경남",
-
-                "jeollanam-do": "전라",
-                "gwangju": "전라",
-                "jeonbuk state": "전라",
-                "jeollabuk-do": "전라",
-
-                "gangwon-do": "강원",
-
-                "jeju-do": "기타",
+                "incheon": "수도권",
+                "goyang-si": "수도권",
+                "suwon-si": "수도권",
+                "yongin-si": "수도권",
+                "hwaseong-si": "수도권",
+                "seongnam-si": "수도권",
+                "gimpo-si": "수도권",
+                "paju-si": "수도권",
+                "pyeongtaek-si": "수도권",
+                "namyangju-si": "수도권",
+                "bucheon-si": "수도권",
+                "anyang-si": "수도권",
+                "ansan-si": "수도권",
+                "siheung-si": "수도권",
+                "uijeongbu-si": "수도권",
+                "gwangmyeong-si": "수도권",
+                "icheon-si": "수도권",
+                "gunpo-si": "수도권",
+                "guri-si": "수도권",
+                "anseong-si": "수도권",
+                "uiwang-si": "수도권",
+                "pocheon-si": "수도권",
+                "yeoju-si": "수도권",
+                "dongducheon-si": "수도권",
+                "gwacheon-si": "수도권",
+                "gwangju-si": "수도권",   # (경기 광주시)
+                # 광주/전라
+                "gwangju": "광주/전라",   # (광주광역시)
+                "jeonju-si": "광주/전라",
+                "suncheon-si": "광주/전라",
+                "gunsan-si": "광주/전라",
+                "iksan-si": "광주/전라",
+                "yeosu-si": "광주/전라",
+                "mokpo-si": "광주/전라",
+                "jeongeup-si": "광주/전라",
+                "namwon-si": "광주/전라",
+                "naju-si": "광주/전라",
+                # 대구/경북
+                "daegu": "대구/경북",
+                "pohang-si": "대구/경북",
+                "gumi-si": "대구/경북",
+                "gyeongsan-si": "대구/경북",
+                "gyeongju-si": "대구/경북",
+                "andong-si": "대구/경북",
+                "gimcheon-si": "대구/경북",
+                "yeongju-si": "대구/경북",
+                "yeongcheon-si": "대구/경북",
+                "sangju-si": "대구/경북",
+                "mungyeong-si": "대구/경북",
+                # 부산/경남
+                "busan": "부산/경남",
+                "changwon-si": "부산/경남",
+                "ulsan": "부산/경남",
+                "gimhae-si": "부산/경남",
+                "jinju-si": "부산/경남",
+                "yangsan-si": "부산/경남",
+                "geoje-si": "부산/경남",
+                "tongyeong-si": "부산/경남",
+                "sacheon-si": "부산/경남",
+                "miryang-si": "부산/경남",
+                # 대전/중부
+                "daejeon": "대전/중부",
+                "cheonan-si": "대전/중부",
+                "cheongju-si": "대전/중부",
+                "sejong-si": "대전/중부",
+                "asan-si": "대전/중부",
+                "chungju-si": "대전/중부",
+                "dangjin-si": "대전/중부",
+                "seosan-si": "대전/중부",
+                "nonsan-si": "대전/중부",
+                "gongju-si": "대전/중부",
+                "jecheon-si": "대전/중부",
+                "boryeong-si": "대전/중부",
+                "gyeryong-si": "대전/중부",
+                # 기타(강원/제주 등)
+                "jeju-si": "기타",
+                "seogwipo-si": "기타",
+                "wonju-si": "기타",
+                "gangneung-si": "기타",
+                "sokcho-si": "기타",
+                "donghae-si": "기타",
+                "samcheok-si": "기타",
+                "chuncheon-si": "기타",
+                "taebaek-si": "기타",
                 "(not set)": "기타",
                 "not set": "기타",
             }
