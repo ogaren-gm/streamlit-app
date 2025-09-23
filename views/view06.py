@@ -134,15 +134,22 @@ def main():
             choices = ['ETC','Paid','Owned','Earned']
             return np.select(conds, choices, default='ETC')
 
-        def categorize_region(df: pd.DataFrame,
-                            city_col: str = "geo__city",
-                            default_region: str = "기타") -> pd.Series:
-
-            # 컬럼 없을 경우 전부 기본값으로 채움
-            if city_col not in df.columns:
+        def categorize_region(
+            df: pd.DataFrame,
+            city_col: str = "geo__city",
+            region_col: str = "geo__region",
+            default_region: str = "기타"
+        ) -> pd.Series:
+            """
+            1) geo__city 기준으로 매핑
+            2) city 결과가 NaN 또는 '기타'일 때만 geo__region으로 보완
+            3) 그래도 없으면 default_region
+            """
+            # 0) 컬럼 없으면 전부 기본값
+            if city_col not in df.columns and region_col not in df.columns:
                 return pd.Series([default_region] * len(df), index=df.index, name="_geo_region")
 
-            # 1) 표준화(소문자, 트림, 다중 공백 축소)
+            # 1) 표준화
             def _norm(x):
                 if pd.isna(x):
                     return None
@@ -150,9 +157,9 @@ def main():
                 s = re.sub(r"\s+", " ", s)
                 return s.lower()
 
-            # 2) 매핑 딕셔너리
-            norm_map = {
-                # 수도권
+            # 2) city 매핑 (세부 시/군 위주)
+            norm_map_city = {
+                # 수도권(경기 광주시 주의: 'gwangju-si'는 수도권)
                 "seoul": "수도권",
                 "incheon": "수도권",
                 "goyang-si": "수도권",
@@ -179,9 +186,10 @@ def main():
                 "yeoju-si": "수도권",
                 "dongducheon-si": "수도권",
                 "gwacheon-si": "수도권",
-                "gwangju-si": "수도권",   # (경기 광주시)
-                # 광주/전라
-                "gwangju": "광주/전라",   # (광주광역시)
+                "gwangju-si": "수도권",  # 경기 광주시
+
+                # 광주/전라(광주광역시는 'gwangju')
+                "gwangju": "광주/전라",
                 "jeonju-si": "광주/전라",
                 "suncheon-si": "광주/전라",
                 "gunsan-si": "광주/전라",
@@ -191,6 +199,7 @@ def main():
                 "jeongeup-si": "광주/전라",
                 "namwon-si": "광주/전라",
                 "naju-si": "광주/전라",
+
                 # 대구/경북
                 "daegu": "대구/경북",
                 "pohang-si": "대구/경북",
@@ -203,7 +212,8 @@ def main():
                 "yeongcheon-si": "대구/경북",
                 "sangju-si": "대구/경북",
                 "mungyeong-si": "대구/경북",
-                # 부산/경남
+
+                # 부산/경남(울산 포함)
                 "busan": "부산/경남",
                 "changwon-si": "부산/경남",
                 "ulsan": "부산/경남",
@@ -214,7 +224,8 @@ def main():
                 "tongyeong-si": "부산/경남",
                 "sacheon-si": "부산/경남",
                 "miryang-si": "부산/경남",
-                # 대전/중부
+
+                # 대전/중부(충청권+세종)
                 "daejeon": "대전/중부",
                 "cheonan-si": "대전/중부",
                 "cheongju-si": "대전/중부",
@@ -228,6 +239,7 @@ def main():
                 "jecheon-si": "대전/중부",
                 "boryeong-si": "대전/중부",
                 "gyeryong-si": "대전/중부",
+
                 # 기타(강원/제주 등)
                 "jeju-si": "기타",
                 "seogwipo-si": "기타",
@@ -238,16 +250,48 @@ def main():
                 "samcheok-si": "기타",
                 "chuncheon-si": "기타",
                 "taebaek-si": "기타",
+
+                # 예외값
                 "(not set)": "기타",
                 "not set": "기타",
             }
 
-            # 3) 표준화 후 매핑
-            norm = df[city_col].apply(_norm)
-            mapped = norm.map(norm_map).fillna(default_region)
+            # 3) region 매핑 (도/광역시 등 상위뎁스)
+            norm_map_region = {
+                "seoul": "수도권",
+                "gyeonggi-do": "수도권",
+                "incheon": "수도권",
+                "chungcheongnam-do": "대전/중부",
+                "chungcheongbuk-do": "대전/중부",
+                "daejeon": "대전/중부",
+                "sejong-si": "대전/중부",
+                "jeju-do": "기타",
+                "gangwon-do": "기타",
+                "gwangju": "광주/전라",
+                "jeonbuk state": "광주/전라",
+                "jeollanam-do": "광주/전라",
+                "busan": "부산/경남",
+                "gyeongsangnam-do": "부산/경남",
+                "ulsan": "부산/경남",
+                "daegu": "대구/경북",
+                "gyeongsangbuk-do": "대구/경북",
+            }
 
-            # 4) 반환 (그냥 문자열 시리즈)
-            return pd.Series(mapped, index=df.index, name="_geo_region")
+            # 4) 매핑 적용
+            city_norm = df[city_col].apply(_norm) if city_col in df.columns else pd.Series(index=df.index, dtype=object)
+            city_mapped = city_norm.map(norm_map_city)
+
+            region_norm = df[region_col].apply(_norm) if region_col in df.columns else pd.Series(index=df.index, dtype=object)
+            region_mapped = region_norm.map(norm_map_region)
+
+            # 5) city 결과가 비거나 '기타'인 곳만 region으로 보완
+            res = city_mapped.copy()
+            mask = res.isna() | (res == default_region)
+            res.loc[mask] = region_mapped.loc[mask]
+
+            # 6) 최종 기본값 채움
+            res = res.fillna(default_region)
+            return pd.Series(res, index=df.index, name="_geo_region")
 
         
         return preprocess_data(df_psi)
@@ -601,6 +645,7 @@ def main():
                 ]
             )
             st.dataframe(styled2,  row_height=30,  hide_index=True)
+        st.dataframe(df_psi[['geo__city', 'geo__region', '_geo_region' ]])
     
             
     # — 유입매체 탭
