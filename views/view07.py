@@ -352,6 +352,7 @@ def main():
                 ("원목 침대"): 0,
                 ("기타"): 0,
                 ("프레임"): 0,
+                ("베개"): 0,
             },
         )
         # styled2 = style_cmap(
@@ -361,7 +362,61 @@ def main():
         #     ]
         # )
         st.dataframe(styled, row_height=30,  hide_index=True)
-        
+    
+    
+    # (25.09.25)
+    def make_week_label(d: pd.Series) -> pd.Series:
+        d = pd.to_datetime(d, errors="coerce")
+        ws = d - pd.to_timedelta(d.dt.weekday, unit="D")  # 월
+        we = ws + pd.to_timedelta(6, unit="D")           # 일
+        return ws.dt.strftime("%Y-%m-%d") + " ~ " + we.dt.strftime("%Y-%m-%d")
+
+    def pivot_sessions_simple(df: pd.DataFrame, mode: str = "일별") -> pd.DataFrame:
+        w = df.copy()
+        w["event_date"] = pd.to_datetime(w["event_date"], errors="coerce").dropna()
+        w = w.dropna(subset=["event_date"])
+
+        w["_col"] = (
+            w["event_date"].dt.strftime("%Y-%m-%d") if mode == "일별"
+            else make_week_label(w["event_date"])
+        )
+
+        gb = (
+            w.groupby(["product_cat_a","product_cat_b","_col"], dropna=False)["session_count"]
+            .sum().reset_index()
+        )
+        pv = gb.pivot_table(
+            index=["product_cat_a","product_cat_b"],
+            columns="_col",
+            values="session_count",
+            aggfunc="sum",
+            fill_value=0
+        )
+
+        # 날짜/주 라벨 정렬
+        cols = sorted(pv.columns, key=lambda x: x.split(" ~ ")[0] if " ~ " in x else x)
+        pv = pv[cols]
+
+        # ---- 정렬 규칙 적용 ----
+        # a 우선순위: 슬립퍼(0) → 누어(1) → 기타(2)
+        a_order = pv.reset_index()["product_cat_a"].map(lambda x: 0 if x=="슬립퍼" else (1 if x=="누어" else 2))
+        # b 정렬 키: 총합(오름차순)
+        row_sum = pv.sum(axis=1)
+
+        # 멀티인덱스 정렬을 위해 DataFrame로 합치고 sort_values
+        sort_df = pv.copy()
+        sort_df["__a_order__"] = a_order.values
+        sort_df["__sum__"] = row_sum.values
+        sort_df = sort_df.sort_values(by=["__a_order__","__sum__","product_cat_b"], ascending=[True, False, True])
+        sort_df = sort_df.drop(columns=["__a_order__","__sum__"])
+
+        return sort_df.reset_index()
+
+    mode = st.radio("집계 단위", ["일별","주별"], horizontal=True)
+
+    _df_category = pivot_sessions_simple(_df_category, mode=mode)
+    st.dataframe(_df_category, use_container_width=True)
+
         
         
     # ──────────────────────────────────
