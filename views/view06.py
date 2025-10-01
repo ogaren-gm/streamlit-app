@@ -645,7 +645,7 @@ def main():
                 ]
             )
             st.dataframe(styled2,  row_height=30,  hide_index=True)
-        st.dataframe(df_psi[['geo__city', 'geo__region', '_geo_region' ]])
+        # st.dataframe(df_psi[['geo__city', 'geo__region', '_geo_region' ]])
     
             
     # — 유입매체 탭
