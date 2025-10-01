@@ -809,11 +809,319 @@ def main():
           [role="tablist"] [role="tab"] { margin-right: 1rem; }
         </style>
     """, unsafe_allow_html=True)
+
+
+    # ────────────────────────────────────────────────────────────────
+    # 시각화 (개별 기간 조정 · 독립 키 · 차트 전용 재조회)
+    # ────────────────────────────────────────────────────────────────
+    st.markdown("<h5 style='margin:0'>제목</h5>", unsafe_allow_html=True)  
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 ", unsafe_allow_html=True)
+
+    with st.expander("추이선 설명", expanded=False):
+        st.markdown("""
+    - **MA (이동평균)** : 기본 스무딩, 최근 S일 평균으로 요동을 눌러 큰 흐름만 보이게 합니다.
+    - **EWMA (지수가중 이동평균)** : 가중 스무딩, 최근 값에 더 큰 가중치를 주어 변화에 민감합니다.
+    - **STL (Seasonal-Trend decomposition using LOESS, Only Trend)** : 주기성(Seasonal)을 제거하고, 순수 추세(Trend)만 보여줍니다.
+    - **SA (Seasonally Adjusted, Only Trend & Remainder)** : 주기성(Seasonal)만 제거하고, 이벤트나 프로모션의 순수 변화량 추세를 보여줍니다.
+    """)
+
+    # ── 차트 전용 날짜(보고서 필터와 분리)
+    from pandas.tseries.offsets import MonthEnd, DateOffset
+    _today = pd.Timestamp.today().normalize()
+    _chart_end = (_today - pd.Timedelta(days=1)).date()            # D-1
+    # "항상 가지고 있는 전체 데이터" 시작일로 원하는 기준을 넣어줘 (예: 2025-07-01)
+    cs_chart = "20250701"
+    ce_chart = pd.Timestamp(_chart_end).strftime("%Y%m%d")
+
+    # 차트 전용으로 재조회 (보고서 표의 cs/ce와 무관)
+    df_merged_chart, df_prodRep_chart, df_psi_chart = load_data(cs_chart, ce_chart)
     
+
+    # ── 차트용 집계 헬퍼
+    def _pivot_cstSes(df, brand_type=None, product_type=None):
+        d = df.copy()
+        if brand_type:
+            d = d[d['brand_type'].astype(str).str.contains(brand_type, regex=True, na=False)]
+        if product_type:
+            d = d[d['product_type'].astype(str).str.contains(product_type, regex=True, na=False)]
+        d['event_date'] = pd.to_datetime(d['event_date'], errors='coerce').dt.strftime('%Y-%m-%d')
+        return (d.groupby('event_date', as_index=False)
+                .agg(session_count=('pseudo_session_id','sum'),
+                    cost_gross_sum=('cost_gross','sum'))
+                .sort_values('event_date'))
+
+    EVENTS = [
+        "view_item","product_page_scroll_50","product_option_price",
+        "find_nearby_showroom","showroom_10s","add_to_cart",
+        "showroom_leads","purchase"
+    ]
+
+    def _pivot_prdRep_events(df, brand_type=None, product_type=None):
+        d = df.copy()
+        if brand_type:
+            d = d[d['product_cat_a'].astype(str).str.contains(brand_type, regex=True, na=False)]
+        if product_type:
+            d = d[d['product_cat_b'].astype(str).str.contains(product_type, regex=True, na=False)]
+        d['event_date'] = pd.to_datetime(d['event_date'], errors='coerce').dt.strftime('%Y-%m-%d')
+
+        pv = (d.groupby(['event_date','event_name'])['pseudo_session_id']
+                .nunique().unstack(fill_value=0).reset_index())
+
+        # 누락 컬럼 보호
+        for c in EVENTS:
+            if c not in pv.columns:
+                pv[c] = 0
+
+        cols = ['event_date'] + EVENTS
+        return pv[cols].sort_values('event_date')
+
+
+    # 전체
+    _df_c_all   = _pivot_cstSes(df_merged_chart)
+    _df_e_all   = _pivot_prdRep_events(df_prodRep_chart)
+    df_total_ts = (_df_c_all.merge(_df_e_all, on='event_date', how='left')
+                            .fillna(0).sort_values('event_date'))
+
+    # 슬립퍼
+    _df_c_slp   = _pivot_cstSes(df_merged_chart, brand_type="슬립퍼")
+    _df_e_slp   = _pivot_prdRep_events(df_prodRep_chart, brand_type="슬립퍼")
+    df_slp_ts   = (_df_c_slp.merge(_df_e_slp, on='event_date', how='left')
+                            .fillna(0).sort_values('event_date'))
+
+    # 누어
+    _df_c_nor   = _pivot_cstSes(df_merged_chart, brand_type="누어")
+    _df_e_nor   = _pivot_prdRep_events(df_prodRep_chart, brand_type="누어")
+    df_nor_ts   = (_df_c_nor.merge(_df_e_nor, on='event_date', how='left')
+                            .fillna(0).sort_values('event_date'))
+
+
+    options = {
+        "전체 통합": df_total_ts,
+        "슬립퍼 통합": df_slp_ts,
+        "누어 통합": df_nor_ts
+    }
+
+    # ── (2) 컨트롤 (이 영역만 독립 키 사용)
+    c1, c2, c3, _pad, c4 = st.columns([3,3,3,0.5,3])
+    with c1:
+        ds_name = st.selectbox("데이터 선택", list(options.keys()), index=0, key="ts2_ds")
+    df_ts = options[ds_name].copy()
+
+    # 날짜 정규화
+    date_col = 'event_date' if 'event_date' in df_ts.columns else None
+    if date_col is None:
+        st.error("날짜 컬럼이 없어 시계열을 그릴 수 없습니다.")
+    else:
+        df_ts[date_col] = pd.to_datetime(df_ts[date_col], errors='coerce')
+        df_ts = df_ts.dropna(subset=[date_col]).sort_values(date_col)
+
+    # ── 지표 라벨 맵 (새 스키마 대응)
+    label_map = {
+        "session_count"            : "세션수",
+        "cost_gross_sum"           : "광고비",
+        "view_item"                : "PDP조회",
+        "product_page_scroll_50"   : "PDPscr50",
+        "product_option_price"     : "가격표시",
+        "find_nearby_showroom"     : "쇼룸찾기",
+        "showroom_10s"             : "쇼룸10초",
+        "add_to_cart"              : "장바구니",
+        "showroom_leads"           : "쇼룸예약",
+        "purchase"                 : "구매완료",
+    }
+
+    # 화면에 노출할 지표 우선순위(앞에 있을수록 select 기본값에 가깝게 됨)
+    _metric_priority = [
+        "view_item", "product_page_scroll_50", "product_option_price",
+        "find_nearby_showroom", "showroom_10s", "add_to_cart",
+        "showroom_leads", "purchase"
+        
+    ]
+
+    # 실제 df_ts에 존재하는 컬럼만 후보로 구성
+    metric_candidates = [c for c in _metric_priority if c in df_ts.columns]
+
+    with c2:
+        metric = st.selectbox(
+            "지표 선택",
+            metric_candidates if metric_candidates else [c for c in df_ts.columns if c in label_map],
+            index=0,
+            key="ts2_metric",
+            format_func=lambda k: label_map.get(k, k)
+        )
+
+
+    overlay_options = ["MA (이동평균)", "EWMA (지수가중 이동평균)", "STL Trend", "SA Trend & Remainder"]
+    with c3:
+        overlay = st.selectbox("추이선 선택", overlay_options, index=0, key="ts2_overlay")
+
+    with c4:
+        period = st.radio("주기(S) 선택", [14, 7], horizontal=True, index=0, key="ts2_period",
+                        help="디폴트값인 14일을 권장합니다. 이 값은 이동평균 평활, 세로선 간격, 볼린저 밴드에 사용됩니다.")
+
+    # ── (3) 월 단위 선택 슬라이더 — 기본: 최신 2개월
+    if date_col:
+        date_min = pd.to_datetime(df_ts[date_col].min()).normalize()
+        date_max = pd.to_datetime(df_ts[date_col].max()).normalize()
+        if pd.isna(date_min) or pd.isna(date_max):
+            st.warning("유효한 날짜 데이터가 없습니다.")
+        else:
+            start_period = date_min.to_period("M")
+            end_period   = date_max.to_period("M")
+            month_options = [p.to_timestamp() for p in pd.period_range(start=start_period, end=end_period, freq="M")]
+
+            if len(month_options) == 0:
+                st.warning("표시할 월 정보가 없습니다.")
+            elif len(month_options) == 1:
+                start_sel = end_sel = month_options[0]
+                st.select_slider("기간(월)", options=month_options, value=start_sel,
+                                format_func=lambda x: x.strftime("%Y-%m"), key="ts2_period_single")
+            else:
+                default_start, default_end = (month_options[-2], month_options[-1])
+                start_sel, end_sel = st.select_slider(
+                    "기간(월)", options=month_options, value=(default_start, default_end),
+                    format_func=lambda x: x.strftime("%Y-%m"), key="ts2_period_range"
+                )
+                if start_sel > end_sel:
+                    start_sel, end_sel = end_sel, start_sel
+
+            period_start, period_end = start_sel, end_sel + MonthEnd(0)
+            dfp = df_ts[(df_ts[date_col] >= period_start) & (df_ts[date_col] <= period_end)].copy()
+
+            # ── (4) 시계열 계산 및 그리기
+            s = dfp.set_index(date_col)[metric].asfreq('D').fillna(0)
+            if s.empty or s.dropna().shape[0] < 2:
+                st.warning("선택한 기간에 표시할 데이터가 부족합니다. 기간을 넓혀주세요.")
+            else:
+                win = int(period)
+                y_ma   = s.rolling(win, min_periods=1).mean() if overlay == "MA (이동평균)" else None
+                y_ewma = s.ewm(halflife=win, adjust=False, min_periods=1).mean() if overlay == "EWMA (지수가중 이동평균)" else None
+
+                y_trend = y_seas = y_sa = None
+                if overlay in ("STL Trend", "SA Trend & Remainder"):
+                    try:
+                        from statsmodels.tsa.seasonal import STL
+                        stl_period = max(2, min(win, max(2, len(s)//2)))
+                        stl = STL(s, period=stl_period, robust=True).fit()
+                        y_trend, y_seas = stl.trend, stl.seasonal
+                    except Exception:
+                        key    = np.arange(len(s)) % win
+                        y_seas = s.groupby(key).transform('mean')
+                        y_trend= (s - y_seas).rolling(win, min_periods=1, center=True).mean()
+                    y_sa = (s - y_seas) if y_seas is not None else None
+
+                fig = make_subplots(specs=[[{"secondary_y": True}]])
+                fig.add_trace(
+                    go.Scatter(x=s.index, y=s, name="RAW", mode="lines+markers",
+                            line=dict(color="#666"), opacity=0.45),
+                    secondary_y=False
+                )
+
+                # Bollinger Bands
+                k = 2.0
+                minp = int(min(win, max(2, len(s))))
+                ma_bb = s.rolling(win, min_periods=minp).mean()
+                sd_bb = s.rolling(win, min_periods=minp).std(ddof=0)
+                bb_upper = ma_bb + k * sd_bb
+                bb_lower = ma_bb - k * sd_bb
+
+                fig.add_trace(go.Scatter(x=bb_upper.index, y=bb_upper, name="BB Upper",
+                                        mode="lines", line=dict(width=1, color="#FFB6C1")),
+                            secondary_y=False)
+                fig.add_trace(go.Scatter(x=bb_lower.index, y=bb_lower, name="BB Lower",
+                                        mode="lines", line=dict(width=1, color="#ADD8E6"),
+                                        fill="tonexty", fillcolor="rgba(128,128,128,0.12)"),
+                            secondary_y=False)
+
+                # 오버레이
+                overlay_series = None
+                if overlay == "MA (이동평균)" and y_ma is not None:
+                    overlay_series = y_ma
+                    fig.add_trace(go.Scatter(x=y_ma.index, y=y_ma, name=f"MA{win}",
+                                            mode="lines", line=dict(color="#FF4B4B")),
+                                secondary_y=True)
+                elif overlay == "EWMA (지수가중 이동평균)" and y_ewma is not None:
+                    overlay_series = y_ewma
+                    fig.add_trace(go.Scatter(x=y_ewma.index, y=y_ewma, name=f"EWMA(h={win})",
+                                            mode="lines", line=dict(color="#FF4B4B")),
+                                secondary_y=True)
+                elif overlay == "STL Trend" and y_trend is not None:
+                    overlay_series = y_trend
+                    fig.add_trace(go.Scatter(x=y_trend.index, y=y_trend, name="STL Trend",
+                                            mode="lines", line=dict(color="#FF4B4B")),
+                                secondary_y=True)
+                elif overlay == "SA Trend & Remainder" and y_sa is not None:
+                    overlay_series = y_sa
+                    fig.add_trace(go.Scatter(x=y_sa.index, y=y_sa, name="SA Trend & Remainder",
+                                            mode="lines", line=dict(color="#FF4B4B")),
+                                secondary_y=True)
+
+                # 축 범위: 좌측은 RAW(+BB) 기준 / STL·SA는 우측 독립
+                left_candidates = [s.dropna()]
+                if (bb_upper is not None) and (not bb_upper.dropna().empty): left_candidates.append(bb_upper.dropna())
+                if (bb_lower is not None) and (not bb_lower.dropna().empty): left_candidates.append(bb_lower.dropna())
+                left_all = pd.concat(left_candidates) if left_candidates else s.dropna()
+                right = overlay_series.dropna() if (overlay_series is not None) else None
+
+                def _minmax_with_pad(series_min, series_max, pad_ratio=0.05, fallback_pad=1.0):
+                    if (series_min is None) or (series_max is None): return None
+                    if (not np.isfinite(series_min)) or (not np.isfinite(series_max)): return None
+                    if series_max <= series_min:
+                        return (series_min - fallback_pad, series_max + fallback_pad)
+                    pad = (series_max - series_min) * pad_ratio
+                    return (series_min - pad, series_max + pad)
+
+                if not left_all.empty:
+                    lrange = _minmax_with_pad(float(left_all.min()), float(left_all.max()))
+                    if lrange is not None:
+                        fig.update_yaxes(range=list(lrange), secondary_y=False)
+                fig.update_yaxes(tickformat="~s", secondary_y=False)
+
+                if (right is not None) and (not right.empty):
+                    if overlay in ("STL Trend", "SA Trend & Remainder"):
+                        rrange = _minmax_with_pad(float(right.min()), float(right.max()))
+                        if rrange is not None:
+                            fig.update_yaxes(range=list(rrange), secondary_y=True)
+                    else:
+                        if not left_all.empty and lrange is not None:
+                            fig.update_yaxes(range=list(lrange), secondary_y=True)
+                fig.update_yaxes(tickformat="~s", secondary_y=True)
+
+                # 주기별 세로선
+                start_ts = pd.to_datetime(s.index.min()).normalize()
+                end_ts   = pd.to_datetime(s.index.max()).normalize()
+                offset_days  = (6 - start_ts.weekday()) % 7  # 첫 일요일
+                first_sunday = start_ts + pd.Timedelta(days=offset_days)
+                step = 7 if win == 7 else 14
+                t = first_sunday
+                while t <= end_ts:
+                    fig.add_vline(x=t, line_dash="dash", line_width=1, opacity=0.6, line_color="#8c8c8c")
+                    t += pd.Timedelta(days=step)
+
+                fig.update_yaxes(title_text=f"{label_map.get(metric, metric)} · RAW / BB", secondary_y=False)
+                overlay_title = {
+                    "MA (이동평균)": f"{label_map.get(metric, metric)} · MA{win}",
+                    "EWMA (지수가중 이동평균)": f"EWMA (halflife={win})",
+                    "STL Trend": "STL Trend",
+                    "SA Trend & Remainder": "SA Trend & Remainder",
+                }[overlay]
+                fig.update_yaxes(title_text=overlay_title, secondary_y=True)
+
+                # ★ 가로 그리드 제거 (좌/우 모두)
+                fig.update_yaxes(showgrid=False, zeroline=False, secondary_y=False)
+                fig.update_yaxes(showgrid=False, zeroline=False, secondary_y=True)
+
+                fig.update_layout(
+                    margin=dict(l=10, r=10, t=30, b=10),
+                    legend=dict(orientation="h", y=1.03, x=1, xanchor="right", yanchor="bottom", title=None),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+
     
     # ────────────────────────────────────────────────────────────────
     # 통합 액션 리포트 
     # ────────────────────────────────────────────────────────────────
+    st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'>통합 액션 리포트</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **통합** 데이터와 효율 추이를 확인할 수 있습니다. ", unsafe_allow_html=True)
     with st.popover("지표 설명"):

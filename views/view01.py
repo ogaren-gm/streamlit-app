@@ -570,9 +570,9 @@ def main():
     # with st.expander("추이선 설명", expanded=False):
     #     st.markdown("""
     # - **MA (이동평균)** : **기본 스무딩**, 최근 S일 평균으로 요동을 눌러 큰 흐름만 보이게 합니다.
-    # - **EWMA (지수가중)** : **가중 스무딩**, 최근 값에 더 큰 가중치를 주어 변화에 민감하게 반응합니다.
+    # - **EWMA (지수가중 이동평균)** : **가중 스무딩**, 최근 값에 더 큰 가중치를 주어 변화에 민감하게 반응합니다.
     # - **STL Trend** : 계절성(주기) 성분을 제거하고 **순수 추세(방향)**를 보여줍니다.
-    # - **Seasonally Adjusted** : 원 데이터에서 계절성(주기) 성분을 뺀 실제값으로, 이벤트나 프로모션의 **순수 변화량(크기)**를 보여줍니다.
+    # - **SA Trend & Remainder** : 원 데이터에서 계절성(주기) 성분을 뺀 실제값으로, 이벤트나 프로모션의 **순수 변화량(크기)**를 보여줍니다.
     # """)
 
 
@@ -606,7 +606,7 @@ def main():
     #     metric = st.selectbox("지표 선택", metric_options, index=0, format_func=lambda k: label_map.get(k, k))
 
     # # 3. 추이선 선택
-    # overlay_options = ["MA (이동평균)", "EWMA (지수가중)", "STL Trend", "Seasonally Adjusted"]
+    # overlay_options = ["MA (이동평균)", "EWMA (지수가중 이동평균)", "STL Trend", "SA Trend & Remainder"]
     # with c3:
     #     overlay = st.selectbox("추이선 선택", overlay_options, index=0)
 
@@ -614,7 +614,7 @@ def main():
     # with c4:
     #     period = st.radio(
     #         "주기(S) 선택", [14, 7], horizontal=True,
-    #         help="이 값은 이동평균/지수가중(EWMA)의 평활과 세로선 간격 및 볼린저 밴드 창에 사용됩니다."
+    #         help="이 값은 이동평균/지수가중 이동평균(EWMA)의 평활과 세로선 간격 및 볼린저 밴드 창에 사용됩니다."
     #     )
 
 
@@ -626,7 +626,7 @@ def main():
     # y_ma = s.rolling(win, min_periods=1).mean() if overlay == "MA (이동평균)" else None
 
     # y_trend = y_seas = y_sa = None
-    # if overlay in ("STL Trend", "Seasonally Adjusted"):
+    # if overlay in ("STL Trend", "SA Trend & Remainder"):
     #     try:
     #         from statsmodels.tsa.seasonal import STL
     #         stl = STL(s, period=period, robust=True).fit()
@@ -637,7 +637,7 @@ def main():
     #         y_trend = (s - y_seas).rolling(period, min_periods=1, center=True).mean()
     #     y_sa = (s - y_seas) if y_seas is not None else None
 
-    # y_ewma = s.ewm(halflife=period, adjust=False, min_periods=1).mean() if overlay == "EWMA (지수가중)" else None
+    # y_ewma = s.ewm(halflife=period, adjust=False, min_periods=1).mean() if overlay == "EWMA (지수가중 이동평균)" else None
 
     # # ──────────────────────────────────
     # # 3) 그래프: RAW(좌) + 선택 오버레이(우) + 주기 세로선 + Bollinger Bands(항상)
@@ -692,14 +692,14 @@ def main():
     #                 mode="lines", line=dict(color="#FF4B4B")),
     #         secondary_y=True
     #     )
-    # elif overlay == "Seasonally Adjusted" and y_sa is not None:
+    # elif overlay == "SA Trend & Remainder" and y_sa is not None:
     #     overlay_series = y_sa
     #     fig.add_trace(
-    #         go.Scatter(x=y_sa.index, y=y_sa, name="Seasonally Adjusted",
+    #         go.Scatter(x=y_sa.index, y=y_sa, name="SA Trend & Remainder",
     #                 mode="lines", line=dict(color="#FF4B4B")),
     #         secondary_y=True
     #     )
-    # elif overlay == "EWMA (지수가중)" and y_ewma is not None:
+    # elif overlay == "EWMA (지수가중 이동평균)" and y_ewma is not None:
     #     overlay_series = y_ewma
     #     fig.add_trace(
     #         go.Scatter(x=y_ewma.index, y=y_ewma, name=f"EWMA(h={period})",
@@ -746,8 +746,8 @@ def main():
     # overlay_title = {
     #     "MA (이동평균)": f"{label_map.get(metric, metric)} · MA{win}",
     #     "STL Trend": "STL Trend",
-    #     "Seasonally Adjusted": "Seasonally Adjusted",
-    #     "EWMA (지수가중)": f"EWMA (halflife={period})"
+    #     "SA Trend & Remainder": "SA Trend & Remainder",
+    #     "EWMA (지수가중 이동평균)": f"EWMA (halflife={period})"
     # }[overlay]
     # fig.update_yaxes(title_text=overlay_title, secondary_y=True)
 
@@ -772,7 +772,7 @@ def main():
     with st.expander("추이선 설명", expanded=False):
         st.markdown("""
     - **MA (이동평균)** : 기본 스무딩, 최근 S일 평균으로 요동을 눌러 큰 흐름만 보이게 합니다.
-    - **EWMA (지수가중)** : 가중 스무딩, 최근 값에 더 큰 가중치를 주어 변화에 민감하게 반응합니다.
+    - **EWMA (지수가중 이동평균)** : 가중 스무딩, 최근 값에 더 큰 가중치를 주어 변화에 민감합니다.
     - **STL (Seasonal-Trend decomposition using LOESS, Only Trend)** : 주기성(Seasonal)을 제거하고, 순수 추세(Trend)만 보여줍니다.
     - **SA (Seasonally Adjusted, Only Trend & Remainder)** : 주기성(Seasonal)만 제거하고, 이벤트나 프로모션의 순수 변화량 추세를 보여줍니다.
     """)
@@ -861,14 +861,14 @@ def main():
     with c2:
         metric = st.selectbox("지표 선택", metric_options, index=0, key="ts_metric",
                             format_func=lambda k: label_map.get(k, k))
-    overlay_options = ["MA (이동평균)", "EWMA (지수가중)", "STL Trend", "Seasonally Adjusted"]
+    overlay_options = ["MA (이동평균)", "EWMA (지수가중 이동평균)", "STL Trend", "SA Trend & Remainder"]
     with c3:
         overlay = st.selectbox("추이선 선택", overlay_options, index=0, key="ts_overlay")
     with _p:
         pass
     with c4:
         period = st.radio("주기(S) 선택", [14, 7], horizontal=True, index=0, key="ts_period",
-                        help="디폴트값인 14일을 권장합니다. 이 값은 이동평균/지수가중의 평활, 세로선 간격, 볼린저 밴드 수식에 사용됩니다.")
+                        help="디폴트값인 14일을 권장합니다. 이 값은 이동평균 평활, 세로선 간격, 볼린저 밴드에 사용됩니다.")
 
     # ── 3) 월 단위 선택 슬라이더 (이 영역만 독립) — 기본: 최신 2개월
     date_min = pd.to_datetime(df_ts[date_col].min()).normalize()
@@ -909,7 +909,7 @@ def main():
         y_ma = s.rolling(win, min_periods=1).mean() if overlay == "MA (이동평균)" else None
 
         y_trend = y_seas = y_sa = None
-        if overlay in ("STL Trend", "Seasonally Adjusted"):
+        if overlay in ("STL Trend", "SA Trend & Remainder"):
             try:
                 from statsmodels.tsa.seasonal import STL
                 stl_period = max(2, min(int(period), max(2, len(s)//2)))
@@ -921,7 +921,7 @@ def main():
                 y_trend = (s - y_seas).rolling(period, min_periods=1, center=True).mean()
             y_sa = (s - y_seas) if y_seas is not None else None
 
-        y_ewma = s.ewm(halflife=period, adjust=False, min_periods=1).mean() if overlay == "EWMA (지수가중)" else None
+        y_ewma = s.ewm(halflife=period, adjust=False, min_periods=1).mean() if overlay == "EWMA (지수가중 이동평균)" else None
 
         fig = make_subplots(specs=[[{"secondary_y": True}]])
         fig.add_trace(
@@ -948,10 +948,10 @@ def main():
         elif overlay == "STL Trend" and y_trend is not None:
             overlay_series = y_trend
             fig.add_trace(go.Scatter(x=y_trend.index, y=y_trend, name="STL Trend", mode="lines", line=dict(color="#FF4B4B")), secondary_y=True)
-        elif overlay == "Seasonally Adjusted" and y_sa is not None:
+        elif overlay == "SA Trend & Remainder" and y_sa is not None:
             overlay_series = y_sa
-            fig.add_trace(go.Scatter(x=y_sa.index, y=y_sa, name="Seasonally Adjusted", mode="lines", line=dict(color="#FF4B4B")), secondary_y=True)
-        elif overlay == "EWMA (지수가중)" and y_ewma is not None:
+            fig.add_trace(go.Scatter(x=y_sa.index, y=y_sa, name="SA Trend & Remainder", mode="lines", line=dict(color="#FF4B4B")), secondary_y=True)
+        elif overlay == "EWMA (지수가중 이동평균)" and y_ewma is not None:
             overlay_series = y_ewma
             fig.add_trace(go.Scatter(x=y_ewma.index, y=y_ewma, name=f"EWMA(h={period})", mode="lines", line=dict(color="#FF4B4B")), secondary_y=True)
 
@@ -1011,8 +1011,8 @@ def main():
             rmin = float(right.min())
             rmax = float(right.max())
 
-            # STL / Seasonally Adjusted → 우측 독립 스케일
-            if overlay in ("STL Trend", "Seasonally Adjusted"):
+            # STL / SA Trend & Remainder → 우측 독립 스케일
+            if overlay in ("STL Trend", "SA Trend & Remainder"):
                 rrange = _minmax_with_pad(rmin, rmax)
                 if rrange is not None:
                     fig.update_yaxes(range=list(rrange), secondary_y=True)
@@ -1040,8 +1040,8 @@ def main():
         overlay_title = {
             "MA (이동평균)": f"{label_map.get(metric, metric)} · MA{win}",
             "STL Trend": "STL Trend",
-            "Seasonally Adjusted": "Seasonally Adjusted",
-            "EWMA (지수가중)": f"EWMA (halflife={period})"
+            "SA Trend & Remainder": "SA Trend & Remainder",
+            "EWMA (지수가중 이동평균)": f"EWMA (halflife={period})"
         }[overlay]
         fig.update_yaxes(title_text=overlay_title, secondary_y=True)
         fig.update_yaxes(showgrid=False, zeroline=False)

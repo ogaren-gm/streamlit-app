@@ -716,138 +716,134 @@ def main():
 
 
     # ────────────────────────────────────────────────────────────────
-    # 채널 목록
+    # 채널 목록 > 조금 컴팩트하게 수정
     # ────────────────────────────────────────────────────────────────
     # 탭 간격 CSS
     st.markdown("""
         <style>
-          [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        [role="tablist"] [role="tab"] { margin-right: 1rem; }
         </style>
+    """, unsafe_allow_html=True)
+
+    # 카드 전용 CSS (컴팩트 스타일)
+    st.markdown("""
+    <style>
+    .ppl-grid { gap: 6px !important; }  /* st.columns gap=small 과 조화 */
+
+    .ppl-card {
+        border:1px solid #e6e6e6;
+        border-radius:8px;
+        padding:12px 14px;
+        margin-bottom:14px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        background:#fff;
+    }
+    .ppl-card .card-top {
+        display:flex; align-items:center; justify-content:space-between;
+        margin-bottom:14px;
+    }
+    .ppl-card .title {
+        font-size:0.98rem; font-weight:700; color:#222; margin:0; 
+        line-height:1.2;
+    }
+    .ppl-card .meta {
+        font-size:0.78rem; color:#666; margin-top:2px;
+    }
+    .ppl-card .row {
+        display:flex; justify-content:space-between; align-items:center;
+        margin-top:8px; font-size:0.86rem;
+    }
+    .ppl-card .total { color:#333; }
+    .ppl-card .total b { font-weight:700; }
+
+    /* 브랜드 배지 */
+    .ppl-badge {
+        display:inline-block; padding:2px 8px; border-radius:999px;
+        font-size:0.72rem; line-height:1.6; font-weight:600; color:#fff;
+        white-space:nowrap;
+    }
+    .badge-slp { background:#FF4B4B; } /* 슬립퍼 */
+    .badge-nor { background:#5562EA; } /* 누어 */
+
+    /* 링크 */
+    .ppl-link a { text-decoration:none; font-size:0.82rem; }
+    .ppl-link a:hover { text-decoration:underline; }
+    </style>
     """, unsafe_allow_html=True)
 
     # 1번 영역
     st.markdown("<h5 style='margin:0'>채널 목록</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 채널에 대한 집행 정보입니다. <span style='color:#8E9097;'>(최신순 정렬)</span> ", unsafe_allow_html=True)
 
-    df = PPL_LIST
+    # 원본 DF 정렬
+    df = PPL_LIST.copy()
     df = df.sort_values(by="order", ascending=False)
-    
-    # 브랜드별 데이터프레임 분리
+
+    # 브랜드별 분리
     df_slp = df[df["브랜드"] == "슬립퍼"].copy()
     df_nor = df[df["브랜드"] == "누어"].copy()
-    
+
+    def _render_card_grid(df_src: pd.DataFrame, cols_per_row: int = 6):
+        """컴팩트 카드 그리드 렌더링 (브랜드 배지 포함)"""
+        if df_src is None or len(df_src) == 0:
+            st.info("표시할 채널이 없습니다.")
+            return
+
+        rows = math.ceil(len(df_src) / cols_per_row)
+        for i in range(rows):
+            cols = st.columns(cols_per_row, gap="small")
+            for j, col in enumerate(cols):
+                idx = i * cols_per_row + j
+                if idx >= len(df_src): break
+                row = df_src.iloc[idx]
+
+                brand = str(row.get("브랜드", "")).strip()
+                badge_class = "badge-slp" if brand == "슬립퍼" else ("badge-nor" if brand == "누어" else "badge-slp")
+
+                # 금액
+                amount_raw = row.get("금액")
+                money = "-"
+                if pd.notna(amount_raw):
+                    try:
+                        money = f"{int(amount_raw):,}원"
+                    except Exception:
+                        money = str(amount_raw)
+
+                # 링크
+                url = row.get("컨텐츠 URL")
+                link_html = f"🔗 <a href='{url}' target='_blank'>컨텐츠 보기</a>" if url else "🔗 링크 없음"
+
+                # 업로드 날짜
+                upload_date = row.get("업로드 날짜")
+                upload_date_str = str(upload_date) if pd.notna(upload_date) else ""
+
+                with col:
+                    st.markdown(
+                        f"""
+                        <div class="ppl-card">
+                        <div class="card-top">
+                            <h4 class="title">{row.get('채널명','')}</h4>
+                            <span class="ppl-badge {badge_class}">{brand if brand else '브랜드'}</span>
+                        </div>
+                        <div class="meta">{upload_date_str}</div>
+                        <div class="row">
+                            <div class="total">Total <b>{money}</b></div>
+                            <div class="ppl-link">{link_html}</div>
+                        </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
     tab1, tab2, tab3 = st.tabs(["전체", "슬립퍼", "누어"])
     with tab1:
-        cols_per_row = 5
-        rows = math.ceil(len(df) / cols_per_row)
-        for i in range(rows):
-            # gap="small" 으로 컬럼 간격 최소화
-            cols = st.columns(cols_per_row, gap="small")
-            for j, col in enumerate(cols):
-                idx = i * cols_per_row + j
-                if idx >= len(df):
-                    break
-                row = df.iloc[idx]
-                with col:
-                    # 카드 박스 스타일
-                    st.markdown(
-                        f"""
-                        <div style="
-                        border:1px solid #e1e1e1;
-                        border-radius:6px;
-                        padding:16px 20px;
-                        margin-bottom:8px;
-                        box-shadow: 0px 1px 3px rgba(0,0,0,0.1);
-                        ">
-                        <strong style="font-size:1.1em;">{row['채널명']}</strong><br>
-                        <small style="color:#555;">{row['업로드 날짜']}</small>
-                        <div style="display:flex; justify-content:space-between; font-size:0.9em;">
-                            <div style="margin:6px 0;">
-                            <div style="color:#333;">Total <strong>{int(row['금액']):,}원</strong></div>
-                            </div>
-                            <div>
-                            {"🔗 <a href='" + row['컨텐츠 URL'] + "' target='_blank'>컨텐츠 보기</a>" 
-                            if row.get('컨텐츠 URL') else "🔗 링크 없음"}
-                            </div>
-                        </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+        _render_card_grid(df, cols_per_row=6)    # 전체
     with tab2:
-        cols_per_row = 5
-        rows = math.ceil(len(df_slp) / cols_per_row)
-        for i in range(rows):
-            # gap="small" 으로 컬럼 간격 최소화
-            cols = st.columns(cols_per_row, gap="small")
-            for j, col in enumerate(cols):
-                idx = i * cols_per_row + j
-                if idx >= len(df_slp):
-                    break
-                row = df_slp.iloc[idx]
-                with col:
-                    # 카드 박스 스타일
-                    st.markdown(
-                        f"""
-                        <div style="
-                        border:1px solid #e1e1e1;
-                        border-radius:6px;
-                        padding:16px 20px;
-                        margin-bottom:8px;
-                        box-shadow: 0px 1px 3px rgba(0,0,0,0.1);
-                        ">
-                        <strong style="font-size:1.1em;">{row['채널명']}</strong><br>
-                        <small style="color:#555;">{row['업로드 날짜']}</small>
-                        <div style="display:flex; justify-content:space-between; font-size:0.9em;">
-                            <div style="margin:6px 0;">
-                            <div style="color:#333;">Total <strong>{int(row['금액']):,}원</strong></div>
-                            </div>
-                            <div>
-                            {"🔗 <a href='" + row['컨텐츠 URL'] + "' target='_blank'>컨텐츠 보기</a>" 
-                            if row.get('컨텐츠 URL') else "🔗 링크 없음"}
-                            </div>
-                        </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+        _render_card_grid(df_slp, cols_per_row=6)  # 슬립퍼
     with tab3:
-        cols_per_row = 5
-        rows = math.ceil(len(df_nor) / cols_per_row)
-        for i in range(rows):
-            # gap="small" 으로 컬럼 간격 최소화
-            cols = st.columns(cols_per_row, gap="small")
-            for j, col in enumerate(cols):
-                idx = i * cols_per_row + j
-                if idx >= len(df_nor):
-                    break
-                row = df_nor.iloc[idx]
-                with col:
-                    # 카드 박스 스타일
-                    st.markdown(
-                        f"""
-                        <div style="
-                        border:1px solid #e1e1e1;
-                        border-radius:6px;
-                        padding:16px 20px;
-                        margin-bottom:8px;
-                        box-shadow: 0px 1px 3px rgba(0,0,0,0.1);
-                        ">
-                        <strong style="font-size:1.1em;">{row['채널명']}</strong><br>
-                        <small style="color:#555;">{row['업로드 날짜']}</small>
-                        <div style="display:flex; justify-content:space-between; font-size:0.9em;">
-                            <div style="margin:6px 0;">
-                            <div style="color:#333;">Total <strong>{int(row['금액']):,}원</strong></div>
-                            </div>
-                            <div>
-                            {"🔗 <a href='" + row['컨텐츠 URL'] + "' target='_blank'>컨텐츠 보기</a>" 
-                            if row.get('컨텐츠 URL') else "🔗 링크 없음"}
-                            </div>
-                        </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+        _render_card_grid(df_nor, cols_per_row=6)  # 누어
+
+
 
     
     # ────────────────────────────────────────────────────────────────
