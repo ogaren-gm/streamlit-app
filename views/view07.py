@@ -70,7 +70,8 @@ def main():
         value=[default_start, default_end]
     )
     cs = start_date.strftime("%Y%m%d")
-    ce = end_date.strftime("%Y%m%d")
+    # ce = end_date.strftime("%Y%m%d")
+    ce_exclusive = (end_date + timedelta(days=1)).strftime("%Y%m%d")
     
     @st.cache_data(ttl=3600)
     def load_data(cs: str, ce: str) -> pd.DataFrame:
@@ -116,7 +117,7 @@ def main():
     # ──────────────────────────────────
     st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
     with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df = load_data(cs, ce)
+        df = load_data(cs, ce_exclusive)
 
     # ──────────────────────────────────
     # 공통 함수

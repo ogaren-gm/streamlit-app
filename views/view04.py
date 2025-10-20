@@ -845,7 +845,298 @@ def main():
 
 
 
-    
+    # ────────────────────────────────────────────────────────────────
+    # (25.10.10 추가) 캠페인 효과(초반 피크+감소 일치도)
+    # ────────────────────────────────────────────────────────────────
+    def render_campaign_effect(df_merged_t: pd.DataFrame, ch: str, L: int = 5):
+        """
+        단일 함수 버전
+        - df_merged_t: ['날짜','채널명','Cost','조회수','좋아요수','댓글수','브랜드언급량','링크 클릭수'] 포함
+        - ch: 탭에서 넘겨주는 채널명 (자동 선택)
+        - L : 평가 일수(3~7 권장). 데이터가 부족하면 가능한 길이로 자동 조정
+        - T0는 자동: '조회수>0'인 첫 날짜 (없으면 해당 채널의 첫 날짜)
+        """
+        import numpy as np
+        import pandas as pd
+        import plotly.graph_objects as go
+        from datetime import timedelta
+
+        # ──────────────────────────────────
+        # 내부 헬퍼들 (함수 외부 정의 X)
+        # ──────────────────────────────────
+        def _as_daily(df: pd.DataFrame) -> pd.DataFrame:
+            d = df.copy()
+            d["날짜"] = pd.to_datetime(d["날짜"], errors="coerce")
+            d = d.dropna(subset=["날짜"]).sort_values("날짜").set_index("날짜").asfreq("D")
+            return d
+
+        def _inc_from_cum(s: pd.Series) -> pd.Series:
+            # 누적 → 증가분, 음수 방지
+            return s.diff().clip(lower=0).fillna(0)
+
+        def _front_loading_index(y: np.ndarray, k: int = 2, n_perm: int = 5000, seed: int = 42) -> dict:
+            """
+            FLI = (앞 k일 합) / (전체 합). 퍼뮤테이션 p-value(우측꼬리).
+            y: 길이 L(3~7)의 비음 아닌 일일 값
+            """
+            y = np.array(y, dtype=float)
+            y[y < 0] = 0.0
+            L = len(y)
+            if L < max(3, k + 1) or y.sum() <= 0:
+                return {"fli": np.nan, "p": np.nan, "k": k, "L": L}
+
+            fli_obs = float(y[:k].sum() / y.sum())
+
+            rng = np.random.default_rng(seed)
+            null = []
+            for _ in range(n_perm):
+                yb = y.copy()
+                rng.shuffle(yb)
+                fli_b = float(yb[:k].sum() / yb.sum())
+                null.append(fli_b)
+            null = np.array(null)
+
+            # 우측꼬리 (초반 집중이 클수록 큼)
+            p = float((np.sum(null >= fli_obs) + 1) / (n_perm + 1))
+            return {"fli": fli_obs, "p": p, "k": k, "L": L}
+
+        def _exp_decay_fit(y: np.ndarray) -> dict:
+            """
+            y ≈ A * exp(-λ t) (t=1..L) 지수감쇠 OLS 적합 (로그선형화).
+            반환: lambda(감쇠율, +면 감소), R2 (0~1), A
+            """
+            y = np.array(y, dtype=float)
+            y[y < 0] = 0.0
+            L = len(y)
+            if L < 3 or np.all(y <= 0):
+                return {"lam": np.nan, "R2": np.nan, "A": np.nan}
+
+            t = np.arange(1, L + 1, dtype=float)
+            # 0 값 방지 위해 작은 epsilon 추가
+            eps = max(1e-9, 1e-6 * (y.max() if y.max() > 0 else 1.0))
+            ly = np.log(y + eps)
+
+            # 선형회귀 ly = c - λ t
+            X = np.column_stack([np.ones_like(t), -t])
+            beta, *_ = np.linalg.lstsq(X, ly, rcond=None)
+            c, lam = beta[0], beta[1]  # lam >= 0 이면 감소 경향
+
+            ly_hat = X @ beta
+            ss_res = float(np.sum((ly - ly_hat) ** 2))
+            ss_tot = float(np.sum((ly - ly.mean()) ** 2))
+            R2 = 0.0 if ss_tot <= 0 else max(0.0, min(1.0, 1.0 - ss_res / ss_tot))
+            A = float(np.exp(c))
+            return {"lam": float(lam), "R2": float(R2), "A": A}
+
+        def _peak_day(y: np.ndarray) -> str:
+            if (y is None) or (len(y) == 0) or np.all(~np.isfinite(y)):
+                return "N/A"
+            i = int(np.nanargmax(y))  # 0-based
+            return f"D{i+1}"
+
+        # 1) 채널 필터 & T0 자동 설정
+        cols_need = ["날짜", "채널명", "조회수", "브랜드언급량", "링크 클릭수"]
+        dfc = df_merged_t.loc[df_merged_t["채널명"] == ch, cols_need].copy()
+        if dfc.empty:
+            st.info("표시할 채널 데이터가 없습니다.")
+            return
+
+        dfc["날짜"] = pd.to_datetime(dfc["날짜"], errors="coerce")
+        dfc = dfc.dropna(subset=["날짜"]).sort_values("날짜")
+
+        # T0 자동: 조회수>0인 첫 날짜 (없으면 해당 채널의 첫 날짜)
+        nonzero_dates = dfc.loc[(dfc["조회수"].astype(float) > 0), "날짜"]
+        if len(nonzero_dates):
+            T0 = pd.to_datetime(nonzero_dates.iloc[0])
+        else:
+            T0 = pd.to_datetime(dfc["날짜"].iloc[0])
+
+        # 일단위로 정규화
+        d = _as_daily(dfc)
+
+        # 2) 누적→증가분 변환
+        d["views_inc"]    = _inc_from_cum(d["조회수"])
+        d["mentions_inc"] = _inc_from_cum(d["브랜드언급량"])
+        d["clicks"]       = d["링크 클릭수"].fillna(0).astype(float)
+
+        # 평가 창 실제 길이 보정
+        t_end = T0 + timedelta(days=max(0, L - 1))
+        t_end = min(t_end, d.index.max())
+        win = d.loc[T0:t_end, ["views_inc", "mentions_inc", "clicks"]].fillna(0)
+        L_eff = len(win)
+        if L_eff < 3:
+            st.warning("평가 구간 데이터가 3일 미만입니다.")
+            return
+
+        # 3) FLI + 지수감쇠 보조지표
+        v = win["views_inc"].values
+        m = win["mentions_inc"].values
+        c = win["clicks"].values
+
+        # --- (NEW) FLI(2일, 3일) → 평균 FLI, p-value는 보수적으로 min 사용
+        def _fli_23(y: np.ndarray) -> dict:
+            r2 = _front_loading_index(y, k=2, n_perm=5000)
+            r3 = _front_loading_index(y, k=3, n_perm=5000) if len(y) >= 3 else {"fli": np.nan, "p": np.nan}
+            fli_mean = float(np.nanmean([r2["fli"], r3["fli"]])) if not (np.isnan(r2["fli"]) and np.isnan(r3["fli"])) else np.nan
+            p_comb  = float(np.nanmin([r2["p"], r3["p"]]))      if not (np.isnan(r2["p"])  and np.isnan(r3["p"]))  else np.nan
+            return {"fli": fli_mean, "p": p_comb}
+
+        res_v = _fli_23(v)
+        res_m = _fli_23(m)
+        res_c = _fli_23(c)
+
+        fit_v = _exp_decay_fit(v)
+        fit_m = _exp_decay_fit(m)
+        fit_c = _exp_decay_fit(c)
+
+
+
+        # 시각화 - 카드
+        def _fmt_res(res):
+            fli = res["fli"]; p = res["p"]
+            return (f"{fli:.2f}" if np.isfinite(fli) else "N/A",
+                    f"{p:.3f}"   if np.isfinite(p)   else "N/A")
+
+        f_v, p_v = _fmt_res(res_v); pk_v = _peak_day(v)
+        f_m, p_m = _fmt_res(res_m); pk_m = _peak_day(m)
+        f_c, p_c = _fmt_res(res_c); pk_c = _peak_day(c)
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            with st.container(border=True):
+                st.markdown("**조회수**")
+                col_a, col_b, col_c, col_d = st.columns(4, gap="small")
+                with col_a:
+                    st.metric("FLI", f_v, help="초반 2일이 전체에서 차지하는 비중. 높을수록 초반 효과가 큼")
+                with col_b:
+                    st.metric("Highest Peak", pk_v)
+                with col_c:
+                    st.metric("P-Value", p_v, help="퍼뮤테이션 결과 초반 집중이 우연일 가능성. 낮을수록 유의함")
+                with col_d:
+                    st.metric("감쇠 적합 R²", f"{fit_v['R2']:.2f}" if np.isfinite(fit_v['R2']) else "N/A", help="R²가 높을수록 전형적인 초반효과 패턴에 가까움")
+
+        with c2:
+            with st.container(border=True):
+                st.markdown("**브랜드언급량**")
+                col_a, col_b, col_c, col_d = st.columns(4, gap="small")
+                with col_a:
+                    st.metric("FLI", f_m)
+                with col_b:
+                    st.metric("Highest Peak", pk_m)
+                with col_c:
+                    st.metric("P-Value", p_m)
+                with col_d:
+                    st.metric("감쇠 적합 R²", f"{fit_m['R2']:.2f}" if np.isfinite(fit_m['R2']) else "N/A")
+        
+        with c3:
+            with st.container(border=True):
+                st.markdown("**링크클릭수**")
+                col_a, col_b, col_c, col_d = st.columns(4, gap="small")
+                with col_a:
+                    st.metric("FLI", f_c)
+                with col_b:
+                    st.metric("Highest Peak", pk_c)
+                with col_c:
+                    st.metric("P-Value", p_c)
+                with col_d:
+                    st.metric("감쇠 적합 R²", f"{fit_c['R2']:.2f}" if np.isfinite(fit_c['R2']) else "N/A")
+
+        # 시각화 - 차트
+        # plot_df = win.copy()
+        # for col in plot_df.columns:
+        #     mx = plot_df[col].max()
+        #     plot_df[col] = plot_df[col] / (mx if mx > 0 else 1.0)
+
+        # fig = go.Figure()
+        # fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df["views_inc"],    mode="lines+markers", name="조회수"))
+        # fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df["mentions_inc"], mode="lines+markers", name="브랜드언급량"))
+        # fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df["clicks"],       mode="lines+markers", name="링크클릭수"))
+
+        # # T0 수직선 + 라벨
+        # fig.add_vline(x=T0, line_dash="dash", opacity=0.6)
+        # fig.add_annotation(x=T0, y=1.05, text="T0 시작", showarrow=False, yref="paper")
+
+        # fig.update_layout(
+        #     title=f"[{ch}] 캠페인 초반-피크 일치도(정규화) · T0={T0.date()} · L={L_eff}일",
+        #     margin=dict(l=10, r=10, t=60, b=10),
+        #     legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
+        #     yaxis=dict(title="정규화(각 지표, max=1)"),
+        #     xaxis_title=None
+        # )
+        # st.plotly_chart(fig, use_container_width=True)
+
+        # 시각화 - 차트 (개선)
+        plot_df = win.copy()
+        for col in plot_df.columns:
+            mx = plot_df[col].max()
+            plot_df[col] = plot_df[col] / (mx if mx > 0 else 1.0)
+
+
+        fig = go.Figure()
+
+        # 부드러운 라인(spline) + 작은 마커
+        fig.add_trace(go.Scatter(
+            x=plot_df.index, y=plot_df["views_inc"],
+            mode="lines+markers", name="조회수",
+            line=dict(shape="spline", width=2),
+            marker=dict(size=6),
+            hovertemplate="날짜: %{x|%Y-%m-%d}<br>정규화 값: %{y:.2f}<extra></extra>"
+        ))
+        fig.add_trace(go.Scatter(
+            x=plot_df.index, y=plot_df["mentions_inc"],
+            mode="lines+markers", name="브랜드언급량",
+            line=dict(shape="spline", width=2),
+            marker=dict(size=6),
+            hovertemplate="날짜: %{x|%Y-%m-%d}<br>정규화 값: %{y:.2f}<extra></extra>"
+        ))
+        fig.add_trace(go.Scatter(
+            x=plot_df.index, y=plot_df["clicks"],
+            mode="lines+markers", name="링크클릭수",
+            line=dict(shape="spline", width=2),
+            marker=dict(size=6),
+            hovertemplate="날짜: %{x|%Y-%m-%d}<br>정규화 값: %{y:.2f}<extra></extra>"
+        ))
+
+        # T0 수직선
+        fig.add_vline(x=T0, line_dash="dot", line_width=1.5, opacity=0.6)
+
+        # 초반효과(2~3일) 구간 하이라이트: T0 ~ T0+(k-1)
+        k_highlight = min(3, L_eff)
+        early_end = T0 + timedelta(days=k_highlight - 1)
+        fig.add_vrect(
+            x0=T0, x1=early_end,
+            fillcolor="LightSalmon", opacity=0.15, line_width=0,
+            annotation_text="초반효과(2~3일)", annotation_position="top left"
+        )
+
+        # 레이아웃: 날짜 눈금, 유니파이드 툴팁, 여백, 눈금 포맷
+        fig.update_layout(
+            title=f"[{ch}] 캠페인 초반-피크 일치도(정규화) · T0={T0.date()} · L={L_eff}일",
+            margin=dict(l=10, r=10, t=60, b=10),
+            legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
+            yaxis=dict(title="정규화(각 지표, max=1)"),
+            xaxis_title=None,
+            hovermode="x unified"
+        )
+
+        # x축: 일 단위 눈금 + 보기 좋은 포맷(YYYY-MM-DD → MM-DD)
+        # (밀림 방지: ticklabelmode='instant', dtick=1day(ms), tick0=T0 자정)
+        fig.update_xaxes(
+            type="date",
+            ticklabelmode="instant",                 # ← period 제거
+            dtick=24*60*60*1000,                     # 1 day in milliseconds
+            tickformat="%m-%d",
+            tick0=pd.to_datetime(T0).normalize()     # 첫 눈금을 T0 자정에 맞춤(선택)
+        )
+
+        # y축: 살짝 여유 (0~1 범위에 padding)
+        fig.update_yaxes(range=[-0.05, 1.05])
+
+        st.plotly_chart(fig, use_container_width=True)
+
+
+
+
     # ────────────────────────────────────────────────────────────────
     # 채널별 인게이지먼트 및 액션
     # ────────────────────────────────────────────────────────────────
@@ -919,6 +1210,11 @@ def main():
         tabs = st.tabs(tab_labels)
         for ch, t in zip(tab_labels, tabs):
             with t:
+                # (25.10.10 로직 추가)
+                # render_campaign_effect(df_merged_t, ch=ch, L=10)
+
+                
+                # 기존
                 c1, c2, _ = st.columns([1,1,11])
                 add_cvr = c1.checkbox("CVR 추가", key=f"{ch}_cvr", value=False)
                 add_cpa = c2.checkbox("CPA 추가", key=f"{ch}_cpa", value=False)
@@ -931,6 +1227,9 @@ def main():
                     df_merged_t[df_merged_t["채널명"] == ch].copy(),
                     select_option=opt
                 )
+                
+
+
 
 
     # ────────────────────────────────────────────────────────────────
@@ -1380,15 +1679,6 @@ def main():
             st.plotly_chart(fig, use_container_width=True)
             df_f = df_f[['날짜', '키워드', '검색량']]
             st.dataframe(df_f, row_height=30,  hide_index=True)
-
-
-    # ────────────────────────────────────────────────────────────────
-    # 5번 영역
-    # ────────────────────────────────────────────────────────────────
-    # 5번 영역
-    st.header(" ")
-    st.markdown("<h5 style='margin:0'>터치포인트 (기획중)</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ-", unsafe_allow_html=True)
 
 
 

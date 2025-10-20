@@ -571,8 +571,8 @@ def main():
     #     st.markdown("""
     # - **MA (이동평균)** : **기본 스무딩**, 최근 S일 평균으로 요동을 눌러 큰 흐름만 보이게 합니다.
     # - **EWMA (지수가중 이동평균)** : **가중 스무딩**, 최근 값에 더 큰 가중치를 주어 변화에 민감하게 반응합니다.
-    # - **STL Trend** : 계절성(주기) 성분을 제거하고 **순수 추세(방향)**를 보여줍니다.
-    # - **SA Trend & Remainder** : 원 데이터에서 계절성(주기) 성분을 뺀 실제값으로, 이벤트나 프로모션의 **순수 변화량(크기)**를 보여줍니다.
+    # - **STL 분해** : 계절성(주기) 성분을 제거하고 **순수 추세(방향)**를 보여줍니다.
+    # - **Seasonally Adjusted** : 원 데이터에서 계절성(주기) 성분을 뺀 실제값으로, 이벤트나 프로모션의 **순수 변화량(크기)**를 보여줍니다.
     # """)
 
 
@@ -606,7 +606,7 @@ def main():
     #     metric = st.selectbox("지표 선택", metric_options, index=0, format_func=lambda k: label_map.get(k, k))
 
     # # 3. 추이선 선택
-    # overlay_options = ["MA (이동평균)", "EWMA (지수가중 이동평균)", "STL Trend", "SA Trend & Remainder"]
+    # overlay_options = ["MA (이동평균)", "EWMA (지수가중 이동평균)", "STL 분해", "Seasonally Adjusted"]
     # with c3:
     #     overlay = st.selectbox("추이선 선택", overlay_options, index=0)
 
@@ -626,7 +626,7 @@ def main():
     # y_ma = s.rolling(win, min_periods=1).mean() if overlay == "MA (이동평균)" else None
 
     # y_trend = y_seas = y_sa = None
-    # if overlay in ("STL Trend", "SA Trend & Remainder"):
+    # if overlay in ("STL 분해", "Seasonally Adjusted"):
     #     try:
     #         from statsmodels.tsa.seasonal import STL
     #         stl = STL(s, period=period, robust=True).fit()
@@ -685,17 +685,17 @@ def main():
     #                 line=dict(color="#FF4B4B")),
     #         secondary_y=True
     #     )
-    # elif overlay == "STL Trend" and y_trend is not None:
+    # elif overlay == "STL 분해" and y_trend is not None:
     #     overlay_series = y_trend
     #     fig.add_trace(
-    #         go.Scatter(x=y_trend.index, y=y_trend, name="STL Trend",
+    #         go.Scatter(x=y_trend.index, y=y_trend, name="STL 분해",
     #                 mode="lines", line=dict(color="#FF4B4B")),
     #         secondary_y=True
     #     )
-    # elif overlay == "SA Trend & Remainder" and y_sa is not None:
+    # elif overlay == "Seasonally Adjusted" and y_sa is not None:
     #     overlay_series = y_sa
     #     fig.add_trace(
-    #         go.Scatter(x=y_sa.index, y=y_sa, name="SA Trend & Remainder",
+    #         go.Scatter(x=y_sa.index, y=y_sa, name="Seasonally Adjusted",
     #                 mode="lines", line=dict(color="#FF4B4B")),
     #         secondary_y=True
     #     )
@@ -745,8 +745,8 @@ def main():
     # fig.update_yaxes(title_text=f"{label_map.get(metric, metric)} · RAW / BB", secondary_y=False)
     # overlay_title = {
     #     "MA (이동평균)": f"{label_map.get(metric, metric)} · MA{win}",
-    #     "STL Trend": "STL Trend",
-    #     "SA Trend & Remainder": "SA Trend & Remainder",
+    #     "STL 분해": "STL 분해",
+    #     "Seasonally Adjusted": "Seasonally Adjusted",
     #     "EWMA (지수가중 이동평균)": f"EWMA (halflife={period})"
     # }[overlay]
     # fig.update_yaxes(title_text=overlay_title, secondary_y=True)
@@ -761,8 +761,6 @@ def main():
     # st.plotly_chart(fig, use_container_width=True)
 
 
-
-
     # ────────────────────────────────────────────────────────────────
     # 시각화 (신규 - 기간 조정 개별~)
     # ────────────────────────────────────────────────────────────────
@@ -773,8 +771,8 @@ def main():
         st.markdown("""
     - **MA (이동평균)** : 기본 스무딩, 최근 S일 평균으로 요동을 눌러 큰 흐름만 보이게 합니다.
     - **EWMA (지수가중 이동평균)** : 가중 스무딩, 최근 값에 더 큰 가중치를 주어 변화에 민감합니다.
-    - **STL (Seasonal-Trend decomposition using LOESS, Only Trend)** : 주기성(Seasonal)을 제거하고, 순수 추세(Trend)만 보여줍니다.
-    - **SA (Seasonally Adjusted, Only Trend & Remainder)** : 주기성(Seasonal)만 제거하고, 이벤트나 프로모션의 순수 변화량 추세를 보여줍니다.
+    - **STL 분해** : 주기성(Seasonal)을 제거하고, 이상/극단치의 영향을 적게 받는 방식으로, 순수 추세만 보여줍니다.
+    - **Seasonally Adjusted** : 주기성(Seasonal)만 제거하고, 이벤트나 프로모션 등의 잔차는 남겨, 순수 변화량 추세를 보여줍니다.
     """)
 
     #  날짜 로드
@@ -861,7 +859,7 @@ def main():
     with c2:
         metric = st.selectbox("지표 선택", metric_options, index=0, key="ts_metric",
                             format_func=lambda k: label_map.get(k, k))
-    overlay_options = ["MA (이동평균)", "EWMA (지수가중 이동평균)", "STL Trend", "SA Trend & Remainder"]
+    overlay_options = ["MA (이동평균)", "EWMA (지수가중 이동평균)", "STL 분해", "Seasonally Adjusted"]
     with c3:
         overlay = st.selectbox("추이선 선택", overlay_options, index=0, key="ts_overlay")
     with _p:
@@ -909,7 +907,7 @@ def main():
         y_ma = s.rolling(win, min_periods=1).mean() if overlay == "MA (이동평균)" else None
 
         y_trend = y_seas = y_sa = None
-        if overlay in ("STL Trend", "SA Trend & Remainder"):
+        if overlay in ("STL 분해", "Seasonally Adjusted"):
             try:
                 from statsmodels.tsa.seasonal import STL
                 stl_period = max(2, min(int(period), max(2, len(s)//2)))
@@ -945,12 +943,12 @@ def main():
         if overlay == "MA (이동평균)" and y_ma is not None:
             overlay_series = y_ma
             fig.add_trace(go.Scatter(x=y_ma.index, y=y_ma, name=f"MA{win}", mode="lines", line=dict(color="#FF4B4B")), secondary_y=True)
-        elif overlay == "STL Trend" and y_trend is not None:
+        elif overlay == "STL 분해" and y_trend is not None:
             overlay_series = y_trend
-            fig.add_trace(go.Scatter(x=y_trend.index, y=y_trend, name="STL Trend", mode="lines", line=dict(color="#FF4B4B")), secondary_y=True)
-        elif overlay == "SA Trend & Remainder" and y_sa is not None:
+            fig.add_trace(go.Scatter(x=y_trend.index, y=y_trend, name="STL 분해", mode="lines", line=dict(color="#FF4B4B")), secondary_y=True)
+        elif overlay == "Seasonally Adjusted" and y_sa is not None:
             overlay_series = y_sa
-            fig.add_trace(go.Scatter(x=y_sa.index, y=y_sa, name="SA Trend & Remainder", mode="lines", line=dict(color="#FF4B4B")), secondary_y=True)
+            fig.add_trace(go.Scatter(x=y_sa.index, y=y_sa, name="Seasonally Adjusted", mode="lines", line=dict(color="#FF4B4B")), secondary_y=True)
         elif overlay == "EWMA (지수가중 이동평균)" and y_ewma is not None:
             overlay_series = y_ewma
             fig.add_trace(go.Scatter(x=y_ewma.index, y=y_ewma, name=f"EWMA(h={period})", mode="lines", line=dict(color="#FF4B4B")), secondary_y=True)
@@ -1011,8 +1009,8 @@ def main():
             rmin = float(right.min())
             rmax = float(right.max())
 
-            # STL / SA Trend & Remainder → 우측 독립 스케일
-            if overlay in ("STL Trend", "SA Trend & Remainder"):
+            # STL / Seasonally Adjusted → 우측 독립 스케일
+            if overlay in ("STL 분해", "Seasonally Adjusted"):
                 rrange = _minmax_with_pad(rmin, rmax)
                 if rrange is not None:
                     fig.update_yaxes(range=list(rrange), secondary_y=True)
@@ -1039,8 +1037,8 @@ def main():
         fig.update_yaxes(title_text=f"{label_map.get(metric, metric)} · RAW / BB", secondary_y=False)
         overlay_title = {
             "MA (이동평균)": f"{label_map.get(metric, metric)} · MA{win}",
-            "STL Trend": "STL Trend",
-            "SA Trend & Remainder": "SA Trend & Remainder",
+            "STL 분해": "STL 분해",
+            "Seasonally Adjusted": "Seasonally Adjusted",
             "EWMA (지수가중 이동평균)": f"EWMA (halflife={period})"
         }[overlay]
         fig.update_yaxes(title_text=overlay_title, secondary_y=True)
