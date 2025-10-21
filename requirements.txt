@@ -1,12 +1,12 @@
 # ────────── Core ──────────
 streamlit==1.48.1
 pandas==2.3.3
-numpy==2.3.4
+numpy==2.2.6
 scipy==1.14.1
 matplotlib==3.9.2
 plotly==5.23.0
 protobuf<5
-pyarrow==17.0.0
+pyarrow==19.0.1
 
 # ────────── Streamlit Extras ──────────
 streamlit-aggrid==0.3.4.post3
