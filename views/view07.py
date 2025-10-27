@@ -219,6 +219,12 @@ def main():
     df_category["날짜"] = df_category["날짜"].dt.strftime("%Y-%m-%d")
 
 
+
+    if st.button("캐시 초기화"):
+    # st.cache_data로 캐시된 모든 데이터를 초기화합니다.
+        st.cache_data.clear()
+        st.rerun() # 캐시를 초기화한 후 앱을 다시 실행합니다.
+
     # ──────────────────────────────────
     # 1) 브랜드별 추이
     # ──────────────────────────────────
@@ -626,3 +632,4 @@ def main():
         fig9.update_layout(barmode="relative")
         fig9.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
         st.plotly_chart(fig9, use_container_width=True)
+
