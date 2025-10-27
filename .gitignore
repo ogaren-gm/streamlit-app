@@ -1,2 +1,10 @@
 sleeper-462701-admin.json
-.streamlit/secrets.toml
+.streamlit/secrets.toml.streamlit/
+
+# secrets & venv & bytecode
+.streamlit/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
