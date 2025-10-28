@@ -220,10 +220,10 @@ def main():
 
 
 
-    # if st.button("캐시 초기화"):
-    # # st.cache_data로 캐시된 모든 데이터를 초기화합니다.
-    #     st.cache_data.clear()
-    #     st.rerun() # 캐시를 초기화한 후 앱을 다시 실행합니다.
+    if st.button("캐시 초기화"):
+    # st.cache_data로 캐시된 모든 데이터를 초기화합니다.
+        st.cache_data.clear()
+        st.rerun() # 캐시를 초기화한 후 앱을 다시 실행합니다.
 
 
     # ──────────────────────────────────
