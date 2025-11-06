@@ -136,10 +136,28 @@ def main():
         
         # merge (1+2)
         merged = df_bq.merge(df_sheet, how='left', on='campaign_name_short')
-        # cost_gross
+
+        
+        # # cost_gross
+        # merged['cost_gross'] = np.where(
+        #     merged['media_name'].isin(['GOOGLE','META']), merged['cost']*1.1/0.98, merged['cost']
+        # )
+        
+        # cost_gross(v2)
         merged['cost_gross'] = np.where(
-            merged['media_name'].isin(['GOOGLE','META']), merged['cost']*1.1/0.98, merged['cost']
+            merged['event_date'] < pd.to_datetime("2025-11-06"),
+            np.where(
+                merged['media_name'].isin(['GOOGLE', 'META']),
+                merged['cost'] * 1.1 / 0.98,
+                merged['cost']
+            ),
+            np.where(
+                merged['media_name'].isin(['GOOGLE', 'META']),
+                merged['cost'] * 1.1 / 0.955,
+                merged['cost']
+            )
         )
+        
         # handle NSA
         cond = (
             (merged['media_name']=='NSA') & merged['utm_source'].isna() &
