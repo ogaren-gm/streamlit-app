@@ -139,25 +139,25 @@ def main():
         df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
         # 파생지표 생성 - CVR
-        df['view_item_list_CVR']         = (df['view_item_list_sessions']     / df['session_count']          * 100).round(2)
-        df['view_item_CVR']              = (df['view_item_sessions']              / df['view_item_list_sessions']          * 100).round(2)
-        df['scroll_50_CVR']              = (df['scroll_50_sessions']              / df['view_item_list_sessions']          * 100).round(2)
-        df['product_option_price_CVR']   = (df['product_option_price_sessions']   / df['view_item_list_sessions']          * 100).round(2)
-        df['find_nearby_showroom_CVR']   = (df['find_showroom_sessions']          / df['view_item_list_sessions']          * 100).round(2)
-        df['add_to_cart_CVR']            = (df['add_to_cart_sessions']            / df['view_item_list_sessions']          * 100).round(2)
-        df['sign_up_CVR']                = (df['sign_up_sessions']                / df['view_item_list_sessions']          * 100).round(2)
-        df['showroom_10s_CVR']           = (df['showroom_10s_sessions']           / df['view_item_list_sessions']          * 100).round(2)
-        df['showroom_leads_CVR']         = (df['showroom_leads_sessions']         / df['view_item_list_sessions']          * 100).round(2)
+        df['view_item_list_CVR']         = (df['view_item_list_sessions']         / df['session_count']          * 100).round(2)
+        df['view_item_CVR']              = (df['view_item_sessions']              / df['session_count']          * 100).round(2)
+        df['scroll_50_CVR']              = (df['scroll_50_sessions']              / df['session_count']          * 100).round(2)
+        df['product_option_price_CVR']   = (df['product_option_price_sessions']   / df['session_count']          * 100).round(2)
+        df['find_nearby_showroom_CVR']   = (df['find_showroom_sessions']          / df['session_count']          * 100).round(2)
+        df['add_to_cart_CVR']            = (df['add_to_cart_sessions']            / df['session_count']          * 100).round(2)
+        df['sign_up_CVR']                = (df['sign_up_sessions']                / df['session_count']          * 100).round(2)
+        df['showroom_10s_CVR']           = (df['showroom_10s_sessions']           / df['session_count']          * 100).round(2)
+        df['showroom_leads_CVR']         = (df['showroom_leads_sessions']         / df['session_count']          * 100).round(2)  # (25.11.02) view_item_list_CVR 제외하고 view_item_list_sessions가 분모였는데 세션수로 일괄 바꿈
         # 파생지표 생성 - CPA
-        df['view_item_list_CPA']         = (df['Cost']     /  df['view_item_list_sessions']          * 100).round(0)
-        df['view_item_CPA']              = (df['Cost']     /  df['view_item_sessions']               * 100).round(0)
-        df['scroll_50_CPA']              = (df['Cost']     /  df['scroll_50_sessions']               * 100).round(0)
-        df['product_option_price_CPA']   = (df['Cost']     /  df['product_option_price_sessions']    * 100).round(0)
-        df['find_nearby_showroom_CPA']   = (df['Cost']     /  df['find_showroom_sessions']           * 100).round(0)
-        df['add_to_cart_CPA']            = (df['Cost']     /  df['add_to_cart_sessions']             * 100).round(0)
-        df['sign_up_CPA']                = (df['Cost']     /  df['sign_up_sessions']                 * 100).round(0)
-        df['showroom_10s_CPA']           = (df['Cost']     /  df['showroom_10s_sessions']            * 100).round(0)
-        df['showroom_leads_CPA']         = (df['Cost']     /  df['showroom_leads_sessions']          * 100).round(0)
+        df['view_item_list_CPA']         = (df['Cost']/10     /  df['view_item_list_sessions']          * 100).round(0)  # (25.11.02) 행별로 분배가 안되고 있어서 하드코딩으로 변경함 
+        df['view_item_CPA']              = (df['Cost']/10     /  df['view_item_sessions']               * 100).round(0)
+        df['scroll_50_CPA']              = (df['Cost']/10     /  df['scroll_50_sessions']               * 100).round(0)
+        df['product_option_price_CPA']   = (df['Cost']/10     /  df['product_option_price_sessions']    * 100).round(0)
+        df['find_nearby_showroom_CPA']   = (df['Cost']/10     /  df['find_showroom_sessions']           * 100).round(0)
+        df['add_to_cart_CPA']            = (df['Cost']/10     /  df['add_to_cart_sessions']             * 100).round(0)
+        df['sign_up_CPA']                = (df['Cost']/10     /  df['sign_up_sessions']                 * 100).round(0)
+        df['showroom_10s_CPA']           = (df['Cost']/10     /  df['showroom_10s_sessions']            * 100).round(0)
+        df['showroom_leads_CPA']         = (df['Cost']/10     /  df['showroom_leads_sessions']          * 100).round(0)
         
         # 컬럼 순서 지정
         if select_option == 1: # min
