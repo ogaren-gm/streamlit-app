@@ -37,26 +37,8 @@ def main():
         """,
         unsafe_allow_html=True
     )  
-
-    st.subheader('GA PDP 대시보드')
-    st.markdown(
-        """
-        <div style="
-            color:#6c757d;        
-            font-size:14px;       
-            line-height:1.5;      
-        ">
-        이 대시보드에서는 <b>브랜드/카테고리/제품</b> 단위의 
-        <b>제품 상세 페이지(PDP) 조회량</b>을 확인할 수 있습니다.<br>
-        해당 대시보드는 view_item 이벤트를 발생시킨 세션 데이터를 기반으로 구성되어 있습니다.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.divider()
-
-
+    
+    
     # ──────────────────────────────────
     # 사이드바 필터 설정
     # ──────────────────────────────────
@@ -79,6 +61,9 @@ def main():
         # tb_sleeper_product
         bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
         df = bq.get_data("tb_sleeper_product")
+        
+        last_updated_time = df["event_date"].max()
+        
         df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d")
 
         def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -109,15 +94,14 @@ def main():
         #     return np.select(conds, choices, default='ETC')
         
         
-        return preprocess_data(df)
+        return preprocess_data(df), last_updated_time
 
 
     # ──────────────────────────────────
     # 데이터 불러오기
     # ──────────────────────────────────
-    st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
     with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df = load_data(cs, ce_exclusive)
+        df, last_updated_time = load_data(cs, ce_exclusive)
 
     # ──────────────────────────────────
     # 공통 함수
@@ -220,10 +204,99 @@ def main():
 
 
 
-    if st.button("캐시 초기화"):
-    # st.cache_data로 캐시된 모든 데이터를 초기화합니다.
+    # (25.11.10) 제목 + 설명 + 업데이트 시각 + 캐시초기화 
+    # 제목
+    st.subheader("GA PDP 대시보드")
+
+    if "refresh" in st.query_params:
         st.cache_data.clear()
-        st.rerun() # 캐시를 초기화한 후 앱을 다시 실행합니다.
+        st.query_params.clear()   # 파라미터 제거
+        st.rerun()
+        
+    # 설명
+    col1, col2 = st.columns([0.65, 0.35], vertical_alignment="center")
+    with col1:
+        st.markdown(
+            """
+            <div style="
+                color:#6c757d;        
+                font-size:14px;       
+                line-height:1.5;      
+            ">
+            이 대시보드에서는 <b>브랜드/카테고리/제품</b> 단위의 
+            <b>제품 상세 페이지(PDP) 조회량</b>을 확인할 수 있습니다.<br>
+            해당 대시보드는 view_item 이벤트를 발생시킨 세션 데이터를 기반으로 구성되어 있습니다.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+    with col2:
+        if isinstance(last_updated_time, str):
+            latest_dt = datetime.strptime(last_updated_time, "%Y%m%d")
+        else:
+            latest_dt = last_updated_time  # Timestamp/datetime 가정
+        latest_date = latest_dt.date()
+
+        today = datetime.now().date()
+        delta_days = (today - latest_date).days
+
+        # 1) D-2 이상 지연 → 경고(빨강)
+        if delta_days >= 2:
+            msg    = f"업데이트가 지연되고 있습니다"
+            subtag = "캐시 초기화"
+            # 경고 팔레트 (red)
+            sub_bg = "#fef2f2"
+            sub_bd = "#fee2e2"
+            sub_fg = "#b91c1c"
+
+        elif delta_days == 1:
+            # last_updated_time 이 datetime/timestamp면 그 시각으로, 아니면 현재 시각으로 판정
+            hm_ref = int(datetime.now().strftime("%H%M"))
+            if hm_ref >= 1535:
+                msg = "2차 업데이트 완료 (PM 15:35)"
+                # 보라톤
+                sub_bg = "#f5f3ff"
+                sub_bd = "#ede9fe"
+                sub_fg = "#5b21b6"
+            elif hm_ref >= 850:
+                msg = "1차 업데이트 완료 (AM 08:50)"
+                # 파랑톤
+                sub_bg = "#eff6ff"
+                sub_bd = "#dbeafe"
+                sub_fg = "#1d4ed8"
+            else:
+                pass
+            subtag = "캐시 초기화"
+
+        # 배지 + 캐시초기화(링크) — 높이 동일화
+        st.markdown(
+            f"""
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
+            <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 8px;
+                font-size:13px;line-height:1;
+                color:{sub_fg};background:{sub_bg};border:1px solid {sub_bd};
+                border-radius:10px;white-space:nowrap;">
+                🔔 {msg}
+            </span>
+            <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
+                <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 8px;
+                font-size:13px;line-height:1;
+                color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
+                border-radius:10px;white-space:nowrap;">
+                🔄 {subtag}
+                </span>
+            </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    st.divider()
 
 
     # ──────────────────────────────────
