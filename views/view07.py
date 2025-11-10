@@ -16,6 +16,7 @@ import sys
 import modules.style
 importlib.reload(sys.modules['modules.style'])
 from modules.style import style_format, style_cmap
+from zoneinfo import ZoneInfo
 
 def main():
     # ──────────────────────────────────
@@ -237,10 +238,12 @@ def main():
         else:
             latest_dt = last_updated_time  # Timestamp/datetime 가정
         latest_date = latest_dt.date()
-
-        today = datetime.now().date()
-        delta_days = (today - latest_date).days
-
+        
+        now_kst   = datetime.now(ZoneInfo("Asia/Seoul"))
+        today_kst = now_kst.date()
+        delta_days = (today_kst - latest_date).days
+        hm_ref = now_kst.hour * 100 + now_kst.minute  # ex) 1535
+        
         msg    = "집계 예정 (AM 08:50 / PM 15:35)"
         sub_bg = "#f8fafc"
         sub_bd = "#e2e8f0"
