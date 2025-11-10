@@ -241,6 +241,11 @@ def main():
         today = datetime.now().date()
         delta_days = (today - latest_date).days
 
+        msg    = "집계 예정 (AM 08:50 / PM 15:35)"
+        sub_bg = "#f8fafc"
+        sub_bd = "#e2e8f0"
+        sub_fg = "#475569"
+
         # 1) D-2 이상 지연 → 경고(빨강)
         if delta_days >= 2:
             msg    = f"업데이트가 지연되고 있습니다"
