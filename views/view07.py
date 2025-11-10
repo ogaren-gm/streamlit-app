@@ -243,7 +243,6 @@ def main():
         today_kst = now_kst.date()
         delta_days = (today_kst - latest_date).days
         hm_ref = now_kst.hour * 100 + now_kst.minute  # ex) 1535
-        st.write(hm_ref)
         
         msg    = "집계 예정 (AM 08:50 / PM 15:35)"
         sub_bg = "#f8fafc"
@@ -261,7 +260,6 @@ def main():
 
         elif delta_days == 1:
             # last_updated_time 이 datetime/timestamp면 그 시각으로, 아니면 현재 시각으로 판정
-            hm_ref = int(datetime.now().strftime("%H%M"))
             if hm_ref >= 1535:
                 msg = "2차 업데이트 완료 (PM 15:35)"
                 # 보라톤
