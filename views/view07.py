@@ -243,6 +243,7 @@ def main():
         today_kst = now_kst.date()
         delta_days = (today_kst - latest_date).days
         hm_ref = now_kst.hour * 100 + now_kst.minute  # ex) 1535
+        st.write(hm_ref)
         
         msg    = "집계 예정 (AM 08:50 / PM 15:35)"
         sub_bg = "#f8fafc"
