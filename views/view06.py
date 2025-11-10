@@ -531,7 +531,6 @@ def main():
                 sub_fg = "#1d4ed8"
             else:
                 pass
-            subtag = "캐시 초기화"
 
         # 배지 + 캐시초기화(링크) — 높이 동일화
         st.markdown(
@@ -552,7 +551,7 @@ def main():
                 font-size:13px;line-height:1;
                 color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
                 border-radius:10px;white-space:nowrap;">
-                🔄 {subtag}
+                🔄 캐시 초기화
                 </span>
             </a>
             </div>
