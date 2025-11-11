@@ -521,7 +521,7 @@ def main():
     st.markdown("<h5 style='margin:0'>시계열 분석</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ주요 매출 지표의 추이를 스무딩 기법으로 정제해, 단기 변동 대신 핵심 흐름을 시각화합니다.", unsafe_allow_html=True)
 
-    with st.expander("스무딩은 시계열 분석에서 노이즈를 제거하고 추세를 도출하는 밥법론입니다. ", expanded=False):
+    with st.expander("스무딩은 시계열 분석에서 노이즈를 제거하고 추세를 도출하는 방법론입니다. ", expanded=False):
         st.markdown("""
     - **MA (이동평균)** : 기본 스무딩, 최근 S일 평균으로 요동을 눌러 큰 흐름만 보이게 합니다.
     - **EWMA (지수가중 이동평균)** : 가중 스무딩, 최근 값에 더 큰 가중치를 주어 변화에 민감합니다.
