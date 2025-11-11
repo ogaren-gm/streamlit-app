@@ -23,6 +23,8 @@ import sys
 import modules.style
 importlib.reload(sys.modules['modules.style'])
 from modules.style import style_format, style_cmap
+from zoneinfo import ZoneInfo
+
 
 
 def main():
@@ -37,7 +39,7 @@ def main():
             /* 전체 컨테이너의 패딩 조정 */
             .block-container {
                 max-width: 100% !important;
-                padding-top: 4rem;   /* 위쪽 여백 */
+                padding-top: 1rem;   /* 위쪽 여백 */
                 padding-bottom: 8rem;
                 padding-left: 5rem; 
                 padding-right: 4rem; 
@@ -47,24 +49,6 @@ def main():
         unsafe_allow_html=True
     )  
 
-    st.subheader('퍼포먼스 대시보드')
-    st.markdown(
-        """
-        <div style="
-            color:#6c757d;        
-            font-size:14px;       
-            line-height:1.5;      
-        ">
-        이 대시보드는 <b>매체 데이터와 GA 데이터를 결합</b>하여, 
-        광고비부터 액션까지의 <b>마케팅 성과</b>를 
-        확인할 수 있는 맞춤 대시보드입니다.<br>
-        여기서는 원하는 조건으로 다양한 지표들을 자유롭게 비교하고 분석할 수 있습니다.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.divider()
 
 
     # ────────────────────────────────────────────────────────────────
@@ -166,13 +150,15 @@ def main():
         merged.loc[cond, ['utm_source','utm_medium']] = ['naver','search-nonmatch']
         
         merged["event_date"] = merged["event_date"].dt.strftime("%Y-%m-%d")
-        return merged
+        
+        last_updated_time = df_bq['event_date'].max()
+        
+        return merged, last_updated_time
 
 
     # ────────────────────────────────────────────────────────────────
     # 데이터 불러오기
     # ────────────────────────────────────────────────────────────────
-    st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
     # df_merged = load_data(cs, ce)
     # df_filtered = df_merged.copy()
 
@@ -197,7 +183,7 @@ def main():
         if use_compare:
             # cs~ce, cs_cmp~ce_cmp 한 번에 로드
             cs_cmp = comp_start.strftime("%Y%m%d")
-            df_merged = load_data(cs_cmp, ce)
+            df_merged, last_updated_time = load_data(cs_cmp, ce)
             df_merged['event_date'] = pd.to_datetime(df_merged['event_date'])  # ← 추가
             
             df_primary = df_merged[
@@ -209,210 +195,14 @@ def main():
                 (df_merged.event_date <= pd.to_datetime(comp_end))
             ]
         else:
-            df_merged  = load_data(cs, ce)
+            df_merged, last_updated_time  = load_data(cs, ce)
             df_merged['event_date'] = pd.to_datetime(df_merged['event_date'])  # ← 추가
             df_primary = df_merged
         
         df_filtered     = df_primary.copy()
         df_filtered_cmp = df_compare.copy() if use_compare else None
+        
     # ---------------------------------------------------
-
-
-    # def render_aggrid(
-    #     df: pd.DataFrame,
-    #     pivot_cols: list[str],
-    #     height: int = 480,
-    #     use_parent: bool = True
-    #     ) -> None:
-    #     """
-    #     use_parent: False / True
-    #     """
-    #     df2 = df.copy()
-        
-    #     if 'event_date' in df2.columns:
-    #         df2['event_date'] = pd.to_datetime(df2['event_date']).dt.strftime('%Y-%m-%d')
-        
-    #     df2.fillna(0, inplace=True)
-    #     df2 = df2.where(pd.notnull(df2), None)
-    #     df2.replace([np.inf, -np.inf], 0, inplace=True)
-        
-    #     # 전처리 영역 (파생지표 생성)
-    #     # df2['CPC'] = (df2['cost_gross_sum'] / df2['clicks_sum']).round(0)
-    #     # df2['CTR'] = (df2['clicks_sum'] / df2['impressions_sum'] * 100).round(2)
-    #     df2['CPC'] = ((df2['cost_gross_sum'] / df2['clicks_sum']).replace([np.inf, -np.inf], 0).fillna(0).round(0))
-    #     df2['CTR'] = ((df2['clicks_sum'] / df2['impressions_sum'] * 100).replace([np.inf, -np.inf], 0).fillna(0).round(2))
-        
-    #     df2['session_count_CPA'] = (df2['cost_gross_sum'] / df2['session_count']).replace([np.inf, -np.inf], 0).fillna(0).round(0)
-    #     df2['view_item_CPA'] = (df2['cost_gross_sum'] / df2['view_item_sum']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-    #     df2['product_page_scroll_50_CPA'] = (df2['cost_gross_sum'] / df2['product_page_scroll_50_sum']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-    #     df2['product_option_price_CPA'] = (df2['cost_gross_sum'] / df2['product_option_price_sum']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-    #     df2['find_nearby_showroom_CPA'] = (df2['cost_gross_sum'] / df2['find_nearby_showroom_sum']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-    #     df2['showroom_10s_CPA'] = (df2['cost_gross_sum'] / df2['showroom_10s_sum']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-    #     df2['showroom_leads_CPA'] = (df2['cost_gross_sum'] / df2['showroom_leads_sum']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-    #     df2['add_to_cart_CPA'] = (df2['cost_gross_sum'] / df2['add_to_cart_sum']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-    #     df2['purchase_CPA'] = (df2['cost_gross_sum'] / df2['purchase_sum']).replace([np.inf, -np.inf], 0).fillna(0).round(2)
-        
-
-    #     # (필수함수) make_num_child
-    #     def make_num_child(header, field, fmt_digits=0, suffix=''):
-    #         return {
-    #             "headerName": header, "field": field,
-    #             "type": ["numericColumn","customNumericFormat"],
-    #             "valueFormatter": JsCode(
-    #                 f"function(params){{"
-    #                 f"  return params.value!=null?"
-    #                 f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
-    #                 f"}}"
-    #             ),
-    #             "cellStyle": JsCode("params=>({textAlign:'right'})")
-    #         }
-
-
-    #     # (필수함수) add_summary
-    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
-    #         summary: dict[str, float | str] = {}
-    #         for col, op in agg_map.items():
-    #             val = None
-    #             try:
-    #                 if op == 'sum':
-    #                     val = df[col].sum()
-    #                 elif op == 'avg':
-    #                     val = df[col].mean()
-    #                 elif op == 'mid':
-    #                     val = df[col].median()
-    #             except:
-    #                 val = None
-
-    #             # NaN / Inf / numpy 타입 → None or native 타입으로 처리
-    #             if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-    #                 summary[col] = None
-    #             else:
-    #                 # numpy 타입 제거
-    #                 if isinstance(val, (np.integer, np.int64, np.int32)):
-    #                     summary[col] = int(val)
-    #                 elif isinstance(val, (np.floating, np.float64, np.float32)):
-    #                     summary[col] = float(round(val, 2))
-    #                 else:
-    #                     summary[col] = val
-
-    #         grid_options['pinnedBottomRowData'] = [summary]
-    #         return grid_options
-        
-
-    #     # (use_parent) flat_cols
-    #     flat_cols = []
-
-    #     # (use_parent) grouped_cols
-    #     dynamic_cols = [ # (추가) pivot_cols (선택한 행필드)를 받아야함
-    #         {
-    #             "headerName": header_map.get(col, col),
-    #             "field": col,
-    #             "pinned": "left",
-    #             "width": 100,
-    #             "minWidth": 100,
-    #             "flex": 1
-    #         }
-    #         for col in pivot_cols
-    #     ]
-    #     static_cols = [
-    #         {
-    #             "headerName": "MEDIA",
-    #             "children": [
-    #                 make_num_child("광고비",      "cost_sum"),
-    #                 make_num_child("광고비(G)",   "cost_gross_sum"),
-    #                 make_num_child("노출수",      "impressions_sum"),
-    #                 make_num_child("클릭수",      "clicks_sum"),
-    #                 make_num_child("CPC",        "CPC"),
-    #                 make_num_child("CTR",        "CTR", fmt_digits=2, suffix="%"),
-    #             ]
-    #         },
-    #         {
-    #             "headerName": "GA & MEDIA",
-    #             "children": [
-    #                 make_num_child("세션수",         "session_count"),
-    #                 make_num_child("세션 CPA",       "session_count_CPA"),                    
-    #                 make_num_child("PDP조회",        "view_item_sum"),
-    #                 make_num_child("PDP조회 CPA",    "view_item_CPA"),
-    #                 make_num_child("PDPscr50",      "product_page_scroll_50_sum"),
-    #                 make_num_child("PDPscr50 CPA",  "product_page_scroll_50_CPA"),
-    #                 make_num_child("가격표시",       "product_option_price_sum"),
-    #                 make_num_child("가격표시 CPA",   "product_option_price_CPA"),
-    #                 make_num_child("쇼룸찾기",       "find_nearby_showroom_sum"),
-    #                 make_num_child("쇼룸찾기 CPA",   "find_nearby_showroom_CPA"),
-    #                 make_num_child("쇼룸10초",       "showroom_10s_sum"),
-    #                 make_num_child("쇼룸10초 CPA",   "showroom_10s_CPA"),
-    #                 make_num_child("장바구니",       "add_to_cart_sum"),
-    #                 make_num_child("장바구니 CPA",   "add_to_cart_CPA"),
-    #                 make_num_child("쇼룸예약",       "showroom_leads_sum"),
-    #                 make_num_child("쇼룸예약 CPA",   "showroom_leads_CPA"),
-    #                 make_num_child("구매하기 ",      "purchase_sum"),
-    #                 make_num_child("구매하기 CPA",   "purchase_CPA"),
-    #                 # make_num_child("",   ""),
-    #                 # make_num_child("",   ""),
-    #             ]
-    #         },
-    #     ]
-    
-    #     grouped_cols = dynamic_cols + static_cols
-        
-    #     # (use_parent)
-    #     column_defs = grouped_cols if use_parent else flat_cols
-
-    #     # grid_options & 렌더링
-    #     grid_options = {
-    #         "columnDefs": column_defs,
-    #         "defaultColDef": {
-    #             "sortable": True,
-    #             "filter": True,
-    #             "resizable": True,
-    #             "minWidth": 100,
-    #             "wrapHeaderText": True,
-    #         },
-    #         "headerHeight": 50,
-    #         "groupHeaderHeight": 30,
-    #         "autoHeaderHeight": True,
-    #     }
-
-    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-    #     grid_options = add_summary(
-    #         grid_options,
-    #         df2,
-    #         {
-    #             'cost_sum': 'sum',
-    #             'cost_gross_sum': 'sum',
-    #             'impressions_sum': 'sum',
-    #             'clicks_sum': 'sum',
-    #             'CPC': 'avg',
-    #             'CTR': 'avg',
-    #             'session_count': 'sum',
-    #             'session_count_CPA' : 'avg',
-    #             'view_item_sum': 'sum',
-    #             'view_item_CPA' : 'avg',
-    #             'product_page_scroll_50_sum': 'sum',
-    #             'product_page_scroll_50_CPA' : 'avg',
-    #             'product_option_price_sum': 'sum',
-    #             'product_option_price_CPA' : 'avg',
-    #             'find_nearby_showroom_sum': 'sum',
-    #             'find_nearby_showroom_CPA' : 'avg',
-    #             'showroom_10s_sum': 'sum',
-    #             'showroom_10s_CPA' : 'avg',
-    #             'add_to_cart_sum': 'sum',
-    #             'add_to_cart_CPA' : 'avg',
-    #             'showroom_leads_sum': 'sum',
-    #             'showroom_leads_CPA' : 'avg',
-    #             'purchase_sum': 'sum',
-    #             'purchase_CPA' : 'avg',
-    #         }
-    #     )
-
-    #     AgGrid(
-    #         df2,
-    #         gridOptions=grid_options,
-    #         height=height,
-    #         fit_columns_on_grid_load=True,  # True면 전체넓이에서 균등분배 
-    #         theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-    #         allow_unsafe_jscode=True
-    #     )
 
 
     # 커스텀 리포트 파생지표 생성부터 ...
@@ -667,18 +457,108 @@ def main():
         return df, df_cmp
 
 
-    # ──────────────────────────────────
-    # 1) 커스텀 리포트
-    # ──────────────────────────────────
     # 탭 간격 CSS
     st.markdown("""
         <style>
           [role="tablist"] [role="tab"] { margin-right: 1rem; }
         </style>
     """, unsafe_allow_html=True)
+
+
+    # (25.11.10) 제목 + 설명 + 업데이트 시각 + 캐시초기화 
+    # last_updated_time
+    # 제목
+    st.subheader("퍼포먼스 대시보드")
+
+    if "refresh" in st.query_params:
+        st.cache_data.clear()
+        st.query_params.clear()   # 파라미터 제거
+        st.rerun()
         
+    # 설명
+    col1, col2 = st.columns([0.65, 0.35], vertical_alignment="center")
+    with col1:
+        st.markdown(
+            """
+            <div style="  
+                font-size:14px;       
+                line-height:1.5;      
+            ">
+            <b>캠페인·브랜드·품목 등</b>
+            다양한 조건에 따라서 <b>퍼포먼스 마케팅 성과</b>를 
+            맞춤으로 확인할 수 있습니다.<br>
+            </div>
+            <div style="
+                color:#6c757d;        
+                font-size:14px;       
+                line-height:2.0;      
+            ">
+            ※ GA×MEDIA D-1 매칭 데이터는 매일 15시 ~ 16시 사이에 업데이트됩니다.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+    with col2:
+        # last_updated_time
+        if isinstance(last_updated_time, str):
+            lut = datetime.strptime(last_updated_time, "%Y%m%d")
+        else:
+            lut = last_updated_time
+        lut_date = lut.date()
+        
+        now_kst   = datetime.now(ZoneInfo("Asia/Seoul"))
+        today_kst = now_kst.date()
+        delta_days = (today_kst - lut_date).days
+        
+        # 기본값
+        # msg    = f"{lut_date.strftime('%m월 %d일')} (D-{delta_days})"
+        msg    = f"D-{delta_days} 업데이트 완료"
+        sub_bg = "#fff7ed"
+        sub_bd = "#fdba74"
+        sub_fg = "#c2410c"
+        
+        # 렌더링
+        st.markdown(
+            f"""
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
+            <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 10px;
+                font-size:13px;line-height:1.1;
+                color:{sub_fg};background:{sub_bg};border:1px solid {sub_bd};
+                border-radius:10px;white-space:nowrap;">
+                📢 {msg}
+            </span>
+            <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
+                <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 8px;
+                font-size:13px;line-height:1;
+                color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
+                border-radius:10px;white-space:nowrap;">
+                🗑️ 캐시 초기화
+                </span>
+            </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    st.divider()
+
+
+
+
+
+
+    # ──────────────────────────────────
+    # 1) 커스텀 리포트
+    # ──────────────────────────────────
+    
+    st.markdown(" ")
     st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> 커스텀 </span>리포트</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ**행 필드**는 데이터를 피벗하는 기준이며, **기본/고급 필터**를 활용하면 원하는 조건을 세부적으로 조정할 수 있습니다. <span style='color:#8E9097;'>(15시 이후 D-1 데이터 제공)</span> ", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ**행 필드**는 데이터를 피벗하는 기준이며, **기본/고급 필터**를 활용하면 원하는 조건을 세부적으로 조정할 수 있습니다. ", unsafe_allow_html=True)
     with st.popover("지표 설명"):
         st.markdown("""
                     - **CPC** (Cost Per Click) : **클릭당 비용** (광고비 ÷ 클릭수)  
@@ -1032,7 +912,7 @@ def main():
     # ────────────────────────────────────────────────────────────────
     st.header(" ") # 공백용
     st.markdown("<h5 style='margin:0'> <span style='color:#FF4B4B;'> 고정뷰 </span>리포트</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ고정된 기준에 따라 **효율 및 추이**를 그래프와 함께 확인할 수 있습니다. <span style='color:#8E9097;'>(15시 이후 D-1 데이터 제공)</span> ", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ고정된 기준에 따라 **효율 및 추이**를 그래프와 함께 확인할 수 있습니다. ", unsafe_allow_html=True)
 
 
     pivot_total = pivot_ctr(df3, group_col=None)

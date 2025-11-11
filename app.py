@@ -29,7 +29,6 @@ import views.view07
 importlib.reload(views.view07)
 from views.view07 import main as view07_main
 
-
 from streamlit_option_menu import option_menu
 
 st.set_page_config(
@@ -38,6 +37,8 @@ st.set_page_config(
     page_icon="🍊"  # 이모지 또는 이미지 URL
 )
 
+
+# 페이지 이름 선언
 view01_name = "매출 종합 대시보드"
 view02_name = "액션 종합 대시보드"
 view03_name = "퍼포먼스 대시보드"
@@ -45,10 +46,21 @@ view04_name = "언드·PPL 대시보드"
 view05_name = "키워드 대시보드"
 view06_name = "GA 트래픽 대시보드"
 view07_name = "GA PDP 대시보드"
-# border:2px solid #D6D6D9;
+
+
+# 색깔 선언
+sub_bg__lut_media = "#eff6ff"
+sub_bd__lut_media = "#93c5fd"
+sub_fg__lut_media = "#1d4ed8" 
+sub_bg__lut_ga = "#fff7ed"
+sub_bd__lut_ga = "#fdba74"
+sub_fg__lut_ga = "#c2410c"
+
+
 
 with st.sidebar:
 
+    # 대시보드 제목
     st.markdown(
         """
         <div style="display:flex; align-items:baseline;">
@@ -58,34 +70,12 @@ with st.sidebar:
         """,
         unsafe_allow_html=True
     )
+    
+    # 공백용
+    st.header(" "); st.header(" ")
+    # st.link_button("🍊 대시보드 활용 가이드", "https://www.notion.so/25b5927da69980ddbafee03fad072d68?source=copy_link", type="secondary")
 
-
-    # st.markdown(
-    #     """
-    #     <!-- Google Fonts -->
-    #     <link href="https://fonts.googleapis.com/css2?family=Arimo:wght@400;600;700&display=swap" rel="stylesheet">
-    #     <!-- Notion Link -->
-    #     <a href="https://www.notion.so/SLPR-241521e07c7680df86eecf5c5f8da4af"
-    #     target="_blank"
-    #     style="
-    #         font-family:'sans-serif', sans-serif;
-    #         display:inline-block;
-    #         padding:0px 0px;
-    #         font-size:24px;
-    #         font-weight:700;
-    #         color:#31333F;
-    #         background-color:transparent;
-    #         border-radius:9px;
-    #         text-decoration:none;
-    #         text-align:center;">
-    #     ORANGE
-    #     </a>
-    #     """,
-    #     unsafe_allow_html=True
-    # )
-    st.markdown(" ")
-    st.link_button("🍊 대시보드 활용 가이드", "https://www.notion.so/25b5927da69980ddbafee03fad072d68?source=copy_link", type="secondary")
-
+    # 메뉴
     st.divider()
     st.sidebar.header("Menu")
     

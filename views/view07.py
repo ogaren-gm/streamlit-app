@@ -29,7 +29,7 @@ def main():
             /* 전체 컨테이너의 패딩 조정 */
             .block-container {
                 max-width: 100% !important;
-                padding-top: 4rem;   /* 위쪽 여백 */
+                padding-top: 1rem;   /* 위쪽 여백 */
                 padding-bottom: 8rem;
                 padding-left: 5rem; 
                 padding-right: 4rem; 
@@ -38,7 +38,12 @@ def main():
         """,
         unsafe_allow_html=True
     )  
-    
+    # 탭 간격 CSS
+    st.markdown("""
+        <style>
+          [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        </style>
+    """, unsafe_allow_html=True)
     
     # ──────────────────────────────────
     # 사이드바 필터 설정
@@ -219,14 +224,19 @@ def main():
     with col1:
         st.markdown(
             """
-            <div style="
-                color:#6c757d;        
+            <div style="  
                 font-size:14px;       
                 line-height:1.5;      
             ">
-            이 대시보드에서는 <b>브랜드/카테고리/제품</b> 단위의 
-            <b>제품 상세 페이지(PDP) 조회량</b>을 확인할 수 있습니다.<br>
-            해당 대시보드는 view_item 이벤트를 발생시킨 세션 데이터를 기반으로 구성되어 있습니다.
+            이 대시보드에서는 <b>브랜드·카테고리·제품</b> 단위의 
+            <b>제품 상세 페이지 조회량</b>을 확인할 수 있습니다.<br>
+            </div>
+            <div style="
+                color:#6c757d;        
+                font-size:14px;       
+                line-height:2.0;      
+            ">
+            ※ GA D-1 데이터의 세션 수치는 <b>오전에 1차</b> 집계되나 , 세션의 유입출처는 <b>오후에 2차</b> 반영됩니다.
             </div>
             """,
             unsafe_allow_html=True
@@ -263,15 +273,11 @@ def main():
             if hm_ref >= 1535:
                 msg = "2차 업데이트 완료 (PM 15:35)"
                 # 보라톤
-                sub_bg = "#f5f3ff"
-                sub_bd = "#ede9fe"
-                sub_fg = "#5b21b6"
+                sub_bg = "#fff7ed"
+                sub_bd = "#fdba74"
+                sub_fg = "#c2410c"
             elif hm_ref >= 850:
                 msg = "1차 업데이트 완료 (AM 08:50)"
-                # 파랑톤
-                sub_bg = "#eff6ff"
-                sub_bd = "#dbeafe"
-                sub_fg = "#1d4ed8"
             else:
                 pass
 
@@ -294,7 +300,7 @@ def main():
                 font-size:13px;line-height:1;
                 color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
                 border-radius:10px;white-space:nowrap;">
-                🔄 캐시 초기화
+                🗑️ 캐시 초기화
                 </span>
             </a>
             </div>

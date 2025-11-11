@@ -23,6 +23,8 @@ import sys
 import modules.style
 importlib.reload(sys.modules['modules.style'])
 from modules.style import style_format, style_cmap
+from zoneinfo import ZoneInfo
+
 
 
 def main():
@@ -36,7 +38,7 @@ def main():
             /* 전체 컨테이너의 패딩 조정 */
             .block-container {
                 max-width: 100% !important;
-                padding-top: 4rem;   /* 위쪽 여백 */
+                padding-top: 1rem;   /* 위쪽 여백 */
                 padding-bottom: 8rem;
                 padding-left: 5rem; 
                 padding-right: 4rem; 
@@ -45,25 +47,7 @@ def main():
         """,
         unsafe_allow_html=True
     )  
-
-    st.subheader('언드·PPL 대시보드')
-    st.markdown(
-        """
-        <div style="
-            color:#6c757d;        
-            font-size:14px;       
-            line-height:1.5;      
-        ">
-        이 대시보드는 <b>PPL 채널별 성과 및 기여</b>를 확인할 수 있는 대시보드입니다.<br>
-        여기서는 <b>채널별 참여 지표</b>와, 
-        랜딩 이후의 <b>사용자 행동</b>을 살펴볼 수 있으며, 
-        전체 검색량 대비 <b>채널별 쿼리 기여량</b>을 파악할 수 있습니다.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.divider()
+    
     
     # ────────────────────────────────────────────────────────────────
     # 사이드바 필터 설정
@@ -89,7 +73,7 @@ def main():
         # 데이터 시트별로 불러오자.
         PPL_LIST   = pd.DataFrame(sh.worksheet('PPL_LIST').get_all_records())
         PPL_DATA   = pd.DataFrame(sh.worksheet('PPL_DATA').get_all_records())
-        # PPL_ACTION = pd.DataFrame(sh.worksheet('PPL_ACTION').get_all_records())
+        GA_EVENT_SUMMARY = pd.DataFrame(sh.worksheet('GA_Event_Summary').get_all_records())
         # --------------------------------------------------------------
         wsa = sh.worksheet('PPL_ACTION')
         data = wsa.get('A1:P')  # A열~P열까지 전체
@@ -99,16 +83,16 @@ def main():
         query_nor      = pd.DataFrame(sh.worksheet('query_누어').get_all_records())
         query_sum      = pd.DataFrame(sh.worksheet('query_sum').get_all_records())
         
-        # # 3) tb_sleeper_psi
-        # bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
-        # df_psi = bq.get_data("tb_sleeper_psi")
-        # df_psi["event_date"] = pd.to_datetime(df_psi["event_date"], format="%Y%m%d")
+        # last_updated_time
+        last_updated_time__query = query_slp['날짜'].max()
+        last_updated_time__GA = GA_EVENT_SUMMARY['event_date'].max()
         
-        return PPL_LIST, PPL_DATA, PPL_ACTION, query_slp, query_nor, query_sum
+        
+        return PPL_LIST, PPL_DATA, PPL_ACTION, query_slp, query_nor, query_sum, last_updated_time__query, last_updated_time__GA
 
 
     with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        PPL_LIST, PPL_DATA, PPL_ACTION, query_slp, query_nor, query_sum = load_data()
+        PPL_LIST, PPL_DATA, PPL_ACTION, query_slp, query_nor, query_sum, last_updated_time__query, last_updated_time__GA = load_data()
 
 
     # 날짜 컬럼 타입 변환
@@ -435,87 +419,6 @@ def main():
     }
     
 
-
-    # # => "채널별 쿼리 기여량"용
-    # def decorate_df_ctb(df: pd.DataFrame,
-    #                 brand: str = 'sleeper') -> None:
-    #     if brand == "sleeper":
-    #         # 키에러 방지
-    #         required = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-    #                     '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중', '홈스타일링연구소', '홈스타일링연구소_비중', '손태영', '손태영_비중', '제주가장', '제주가장_비중', '굥하우스', '굥하우스_비중']            
-    #         for c in required:
-    #             if c not in df.columns:
-    #                 df[c] = 0
-    #         num_cols = ['검색량', '기본 검색량', '기본 검색량_비중',
-    #                     '태요미네', '태요미네_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중', '홈스타일링연구소', '홈스타일링연구소_비중', '손태영', '손태영_비중', '제주가장', '제주가장_비중', '굥하우스', '굥하우스_비중'] 
-    #         df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-
-    #         # 컬럼 순서 지정
-    #         df = df[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-    #                  '굥하우스', '굥하우스_비중', '제주가장', '제주가장_비중', '손태영', '손태영_비중', '홈스타일링연구소', '홈스타일링연구소_비중', '노홍철 유튜브', '노홍철 유튜브_비중', '태요미네', '태요미네_비중',  '아울디자인', '아울디자인_비중', '알쓸물치', '알쓸물치_비중']]
-            
-    #         # 자료형 워싱
-    #         df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
-    #         num_cols = df.select_dtypes(include=['number']).columns
-    #         df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))  
-            
-    #         # 컬럼 이름 변경 - 멀티 인덱스
-    #         df.columns = pd.MultiIndex.from_tuples([
-    #             ("기본정보",      "날짜"),        
-    #             ("기본정보",        "전체 검색량"),      
-    #             ("기본 검색량",        "검색량"),         
-    #             ("기본 검색량",        "비중(%)"),  
-    #             ("손태영",        "검색량"),         
-    #             ("손태영",        "비중(%)"),
-    #             ("제주가장",        "검색량"),         
-    #             ("제주가장",        "비중(%)"), 
-    #             ("굥하우스",        "검색량"),         
-    #             ("굥하우스",        "비중(%)"), 
-    #             ("홈스타일링연구소",        "검색량"),         
-    #             ("홈스타일링연구소",        "비중(%)"), 
-    #             ("노홍철 유튜브",        "검색량"),         
-    #             ("노홍철 유튜브",        "비중(%)"), 
-    #             ("태요미네",        "검색량"),         
-    #             ("태요미네",        "비중(%)"),  
-    #             ("아울디자인",        "검색량"),         
-    #             ("아울디자인",        "비중(%)"), 
-    #             ("알쓸물치",        "검색량"),         
-    #             ("알쓸물치",        "비중(%)"),
-    #         ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)  
-
-    #     elif brand == "nooer":
-    #         # 키에러 방지
-    #         required = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-    #                     '베리엠제이1', '베리엠제이1_비중']            
-    #         for c in required:
-    #             if c not in df.columns:
-    #                 df[c] = 0
-    #         num_cols = ['검색량', '기본 검색량', '기본 검색량_비중',
-    #                     '베리엠제이1', '베리엠제이1_비중'] 
-    #         df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-
-    #         # 컬럼 순서 지정
-    #         df = df[['날짜', '검색량', '기본 검색량', '기본 검색량_비중',
-    #                 '베리엠제이1', '베리엠제이1_비중']]
-            
-    #         # 자료형 워싱
-    #         df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
-    #         num_cols = df.select_dtypes(include=['number']).columns
-    #         df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))  
-            
-    #         # 컬럼 이름 변경 - 멀티 인덱스
-    #         df.columns = pd.MultiIndex.from_tuples([
-    #             ("기본정보",      "날짜"),        
-    #             ("기본정보",        "전체 검색량"),      
-    #             ("기본 검색량",        "검색량"),         
-    #             ("기본 검색량",        "비중(%)"),  
-    #             ("베리엠제이1",        "검색량"),         
-    #             ("베리엠제이1",        "비중(%)"),
-    #         ], names=["그룹","지표"])  # 상단 레벨 이름(옵션) 
-        
-    #     return df
-
-
     # (25.09.18 하드코딩 제거) "채널별 쿼리 기여량"용
     def decorate_df_ctb(df: pd.DataFrame, brand: str = 'sleeper') -> pd.DataFrame:
         # 브랜드 라벨 정규화
@@ -562,35 +465,6 @@ def main():
         return df
 
 
-    # def render_style_ctb(target_df, brand):
-    #     styled = style_format(
-    #         decorate_df_ctb(target_df, brand),
-    #         decimals_map={
-    #             ("기본정보",        "전체 검색량"): 0,
-    #             ("기본 검색량",        "비중(%)"): 1,  
-    #             ("손태영",        "비중(%)"): 1,
-    #             ("홈스타일링연구소",        "비중(%)"): 1,
-    #             ("노홍철 유튜브",        "비중(%)"): 1,
-    #             ("태요미네",        "비중(%)"): 1,
-    #             ("아울디자인",        "비중(%)"): 1,
-    #             ("알쓸물치",        "비중(%)"): 1,
-    #             ("베리엠제이1",        "비중(%)"): 1,
-    #         },
-    #         suffix_map={
-    #             ("기본 검색량",        "비중(%)"): " %",
-    #             ("기본 검색량",        "비중(%)"): " %",  
-    #             ("손태영",        "비중(%)"): " %",
-    #             ("홈스타일링연구소",        "비중(%)"): " %",
-    #             ("노홍철 유튜브",        "비중(%)"): " %",
-    #             ("태요미네",        "비중(%)"): " %",
-    #             ("아울디자인",        "비중(%)"): " %",
-    #             ("알쓸물치",        "비중(%)"): " %",
-    #             ("베리엠제이1",        "비중(%)"): " %",
-    #     }
-    #     )
-    #     st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
-
-
     # (25.09.18 하드코딩 제거) 
     def render_style_ctb(target_df, brand):
         # 먼저 데코레이션(여기서 MultiIndex 컬럼 완성됨)
@@ -617,42 +491,6 @@ def main():
 
         styled = style_format(decorated, decimals_map=decimals_map, suffix_map=suffix_map)
         st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
-
-
-
-    # def render_stacked_bar(df: pd.DataFrame, x: str, y: str | list[str], color: str | None) -> None:
-    #     # 숫자형 보정
-    #     def _to_numeric(cols):
-    #         for c in cols:
-    #             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-
-    #     if isinstance(y, (list, tuple)):   # wide-form 들어오면
-    #         _to_numeric(list(y))
-    #         if color is not None and color in df.columns:
-    #             # y-list + color가 같이 오면 long으로 변환해 확실히 누적
-    #             long_df = df.melt(id_vars=[x, color], value_vars=list(y),
-    #                             var_name="__series__", value_name="__value__")
-    #             fig = px.bar(long_df, x=x, y="__value__", color="__series__", opacity=0.6)
-    #         else:
-    #             fig = px.bar(df, x=x, y=list(y), opacity=0.6)
-    #     else:                               # y가 단일이면 long-form
-    #         _to_numeric([y])
-    #         fig = px.bar(df, x=x, y=y, color=color, opacity=0.6)
-
-    #     # 핵심: 진짜로 누적시키기
-    #     fig.update_layout(barmode="relative")
-    #     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-
-    #     fig.update_layout(
-    #         bargap=0.1,
-    #         bargroupgap=0.2,
-    #         height=400,
-    #         xaxis_title=None,
-    #         yaxis_title=None,
-    #         legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
-    #     )
-    #     fig.update_xaxes(tickformat="%m월 %d일")
-    #     st.plotly_chart(fig, use_container_width=True)
 
 
     def render_stacked_bar(
@@ -714,16 +552,9 @@ def main():
 
 
 
-
     # ────────────────────────────────────────────────────────────────
     # 채널 목록 > 조금 컴팩트하게 수정
     # ────────────────────────────────────────────────────────────────
-    # 탭 간격 CSS
-    st.markdown("""
-        <style>
-        [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """, unsafe_allow_html=True)
 
     # 카드 전용 CSS (컴팩트 스타일)
     st.markdown("""
@@ -740,18 +571,18 @@ def main():
     }
     .ppl-card .card-top {
         display:flex; align-items:center; justify-content:space-between;
-        margin-bottom:14px;
+        margin-bottom:1px;
     }
     .ppl-card .title {
-        font-size:0.98rem; font-weight:700; color:#222; margin:0; 
+        font-size:0.9rem; font-weight:700; color:#222; margin:0; 
         line-height:1.2;
     }
     .ppl-card .meta {
-        font-size:0.78rem; color:#666; margin-top:2px;
+        font-size:0.7rem; color:#666; margin-top:2px;
     }
     .ppl-card .row {
         display:flex; justify-content:space-between; align-items:center;
-        margin-top:8px; font-size:0.86rem;
+        margin-top:1px; font-size:0.8rem;
     }
     .ppl-card .total { color:#333; }
     .ppl-card .total b { font-weight:700; }
@@ -759,21 +590,132 @@ def main():
     /* 브랜드 배지 */
     .ppl-badge {
         display:inline-block; padding:2px 8px; border-radius:999px;
-        font-size:0.72rem; line-height:1.6; font-weight:600; color:#fff;
+        font-size:0.7rem; line-height:1.6; font-weight:500; color:#fff;
         white-space:nowrap;
     }
     .badge-slp { background:#FF4B4B; } /* 슬립퍼 */
     .badge-nor { background:#5562EA; } /* 누어 */
 
     /* 링크 */
-    .ppl-link a { text-decoration:none; font-size:0.82rem; }
+    .ppl-link a { text-decoration:none; font-size:0.8rem; }
     .ppl-link a:hover { text-decoration:underline; }
     </style>
     """, unsafe_allow_html=True)
 
-    # 1번 영역
+
+
+    # (25.11.10) 제목 + 설명 + 업데이트 시각 + 캐시초기화 
+    # last_updated_time
+    # 제목
+    st.subheader("언드·PPL 대시보드")
+
+    if "refresh" in st.query_params:
+        st.cache_data.clear()
+        st.query_params.clear()   # 파라미터 제거
+        st.rerun()
+        
+    # 설명
+    col1, col2 = st.columns([0.65, 0.35], vertical_alignment="center")
+    with col1:
+        st.markdown(
+            """
+            <div style="  
+                font-size:14px;       
+                line-height:1.5;      
+            ">
+            <b>PPL 채널별 성과</b>와, 
+            랜딩 이후의 <b>사용자 행동</b>을 살펴볼 수 있으며, 
+            전체 검색량 대비 <b>채널별 쿼리 기여량</b>을 파악할 수 있습니다.
+            </div>
+            <div style="
+                color:#6c757d;        
+                font-size:14px;       
+                line-height:2.0;      
+            ">
+            ※ 키워드·쿼리 D-1 데이터는 매일 10시 ~ 11시 사이에 업데이트됩니다.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+    with col2:
+        # last_updated_time
+        
+        # -> last_updated_time__query
+        if isinstance(last_updated_time__query, str):
+            lut_q = datetime.strptime(last_updated_time__query, "%Y-%m-%d")
+        else:
+            lut_q = last_updated_time__query
+        lut_q_date = lut_q.date()
+        
+        # -> last_updated_time__GA
+        if isinstance(last_updated_time__GA, str):
+            lut_g = datetime.strptime(last_updated_time__GA, "%Y-%m-%d")
+        else:
+            lut_g = last_updated_time__GA
+        lut_g_date = lut_g.date()
+        
+        now_kst   = datetime.now(ZoneInfo("Asia/Seoul"))
+        today_kst = now_kst.date()
+        
+        delta_days_q = (today_kst - lut_q_date).days
+        delta_days_g = (today_kst - lut_g_date).days
+        
+        # 기본값
+        msg_q    = f"D-{delta_days_q} 업데이트 완료"
+        sub_bg_q = "#E6F4EC"
+        sub_bd_q = "#91C7A5"
+        sub_fg_q = "#237A57"
+        
+        msg_g   = f"D-{delta_days_g} 업데이트 완료"
+        sub_bg_g = "#fff7ed"
+        sub_bd_g = "#fdba74"
+        sub_fg_g = "#c2410c"
+        
+        # 렌더링
+        st.markdown(
+            f"""
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
+            <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 10px;
+                font-size:13px;line-height:1.1;
+                color:{sub_fg_g};background:{sub_bg_g};border:1px solid {sub_bd_g};
+                border-radius:10px;white-space:nowrap;">
+                📢 {msg_g}
+            </span>
+            <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 10px;
+                font-size:13px;line-height:1.1;
+                color:{sub_fg_q};background:{sub_bg_q};border:1px solid {sub_bd_q};
+                border-radius:10px;white-space:nowrap;">
+                📊 {msg_q}
+            </span>
+            <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
+                <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 8px;
+                font-size:13px;line-height:1;
+                color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
+                border-radius:10px;white-space:nowrap;">
+                🗑️ 캐시 초기화
+                </span>
+            </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    st.divider()
+
+
+    # ──────────────────────────────────
+    # 1) 채널 목록
+    # ──────────────────────────────────
+    st.markdown(" ")
     st.markdown("<h5 style='margin:0'>채널 목록</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 채널에 대한 집행 정보입니다. <span style='color:#8E9097;'>(최신순 정렬)</span> ", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 채널에 대한 집행 정보입니다. <span style='color:#8E9097;'>(최신 6개 정렬)</span> ", unsafe_allow_html=True)
 
     # 원본 DF 정렬
     df = PPL_LIST.copy()
@@ -783,37 +725,52 @@ def main():
     df_slp = df[df["브랜드"] == "슬립퍼"].copy()
     df_nor = df[df["브랜드"] == "누어"].copy()
 
-    def _render_card_grid(df_src: pd.DataFrame, cols_per_row: int = 6):
-        """컴팩트 카드 그리드 렌더링 (브랜드 배지 포함)"""
+
+    # _render_card_grid
+    def _render_card_grid(
+        df_src: pd.DataFrame,
+        cols_per_row: int = 6,
+        key: str = "all",
+        initial: int = 6,
+        step: int = 12
+    ):
+        """브랜드 배지 포함 카드 그리드 + 더보기/접기"""
         if df_src is None or len(df_src) == 0:
             st.info("표시할 채널이 없습니다.")
             return
 
-        rows = math.ceil(len(df_src) / cols_per_row)
+        # 탭/그룹별 노출 개수 상태
+        state_key = f"ppl_view_{key}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = initial
+
+        view_n = st.session_state[state_key]
+        total = len(df_src)
+        df_view = df_src.iloc[:view_n]
+
+        # 카드 렌더 (기존 로직 재사용)
+        rows = math.ceil(len(df_view) / cols_per_row)
         for i in range(rows):
             cols = st.columns(cols_per_row, gap="small")
             for j, col in enumerate(cols):
                 idx = i * cols_per_row + j
-                if idx >= len(df_src): break
-                row = df_src.iloc[idx]
+                if idx >= len(df_view): break
+                row = df_view.iloc[idx]
 
                 brand = str(row.get("브랜드", "")).strip()
                 badge_class = "badge-slp" if brand == "슬립퍼" else ("badge-nor" if brand == "누어" else "badge-slp")
 
-                # 금액
                 amount_raw = row.get("금액")
                 money = "-"
                 if pd.notna(amount_raw):
                     try:
-                        money = f"{int(amount_raw):,}원"
+                        money = f"{int(float(amount_raw)):,}원"
                     except Exception:
                         money = str(amount_raw)
 
-                # 링크
                 url = row.get("컨텐츠 URL")
                 link_html = f"🔗 <a href='{url}' target='_blank'>컨텐츠 보기</a>" if url else "🔗 링크 없음"
 
-                # 업로드 날짜
                 upload_date = row.get("업로드 날짜")
                 upload_date_str = str(upload_date) if pd.notna(upload_date) else ""
 
@@ -835,13 +792,24 @@ def main():
                         unsafe_allow_html=True,
                     )
 
+        # --- 더보기 / 접기 컨트롤 (간소화 & 잔여 버튼 제거) ---
+        if total > view_n:
+            if st.button(f"더보기  ({view_n}/{total})", key=f"more_{key}", use_container_width=True):
+                st.session_state[state_key] = min(total, view_n + step)
+                st.rerun()
+        elif total > initial:
+            if st.button("접기", key=f"less_{key}", use_container_width=True):
+                st.session_state[state_key] = initial
+                st.rerun()
+
     tab1, tab2, tab3 = st.tabs(["전체", "슬립퍼", "누어"])
     with tab1:
-        _render_card_grid(df, cols_per_row=6)    # 전체
+        _render_card_grid(df,     cols_per_row=6, key="all")   # 전체
     with tab2:
-        _render_card_grid(df_slp, cols_per_row=6)  # 슬립퍼
+        _render_card_grid(df_slp, cols_per_row=6, key="slp")   # 슬립퍼
     with tab3:
-        _render_card_grid(df_nor, cols_per_row=6)  # 누어
+        _render_card_grid(df_nor, cols_per_row=6, key="nor")   # 누어
+
 
 
 
@@ -1141,7 +1109,14 @@ def main():
     # 채널별 인게이지먼트 및 액션
     # ────────────────────────────────────────────────────────────────
     st.subheader(" ")
-    st.subheader(" ")
+    
+    # 탭 간격 CSS
+    st.markdown("""
+        <style>
+          [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        </style>
+    """, unsafe_allow_html=True)
+
     st.markdown("<h5 style='margin:0'>채널별 인게이지먼트 및 액션</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ채널별 **반응 데이터**와 **사용자 액션 및 효율 데이터**를 확인할 수 있습니다.", unsafe_allow_html=True)
     with st.popover("지표 설명"):

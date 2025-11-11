@@ -16,27 +16,31 @@ import modules.style
 importlib.reload(sys.modules['modules.style'])
 from modules.style import style_format, style_cmap
 
+from zoneinfo import ZoneInfo
+
 
 def main():
+    # ──────────────────────────────────
+    # 스트림릿 페이지 설정
+    # ──────────────────────────────────
+
     st.markdown(
         """
         <style>
-            .block-container {max-width:100% !important; padding: 4rem 4rem 8rem 5rem;}
-            [role="tablist"] [role="tab"] { margin-right: 1rem; }
+            /* 전체 컨테이너의 패딩 조정 */
+            .block-container {
+                max-width: 100% !important;
+                padding-top: 1rem;   /* 위쪽 여백 */
+                padding-bottom: 8rem;
+                padding-left: 5rem; 
+                padding-right: 4rem; 
+            }
         </style>
-        """, unsafe_allow_html=True
-    )
-    st.subheader('키워드 대시보드')
-    st.markdown(
-        '<div style="color:#6c757d;font-size:14px;line-height:1.5;">'
-        '테스트 <br>'
-        '테스트'
-        '</div>', unsafe_allow_html=True
-    )
-    st.divider()
+        """,
+        unsafe_allow_html=True
+    )  
 
-
-
+    
     @st.cache_data(ttl=3600)
     def load_data():
         scope = [
@@ -60,10 +64,13 @@ def main():
         wsa = sh.worksheet("query_demographic")
         data = wsa.get("A1:E")
         df = pd.DataFrame(data[1:], columns=data[0])
-        return df
+        
+        last_updated_time = df['날짜'].max()
+        
+        return df, last_updated_time
 
     with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df = load_data()
+        df, last_updated_time = load_data()
 
     # 공통 전처리
     df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce')
@@ -127,14 +134,103 @@ def main():
         prev_sum = df_src.loc[(df_src['날짜'] >= prev_start) & (df_src['날짜'] <= prev_end), 'abs_age'].sum()
         return int(cur_sum), int(prev_sum), (cur_start, end), (prev_start, prev_end)
 
-    # # 탭 간격 CSS
-    # st.markdown("""
-    #     <style>
-    #       [role="tablist"] [role="tab"] { margin-right: 1rem; }
-    #     </style>
-    # """, unsafe_allow_html=True)
 
-    # 렌더 (7일 카드 / 30일 카드)
+
+    # (25.11.10) 제목 + 설명 + 업데이트 시각 + 캐시초기화 
+    # last_updated_time
+    # 제목
+    st.subheader("키워드 대시보드")
+
+    if "refresh" in st.query_params:
+        st.cache_data.clear()
+        st.query_params.clear()   # 파라미터 제거
+        st.rerun()
+        
+    # 설명
+    col1, col2 = st.columns([0.65, 0.35], vertical_alignment="center")
+    with col1:
+        st.markdown(
+            """
+            <div style="  
+                font-size:14px;       
+                line-height:1.5;      
+            ">
+            설명
+            </div>
+            <div style="
+                color:#6c757d;        
+                font-size:14px;       
+                line-height:2.0;      
+            ">
+            ※ 키워드·쿼리 D-1 데이터는 매일 10시 ~ 11시 사이에 업데이트됩니다.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+    with col2:
+        # last_updated_time
+        if isinstance(last_updated_time, str):
+            lut = datetime.strptime(last_updated_time, "%Y-%m-%d")
+        else:
+            lut = last_updated_time
+        lut_date = lut.date()
+        
+        now_kst   = datetime.now(ZoneInfo("Asia/Seoul"))
+        today_kst = now_kst.date()
+        delta_days = (today_kst - lut_date).days
+        
+        # 기본값
+        # msg    = f"{lut_date.strftime('%m월 %d일')} (D-{delta_days})"
+        msg    = f"D-{delta_days} 업데이트 완료"
+        sub_bg = "#E6F4EC"
+        sub_bd = "#91C7A5"
+        sub_fg = "#237A57"
+        
+        # 렌더링
+        st.markdown(
+            f"""
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
+            <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 10px;
+                font-size:13px;line-height:1.1;
+                color:{sub_fg};background:{sub_bg};border:1px solid {sub_bd};
+                border-radius:10px;white-space:nowrap;">
+                📊 {msg}
+            </span>
+            <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
+                <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 8px;
+                font-size:13px;line-height:1;
+                color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
+                border-radius:10px;white-space:nowrap;">
+                🗑️ 캐시 초기화
+                </span>
+            </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    st.divider()
+
+
+
+
+
+    # ──────────────────────────────────
+    # 1) 추이 요약
+    # ──────────────────────────────────
+    
+    # 탭 간격 CSS
+    st.markdown("""
+        <style>
+          [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        </style>
+    """, unsafe_allow_html=True)
+    
     q1, q2 = st.columns([6,2])
     with q1:
         st.markdown("<h5 style='margin:0'>추이 요약</h5>", unsafe_allow_html=True)      
@@ -154,54 +250,6 @@ def main():
         cls7,  txt7  = _delta_parts(cur7,  prev7)
         cls30, txt30 = _delta_parts(cur30, prev30)
 
-
-    # colA, colB = st.columns(2)
-
-    # with colA:
-    #     st.markdown(f"""
-    #     <div class="kpi-card">
-    #     <div class="kpi-head">
-    #         <div class="kpi-title">최근 7일 vs 이전 7일</div>
-    #         <div class="kpi-delta {cls7}">{txt7}</div>
-    #     </div>
-    #     <div class="kpi-body">
-    #         <div class="kpi-block">
-    #         <div class="label">최근 7일 합계</div>
-    #         <div class="value">{_fmt_int(cur7)}</div>
-    #         <div class="range">{_fmt_range(c7_s, c7_e)}</div>
-    #         </div>
-    #         <div class="kpi-divider"></div>
-    #         <div class="kpi-block">
-    #         <div class="label">이전 7일 합계</div>
-    #         <div class="value">{_fmt_int(prev7)}</div>
-    #         <div class="range">{_fmt_range(p7_s, p7_e)}</div>
-    #         </div>
-    #     </div>
-    #     </div>
-    #     """, unsafe_allow_html=True)
-
-    # with colB:
-    #     st.markdown(f"""
-    #     <div class="kpi-card">
-    #     <div class="kpi-head">
-    #         <div class="kpi-title">최근 30일 vs 이전 30일</div>
-    #         <div class="kpi-delta {cls30}">{txt30}</div>
-    #     </div>
-    #     <div class="kpi-body">
-    #         <div class="kpi-block">
-    #         <div class="label">최근 30일 합계</div>
-    #         <div class="value">{_fmt_int(cur30)}</div>
-    #         <div class="range">{_fmt_range(c30_s, c30_e)}</div>
-    #         </div>
-    #         <div class="kpi-divider"></div>
-    #         <div class="kpi-block">
-    #         <div class="label">이전 30일 합계</div>
-    #         <div class="value">{_fmt_int(prev30)}</div>
-    #         <div class="range">{_fmt_range(p30_s, p30_e)}</div>
-    #         </div>
-    #     </div>
-    #     </div>
-    #     """, unsafe_allow_html=True)
 
     # 탭 추가 (전체 · 일반 · 경쟁사 · 소비자 · 자사)
     kpi_tabs = st.tabs(["전체", "일반", "경쟁사", "소비자", "자사"])

@@ -23,6 +23,8 @@ import modules.style
 importlib.reload(sys.modules['modules.style'])
 from modules.style import style_format, style_cmap
 from pandas.tseries.offsets import MonthEnd
+from zoneinfo import ZoneInfo
+
 
 
 def main():
@@ -36,7 +38,7 @@ def main():
             /* 전체 컨테이너의 패딩 조정 */
             .block-container {
                 max-width: 100% !important;
-                padding-top: 4rem;   /* 위쪽 여백 */
+                padding-top: 1rem;   /* 위쪽 여백 */
                 padding-bottom: 8rem;
                 padding-left: 5rem; 
                 padding-right: 4rem; 
@@ -46,23 +48,6 @@ def main():
         unsafe_allow_html=True
     )    
 
-    st.subheader('매출 종합 대시보드')
-    st.markdown(
-        """
-        <div style="
-            color:#6c757d;        /* 글자 색 (회색톤) */
-            font-size:14px;       /* 글자 크기 */
-            line-height:1.5;      /* 줄간격 */
-        ">
-        이 대시보드는 <b>매출 · 매체 · 유입</b> 데이터를 일자별로 한눈에 보여주는 
-        <b>가장 개괄적인 대시보드</b>입니다.<br>
-        여기서는 <b>"얼마 벌었고, 얼마 썼고, 얼마 유입됐고"</b>를 
-        효율 지표와 함께 확인할 수 있습니다.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    st.divider()
 
     # ────────────────────────────────────────────────────────────────
     # 사이드바 필터 설정
@@ -85,7 +70,7 @@ def main():
         
         # 1) tb_media
         bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
-        df_bq = bq.get_data("tb_media")
+        df_bq = bq.get_data("tb_media")        
         df_bq["event_date"] = pd.to_datetime(df_bq["event_date"], format="%Y%m%d")
         parts = df_bq['campaign_name'].str.split('_', n=5, expand=True)
         df_bq['campaign_name_short'] = df_bq['campaign_name']
@@ -145,16 +130,19 @@ def main():
                 .assign(event_date=pd.to_datetime(df_psi["event_date"], format="%Y%m%d"))
                 .groupby("event_date", as_index=False)
                 .agg(session_count=("pseudo_session_id", "nunique")))
+        
+        last_updated_time__media = df_bq["event_date"].max()
+        last_updated_time__GA    = df_psi["event_date"].max()
 
-        return merged, df_psi
+
+        return merged, df_psi, last_updated_time__media, last_updated_time__GA
 
     # ────────────────────────────────────────────────────────────────
     # 데이터 불러오기
     # ────────────────────────────────────────────────────────────────
-    st.toast("GA D-1 데이터는 오전에 예비 처리되고, **15시 이후에 최종 업데이트** 됩니다.", icon="🔔")
 
     with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df_merged, df_psi = load_data(cs, ce)
+        df_merged, df_psi, last_updated_time__media, last_updated_time__GA = load_data(cs, ce)
     
 
     # 공통합수 (1) 일자별 광고비, 세션수 (파생변수는 해당 함수가 계산하지 않음 -> 나중에 계산함)
@@ -405,169 +393,6 @@ def main():
         st.dataframe(styled2, use_container_width=True, hide_index=True, row_height=30)
 
 
-# height=410, 
-        
-    # def render_aggrid(
-    #     df: pd.DataFrame,
-    #     height: int = 323,
-    #     use_parent: bool = True
-    #     ) -> None:
-    #     """
-    #     use_parent: False / True
-    #     """
-    #     df2 = df.copy()
-    #     df2.fillna(0, inplace=True)     # 값이 없는 경우 일단 0으로 치환
-        
-    #     # 전처리 영역 (파생지표 생성, 컬럼순서 지정)
-    #     df2['CVR']  = (df2['ord_count_sum']  / df2['session_count']  * 100).round(2)
-    #     df2['AOV']  = (df2['ord_amount_sum'] / df2['ord_count_sum']  ).round(0)
-    #     df2['ROAS'] = (df2['ord_amount_sum'] / df2['cost_gross_sum'] * 100).round(2)
-    #     df2 = df2[['event_date','ord_amount_sum','ord_count_sum','AOV','cost_gross_sum','ROAS','session_count','CVR']]
-        
-    #     # (필수함수) make_num_child
-    #     def make_num_child(header, field, fmt_digits=0, suffix=''):
-    #         return {
-    #             "headerName": header, "field": field,
-    #             "type": ["numericColumn","customNumericFormat"],
-    #             "valueFormatter": JsCode(
-    #                 f"function(params){{"
-    #                 f"  return params.value!=null?"
-    #                 f"params.value.toLocaleString(undefined,{{minimumFractionDigits:{fmt_digits},maximumFractionDigits:{fmt_digits}}})+'{suffix}':'';"
-    #                 f"}}"
-    #             ),
-    #             "cellStyle": JsCode("params=>({textAlign:'right'})")
-    #         }
-
-    #     # (필수함수) add_summary - deprecated !!
-    #     # def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]): #'sum'|'avg'|'mid'
-    #     #     summary: dict[str, float] = {}
-    #     #     for col, op in agg_map.items():
-    #     #         if op == 'sum':
-    #     #             summary[col] = int(df[col].sum())
-    #     #         elif op == 'avg':
-    #     #             summary[col] = float(df[col].mean())
-    #     #         elif op == 'mid':
-    #     #             summary[col] = float(df[col].median())
-    #     #         else:
-    #     #             summary[col] = "-"  # 에러 발생시, "-"로 표기하고 raise error 하지 않음
-                    
-    #     #     grid_options['pinnedBottomRowData'] = [summary]
-    #     #     return grid_options
-
-    #     # (필수함수) add_summary
-    #     def add_summary(grid_options: dict, df: pd.DataFrame, agg_map: dict[str, str]):
-    #         summary: dict[str, float | str] = {}
-    #         for col, op in agg_map.items():
-    #             val = None
-    #             try:
-    #                 if op == 'sum':
-    #                     val = df[col].sum()
-    #                 elif op == 'avg':
-    #                     val = df[col].mean()
-    #                 elif op == 'mid':
-    #                     val = df[col].median()
-    #             except:
-    #                 val = None
-
-    #             # NaN / Inf / numpy 타입 → None or native 타입으로 처리
-    #             if val is None or isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-    #                 summary[col] = None
-    #             else:
-    #                 # numpy 타입 제거
-    #                 if isinstance(val, (np.integer, np.int64, np.int32)):
-    #                     summary[col] = int(val)
-    #                 elif isinstance(val, (np.floating, np.float64, np.float32)):
-    #                     summary[col] = float(round(val, 2))
-    #                 else:
-    #                     summary[col] = val
-
-    #         grid_options['pinnedBottomRowData'] = [summary]
-    #         return grid_options
-
-    #     # date_col
-    #     date_col = {
-    #         "headerName": "날짜",
-    #         "field": "event_date",
-    #         "pinned": "left",
-    #         "width": 100,
-    #         "cellStyle": JsCode("params=>({textAlign:'left'})"),
-    #         "sort": "desc"
-    #     }
-
-    #     # (use_parent) flat_cols
-    #     flat_cols = [
-    #         date_col,
-    #         make_num_child("매출",   "ord_amount_sum"),
-    #         make_num_child("주문수", "ord_count_sum"),
-    #         make_num_child("AOV(평균주문금액)",    "AOV"),
-    #         make_num_child("광고비", "cost_gross_sum"),
-    #         make_num_child("ROAS(광고수익률)",   "ROAS", fmt_digits=2, suffix='%'),
-    #         make_num_child("세션수", "session_count"),
-    #         make_num_child("CVR(전환율)",    "CVR", fmt_digits=2, suffix='%'),
-    #     ]
-
-    #     # (use_parent) grouped_cols
-    #     grouped_cols = [
-    #         date_col,
-    #         {
-    #             "headerName": "COST",
-    #             "children": [
-    #                 make_num_child("매출",   "ord_amount_sum"),
-    #                 make_num_child("주문수", "ord_count_sum"),
-    #                 make_num_child("AOV(평균주문금액)",    "AOV"),
-    #             ]
-    #         },
-    #         {
-    #             "headerName": "PERP",
-    #             "children": [
-    #                 make_num_child("광고비", "cost_gross_sum"),
-    #                 make_num_child("ROAS(광고수익률)",   "ROAS", fmt_digits=2, suffix='%'),
-    #             ]
-    #         },
-    #         {
-    #             "headerName": "GA",
-    #             "children": [
-    #                 make_num_child("세션수", "session_count"),
-    #                 make_num_child("CVR(전환율)",    "CVR", fmt_digits=2, suffix='%'),
-    #             ]
-    #         },
-    #     ]
-
-    #     # (use_parent)
-    #     column_defs = grouped_cols if use_parent else flat_cols
-        
-    #     # grid_options & 렌더링
-    #     grid_options = {
-    #         "columnDefs": column_defs,
-    #         "defaultColDef": {"sortable": True, "filter": True, "resizable": True},
-    #         "headerHeight": 30,
-    #         "groupHeaderHeight": 30,
-    #     }
-
-    #     # (add_summary) grid_options & 렌더링 -> 합계 행 추가하여 재렌더링
-    #     grid_options = add_summary(
-    #         grid_options,
-    #         df2,
-    #         {
-    #             'ord_amount_sum': 'sum',
-    #             'ord_count_sum' : 'sum',
-    #             'AOV'           : 'avg',
-    #             'cost_gross_sum': 'sum',
-    #             'ROAS'          : 'avg',
-    #             'session_count' : 'sum',
-    #             'CVR'           : 'avg',
-    #         }
-    #     )
-
-    #     AgGrid(
-    #         df2,
-    #         gridOptions=grid_options,
-    #         height=height,
-    #         fit_columns_on_grid_load=False,  # True면 전체넓이에서 균등분배 
-    #         theme="streamlit-dark" if st.get_option("theme.base") == "dark" else "streamlit",
-    #         allow_unsafe_jscode=True
-    #     )
-
 
     # 탭 간격 CSS
     st.markdown("""
@@ -577,214 +402,130 @@ def main():
     """, unsafe_allow_html=True)
 
 
-    # # ────────────────────────────────────────────────────────────────
-    # # 시각화 (롤백용 - 기간조정 이전)
-    # # ────────────────────────────────────────────────────────────────
-    # st.markdown("<h5 style='margin:0'>제목</h5>", unsafe_allow_html=True)  
-    # st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 ", unsafe_allow_html=True)
+
+    # (25.11.10) 제목 + 설명 + 업데이트 시각 + 캐시초기화 
+    # last_updated_time__media, last_updated_time__GA
+    # 제목
+    st.subheader("매출 종합 대시보드")
+
+    if "refresh" in st.query_params:
+        st.cache_data.clear()
+        st.query_params.clear()   # 파라미터 제거
+        st.rerun()
+        
+    # 설명
+    col1, col2 = st.columns([0.65, 0.35], vertical_alignment="center")
+    with col1:
+        st.markdown(
+            """
+            <div style="    
+                font-size:14px;       
+                line-height:1.5;      
+            ">
+            <b>매출 · 매체 · 유입</b> 데이터를 효율 지표와 함께 한눈에 확인하는 
+            <b>가장 개괄적인 대시보드</b>입니다.<br>
+            </div>
+            <div style="
+                color:#6c757d;        
+                font-size:14px;       
+                line-height:2.0;      
+            ">
+            ※ GA×MEDIA D-1 매칭 데이터는 매일 15시 ~ 16시 사이에 업데이트됩니다.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+    with col2:
+        # last_updated_time__media -> lut_media
+        if isinstance(last_updated_time__media, str):
+            lut_m = datetime.strptime(last_updated_time__media, "%Y%m%d")
+        else:
+            lut_m = last_updated_time__media
+        lut_media = lut_m.date()
+        
+        # last_updated_time__GA -> lut_ga
+        if isinstance(last_updated_time__GA, str):
+            lut_g = datetime.strptime(last_updated_time__GA, "%Y%m%d")
+        else:
+            lut_g = last_updated_time__GA
+        lut_ga = lut_g.date()
+        
+        now_kst   = datetime.now(ZoneInfo("Asia/Seoul"))
+        today_kst = now_kst.date()
+        delta_days__lut_media = (today_kst - lut_media).days
+        delta_days__lut_ga    = (today_kst - lut_ga).days
+
+        
+        # lut_media 기본값
+        # msg__lut_media = f"{lut_media.strftime('%m월 %d일')} (D-{delta_days__lut_media})"
+        msg__lut_media    = f"D-{delta_days__lut_media} 업데이트 완료"
+        sub_bg__lut_media = "#fff7ed"
+        sub_bd__lut_media = "#fdba74"
+        sub_fg__lut_media = "#c2410c" 
+        
+        # # lut_ga 기본값
+        # # msg__lut_ga    = f"{lut_ga.strftime('%m월 %d일')} (D-{delta_days__lut_ga})"
+        # msg__lut_ga    = f"D-{delta_days__lut_ga} 업데이트 완료"
+        # sub_bg__lut_ga = "#fff7ed"
+        # sub_bd__lut_ga = "#fdba74"
+        # sub_fg__lut_ga = "#c2410c"
+
+        
+        # 렌더링
+        st.markdown(
+            f"""
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
+            <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 10px;
+                font-size:13px;line-height:1.1;
+                color:{sub_fg__lut_media};background:{sub_bg__lut_media};border:1px solid {sub_bd__lut_media};
+                border-radius:10px;white-space:nowrap;">
+                📢 {msg__lut_media}
+            </span>
+            </span>
+            <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
+                <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 8px;
+                font-size:13px;line-height:1;
+                color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
+                border-radius:10px;white-space:nowrap;">
+                🗑️ 캐시 초기화
+                </span>
+            </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
     
 
-    # with st.expander("추이선 설명", expanded=False):
-    #     st.markdown("""
-    # - **MA (이동평균)** : **기본 스무딩**, 최근 S일 평균으로 요동을 눌러 큰 흐름만 보이게 합니다.
-    # - **EWMA (지수가중 이동평균)** : **가중 스무딩**, 최근 값에 더 큰 가중치를 주어 변화에 민감하게 반응합니다.
-    # - **STL 분해** : 계절성(주기) 성분을 제거하고 **순수 추세(방향)**를 보여줍니다.
-    # - **Seasonally Adjusted** : 원 데이터에서 계절성(주기) 성분을 뺀 실제값으로, 이벤트나 프로모션의 **순수 변화량(크기)**를 보여줍니다.
-    # """)
+    st.divider()
 
-
-    # options = {"전체 통합": df_total, "슬립퍼 통합": df_slp, "누어 통합": df_nor}
-
-    # # 컨트롤 패널 가로 배치
-    # c1, c2, c3, c4 = st.columns([ 3, 3, 3, 3])
-
-    # # 1. 데이터 선택
-    # with c1:
-    #     ds_name = st.selectbox("데이터 선택", list(options.keys()), index=0)
-    # df = options[ds_name].copy()
-
-    # # 날짜 정규화
-    # DATE_CANDS = ['날짜','date','event_date']
-    # date_col = next((c for c in DATE_CANDS if c in df.columns), None)
-    # if date_col is None:
-    #     st.error("날짜 컬럼(예: '날짜')이 필요합니다."); st.stop()
-    # df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-    # df = df.dropna(subset=[date_col]).sort_values(date_col)
-
-    # # 2. 지표 선택
-    # label_map = {
-    #     'ord_amount_sum': '매출',
-    #     'cost_gross_sum': '광고비',
-    #     'session_count' : '세션수',
-    #     'ord_count_sum' : '주문수',
-    # }
-    # metric_options = [k for k in ['ord_amount_sum','cost_gross_sum','session_count','ord_count_sum'] if k in df.columns]
-    # with c2:
-    #     metric = st.selectbox("지표 선택", metric_options, index=0, format_func=lambda k: label_map.get(k, k))
-
-    # # 3. 추이선 선택
-    # overlay_options = ["MA (이동평균)", "EWMA (지수가중 이동평균)", "STL 분해", "Seasonally Adjusted"]
-    # with c3:
-    #     overlay = st.selectbox("추이선 선택", overlay_options, index=0)
-
-    # # 4. 주기 선택
-    # with c4:
-    #     period = st.radio(
-    #         "주기(S) 선택", [14, 7], horizontal=True,
-    #         help="이 값은 이동평균/지수가중 이동평균(EWMA)의 평활과 세로선 간격 및 볼린저 밴드 창에 사용됩니다."
-    #     )
-
-
-    # # 1) 시계열 준비 (전체 구간)
-    # s = df.set_index(date_col)[metric].asfreq('D').fillna(0)
-
-    # # 2) 보조 시리즈 계산 (필요할 때만)
-    # win = period
-    # y_ma = s.rolling(win, min_periods=1).mean() if overlay == "MA (이동평균)" else None
-
-    # y_trend = y_seas = y_sa = None
-    # if overlay in ("STL 분해", "Seasonally Adjusted"):
-    #     try:
-    #         from statsmodels.tsa.seasonal import STL
-    #         stl = STL(s, period=period, robust=True).fit()
-    #         y_trend, y_seas = stl.trend, stl.seasonal
-    #     except Exception:
-    #         key = np.arange(len(s)) % period
-    #         y_seas  = s.groupby(key).transform('mean')
-    #         y_trend = (s - y_seas).rolling(period, min_periods=1, center=True).mean()
-    #     y_sa = (s - y_seas) if y_seas is not None else None
-
-    # y_ewma = s.ewm(halflife=period, adjust=False, min_periods=1).mean() if overlay == "EWMA (지수가중 이동평균)" else None
-
-    # # ──────────────────────────────────
-    # # 3) 그래프: RAW(좌) + 선택 오버레이(우) + 주기 세로선 + Bollinger Bands(항상)
-    # # ──────────────────────────────────
-    # fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    # # RAW → 좌측 축
-    # fig.add_trace(
-    #     go.Scatter(x=s.index, y=s, name="RAW", mode="lines+markers", line=dict(color="#666"), opacity=0.45),
-    #     secondary_y=False
-    # )
-
-    # # Bollinger Bands (좌측 축, 항상 표시) — 창=S, k=2
-    # k = 2.0
-    # ma_bb = s.rolling(period, min_periods=period).mean()
-    # sd_bb = s.rolling(period, min_periods=period).std(ddof=0)
-    # bb_upper = ma_bb + k * sd_bb
-    # bb_lower = ma_bb - k * sd_bb
-
-    # # 상단 밴드
-    # fig.add_trace(
-    #     go.Scatter(
-    #         x=bb_upper.index, y=bb_upper, name="BB Upper",
-    #         mode="lines", line=dict(width=1, color="#FFB6C1")
-    #     ),
-    #     secondary_y=False
-    # )
-    # # 하단 밴드 + 음영
-    # fig.add_trace(
-    #     go.Scatter(
-    #         x=bb_lower.index, y=bb_lower, name="BB Lower",
-    #         mode="lines", line=dict(width=1, color="#ADD8E6"),
-    #         fill="tonexty", fillcolor="rgba(128,128,128,0.12)"
-    #     ),
-    #     secondary_y=False
-    # )
-
-    # # 오버레이 → 우측 축 (모두 #FF4B4B)
-    # overlay_series = None
-    # if overlay == "MA (이동평균)" and y_ma is not None:
-    #     overlay_series = y_ma
-    #     fig.add_trace(
-    #         go.Scatter(x=y_ma.index, y=y_ma, name=f"MA{win}",
-    #                 mode="lines",
-    #                 line=dict(color="#FF4B4B")),
-    #         secondary_y=True
-    #     )
-    # elif overlay == "STL 분해" and y_trend is not None:
-    #     overlay_series = y_trend
-    #     fig.add_trace(
-    #         go.Scatter(x=y_trend.index, y=y_trend, name="STL 분해",
-    #                 mode="lines", line=dict(color="#FF4B4B")),
-    #         secondary_y=True
-    #     )
-    # elif overlay == "Seasonally Adjusted" and y_sa is not None:
-    #     overlay_series = y_sa
-    #     fig.add_trace(
-    #         go.Scatter(x=y_sa.index, y=y_sa, name="Seasonally Adjusted",
-    #                 mode="lines", line=dict(color="#FF4B4B")),
-    #         secondary_y=True
-    #     )
-    # elif overlay == "EWMA (지수가중 이동평균)" and y_ewma is not None:
-    #     overlay_series = y_ewma
-    #     fig.add_trace(
-    #         go.Scatter(x=y_ewma.index, y=y_ewma, name=f"EWMA(h={period})",
-    #                 mode="lines", line=dict(color="#FF4B4B")),
-    #         secondary_y=True
-    #     )
-
-    # # ── 좌/우 축 범위 동기화 (±5% 패딩) — BB까지 포함
-    # left_candidates = [s.dropna()]
-    # if bb_upper is not None: left_candidates.append(bb_upper.dropna())
-    # if bb_lower is not None: left_candidates.append(bb_lower.dropna())
-    # left_all = pd.concat(left_candidates, axis=0) if left_candidates else s.dropna()
-    # right = overlay_series.dropna() if overlay_series is not None else None
-
-    # if len(left_all) and (right is not None) and len(right):
-    #     ymin = float(np.nanmin([left_all.min(), right.min()]))
-    #     ymax = float(np.nanmax([left_all.max(), right.max()]))
-    #     if not np.isfinite(ymin) or not np.isfinite(ymax):
-    #         ymin, ymax = 0.0, 1.0
-    #     if ymax <= ymin:
-    #         pad = max(1.0, abs(ymax) * 0.05)
-    #         ymin, ymax = ymin - pad, ymax + pad
-    #     else:
-    #         pad = (ymax - ymin) * 0.05
-    #         ymin, ymax = ymin - pad, ymax + pad
-    #     fig.update_yaxes(range=[ymin, ymax], secondary_y=False)
-    #     fig.update_yaxes(range=[ymin, ymax], secondary_y=True)
-    #     fig.update_yaxes(tickformat="~s", secondary_y=False)
-    #     fig.update_yaxes(tickformat="~s", secondary_y=True)
-
-    # # 주기별 세로선: 7→일요일 기준 매 7일, 14→매 14일
-    # start_ts = pd.to_datetime(s.index.min()).normalize()
-    # end_ts   = pd.to_datetime(s.index.max()).normalize()
-    # offset_days = (6 - start_ts.weekday()) % 7   # 0=월 ... 6=일 → 첫 일요일
-    # first_sunday = start_ts + pd.Timedelta(days=offset_days)
-    # step = 7 if period == 7 else 14
-    # t = first_sunday
-    # while t <= end_ts:
-    #     fig.add_vline(x=t, line_dash="dash", line_width=1, opacity=0.6, line_color="#8c8c8c")
-    #     t += pd.Timedelta(days=step)
-
-    # # 축 라벨: 좌=RAW(+BB), 우=오버레이
-    # fig.update_yaxes(title_text=f"{label_map.get(metric, metric)} · RAW / BB", secondary_y=False)
-    # overlay_title = {
-    #     "MA (이동평균)": f"{label_map.get(metric, metric)} · MA{win}",
-    #     "STL 분해": "STL 분해",
-    #     "Seasonally Adjusted": "Seasonally Adjusted",
-    #     "EWMA (지수가중 이동평균)": f"EWMA (halflife={period})"
-    # }[overlay]
-    # fig.update_yaxes(title_text=overlay_title, secondary_y=True)
-
-    # fig.update_layout(
-    #     margin=dict(l=10, r=10, t=30, b=10),
-    #     # legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0)
-    #     legend=dict(orientation="h", y=1.03, x=1, xanchor="right", yanchor="bottom", title=None),
-
-    # )
-
-    # st.plotly_chart(fig, use_container_width=True)
-
+    # st.markdown("""
+    # <div style="
+    #     background-color:#F0F2F6;
+    #     border-radius:8px;
+    #     padding:12px 16px;
+    #     color:#333;
+    #     font-size:0.9rem;
+    #     line-height:1.5;
+    # ">
+    # ✅ <b>정보</b><br>
+    # MEDIA 데이터는 
+    # </div>
+    # """, unsafe_allow_html=True)
+    
 
     # ────────────────────────────────────────────────────────────────
     # 시각화 (신규 - 기간 조정 개별~)
     # ────────────────────────────────────────────────────────────────
-    st.markdown("<h5 style='margin:0'>제목</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 ", unsafe_allow_html=True)
+    st.markdown(" ")
+    st.markdown("<h5 style='margin:0'>시계열 분석</h5>", unsafe_allow_html=True)  
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ주요 매출 지표의 추이를 스무딩 기법으로 정제해, 단기 변동 대신 핵심 흐름을 시각화합니다.", unsafe_allow_html=True)
 
-    with st.expander("추이선 설명", expanded=False):
+    with st.expander("스무딩은 시계열 분석에서 노이즈를 제거하고 추세를 도출하는 밥법론입니다. ", expanded=False):
         st.markdown("""
     - **MA (이동평균)** : 기본 스무딩, 최근 S일 평균으로 요동을 눌러 큰 흐름만 보이게 합니다.
     - **EWMA (지수가중 이동평균)** : 가중 스무딩, 최근 값에 더 큰 가중치를 주어 변화에 민감합니다.
@@ -800,10 +541,10 @@ def main():
     ce_chart = pd.Timestamp(_chart_end).strftime("%Y%m%d")
 
     # 이후 로직 동일
-    df_merged_chart, df_psi_chart = load_data(cs_chart, ce_chart)
+    df_merged_chart, df_psi_chart, last_updated_time__media, last_updated_time__GA = load_data(cs_chart, ce_chart)
 
     # 기존 load_data(cs, ce)를 재사용하여 차트 전용 데이터 확보
-    df_merged_chart, df_psi_chart = load_data(cs_chart, ce_chart)
+    df_merged_chart, df_psi_chart, last_updated_time__media, last_updated_time__GA = load_data(cs_chart, ce_chart)
 
     # ── 1) 브랜드별 일자 피벗(차트용) – 보고서 쪽과 동일한 로직 간소 복제
     def _pivot_cstSes(df, brand_type=None, product_type=None):
@@ -878,12 +619,12 @@ def main():
                             format_func=lambda k: label_map.get(k, k))
     overlay_options = ["MA (이동평균)", "EWMA (지수가중 이동평균)", "STL 분해", "Seasonally Adjusted"]
     with c3:
-        overlay = st.selectbox("추이선 선택", overlay_options, index=0, key="ts_overlay")
+        overlay = st.selectbox("스무딩 기법 선택", overlay_options, index=0, key="ts_overlay")
     with _p:
         pass
     with c4:
-        period = st.radio("주기(S) 선택", [14, 7], horizontal=True, index=0, key="ts_period",
-                        help="디폴트값인 14일을 권장합니다. 이 값은 이동평균 평활, 세로선 간격, 볼린저 밴드에 사용됩니다.")
+        period = st.radio("주기(S) 선택", [7, 14], horizontal=True, index=0, key="ts_period",
+                        help="디폴트값인 7일을 권장합니다. 이 값은 이동평균 평활, 세로선 간격, 볼린저 밴드에 사용됩니다.")
 
     # ── 3) 월 단위 선택 슬라이더 (이 영역만 독립) — 기본: 최신 2개월
     date_min = pd.to_datetime(df_ts[date_col].min()).normalize()
