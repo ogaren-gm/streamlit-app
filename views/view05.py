@@ -38,12 +38,12 @@ def main():
         """,
         unsafe_allow_html=True
     )    
-    # 탭 간격 CSS
-    st.markdown("""
-        <style>
-            [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """, unsafe_allow_html=True)
+    # # 탭 간격 CSS
+    # st.markdown("""
+    #     <style>
+    #         [role="tablist"] [role="tab"] { margin-right: 1rem; }
+    #     </style>
+    # """, unsafe_allow_html=True)
 
     
     @st.cache_data(ttl=3600)
@@ -218,12 +218,7 @@ def main():
             """,
             unsafe_allow_html=True
         )
-    
     st.divider()
-
-
-
-
 
     # ──────────────────────────────────
     # 1) 추이 요약

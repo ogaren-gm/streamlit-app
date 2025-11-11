@@ -46,12 +46,12 @@ def main():
         """,
         unsafe_allow_html=True
     )    
-    # 탭 간격 CSS
-    st.markdown("""
-        <style>
-            [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """, unsafe_allow_html=True)
+    # # 탭 간격 CSS
+    # st.markdown("""
+    #     <style>
+    #         [role="tablist"] [role="tab"] { margin-right: 1rem; }
+    #     </style>
+    # """, unsafe_allow_html=True)
     
     
     # ────────────────────────────────────────────────────────────────
@@ -614,6 +614,7 @@ def main():
     # 제목
     st.subheader("언드·PPL 대시보드")
 
+
     if "refresh" in st.query_params:
         st.cache_data.clear()
         st.query_params.clear()   # 파라미터 제거
@@ -711,9 +712,7 @@ def main():
             """,
             unsafe_allow_html=True
         )
-    
     st.divider()
-
 
     # ──────────────────────────────────
     # 1) 채널 목록
