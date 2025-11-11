@@ -20,9 +20,8 @@ from zoneinfo import ZoneInfo
 
 def main():
     # ──────────────────────────────────
-    # 스트림릿 페이지 설정 (반드시 최상단)
+    # 스트림릿 페이지 설정
     # ──────────────────────────────────
-
     st.markdown(
         """
         <style>
@@ -37,11 +36,11 @@ def main():
         </style>
         """,
         unsafe_allow_html=True
-    )  
+    )    
     # 탭 간격 CSS
     st.markdown("""
         <style>
-          [role="tablist"] [role="tab"] { margin-right: 1rem; }
+            [role="tablist"] [role="tab"] { margin-right: 1rem; }
         </style>
     """, unsafe_allow_html=True)
     
@@ -314,13 +313,7 @@ def main():
     # ──────────────────────────────────
     # 1) 브랜드별 추이
     # ──────────────────────────────────
-    # 탭 간격 CSS
-    st.markdown("""
-        <style>
-          [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """, unsafe_allow_html=True)
-    
+    st.markdown(" ")
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>브랜드별</span> 추이</h5>", unsafe_allow_html=True)      
     st.markdown(":gray-badge[:material/Info: Info]ㅤ**슬립퍼** 및 **누어** 조회 현황을 일자별로 확인할 수 있습니다.")
 

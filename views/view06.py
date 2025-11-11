@@ -25,7 +25,6 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-
     st.markdown(
         """
         <style>
@@ -40,12 +39,11 @@ def main():
         </style>
         """,
         unsafe_allow_html=True
-    )  
-    
+    )    
     # 탭 간격 CSS
     st.markdown("""
         <style>
-          [role="tablist"] [role="tab"] { margin-right: 1rem; }
+            [role="tablist"] [role="tab"] { margin-right: 1rem; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -580,13 +578,7 @@ def main():
     # ──────────────────────────────────
     # 1) 방문 추이
     # ──────────────────────────────────
-    # 탭 간격 CSS
-    st.markdown("""
-        <style>
-          [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """, unsafe_allow_html=True)
-    
+    st.markdown(" ")
     st.markdown("<h5 style='margin:0'>방문 추이</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ일자별 **방문수**(세션 기준), **유저수**(중복 제거), **신규 및 재방문수** 추이를 확인할 수 있습니다.")
     # — 시각화

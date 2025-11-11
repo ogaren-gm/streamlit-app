@@ -31,7 +31,6 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-
     st.markdown(
         """
         <style>
@@ -46,7 +45,13 @@ def main():
         </style>
         """,
         unsafe_allow_html=True
-    )  
+    )    
+    # 탭 간격 CSS
+    st.markdown("""
+        <style>
+            [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        </style>
+    """, unsafe_allow_html=True)
     
     
     # ────────────────────────────────────────────────────────────────
@@ -1109,13 +1114,6 @@ def main():
     # 채널별 인게이지먼트 및 액션
     # ────────────────────────────────────────────────────────────────
     st.subheader(" ")
-    
-    # 탭 간격 CSS
-    st.markdown("""
-        <style>
-          [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """, unsafe_allow_html=True)
 
     st.markdown("<h5 style='margin:0'>채널별 인게이지먼트 및 액션</h5>", unsafe_allow_html=True)  
     st.markdown(":gray-badge[:material/Info: Info]ㅤ채널별 **반응 데이터**와 **사용자 액션 및 효율 데이터**를 확인할 수 있습니다.", unsafe_allow_html=True)

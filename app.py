@@ -72,7 +72,7 @@ with st.sidebar:
     )
     
     # 공백용
-    st.header(" "); st.header(" ")
+    st.header(" ")
     # st.link_button("🍊 대시보드 활용 가이드", "https://www.notion.so/25b5927da69980ddbafee03fad072d68?source=copy_link", type="secondary")
 
     # 메뉴

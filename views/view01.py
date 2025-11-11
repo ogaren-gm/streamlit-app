@@ -31,7 +31,6 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-
     st.markdown(
         """
         <style>
@@ -47,6 +46,12 @@ def main():
         """,
         unsafe_allow_html=True
     )    
+    # 탭 간격 CSS
+    st.markdown("""
+        <style>
+            [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        </style>
+    """, unsafe_allow_html=True)
 
 
     # ────────────────────────────────────────────────────────────────
@@ -391,15 +396,6 @@ def main():
             ],
         )
         st.dataframe(styled2, use_container_width=True, hide_index=True, row_height=30)
-
-
-
-    # 탭 간격 CSS
-    st.markdown("""
-        <style>
-          [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """, unsafe_allow_html=True)
 
 
 

@@ -30,7 +30,6 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-
     st.markdown(
         """
         <style>
@@ -45,8 +44,13 @@ def main():
         </style>
         """,
         unsafe_allow_html=True
-    )  
-
+    )    
+    # 탭 간격 CSS
+    st.markdown("""
+        <style>
+            [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        </style>
+    """, unsafe_allow_html=True)
 
     # ────────────────────────────────────────────────────────────────
     # 사이드바 필터 설정
@@ -476,14 +480,6 @@ def main():
         )
         
         st.dataframe(styled2, use_container_width=True, row_height=30, hide_index=True)
-
-    
-    # 탭 간격 CSS
-    st.markdown("""
-        <style>
-          [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """, unsafe_allow_html=True)
 
 
     # (25.11.10) 제목 + 설명 + 업데이트 시각 + 캐시초기화 

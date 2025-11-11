@@ -28,11 +28,9 @@ from zoneinfo import ZoneInfo
 
 
 def main():
-
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-
     st.markdown(
         """
         <style>
@@ -47,8 +45,13 @@ def main():
         </style>
         """,
         unsafe_allow_html=True
-    )  
-
+    )    
+    # 탭 간격 CSS
+    st.markdown("""
+        <style>
+            [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        </style>
+    """, unsafe_allow_html=True)
 
 
     # ────────────────────────────────────────────────────────────────
@@ -455,14 +458,6 @@ def main():
                 if df_cmp is not None:
                     df_cmp = df_cmp[df_cmp[column].isin(sel)]
         return df, df_cmp
-
-
-    # 탭 간격 CSS
-    st.markdown("""
-        <style>
-          [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """, unsafe_allow_html=True)
 
 
     # (25.11.10) 제목 + 설명 + 업데이트 시각 + 캐시초기화 

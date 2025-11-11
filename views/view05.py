@@ -23,7 +23,6 @@ def main():
     # ──────────────────────────────────
     # 스트림릿 페이지 설정
     # ──────────────────────────────────
-
     st.markdown(
         """
         <style>
@@ -38,7 +37,13 @@ def main():
         </style>
         """,
         unsafe_allow_html=True
-    )  
+    )    
+    # 탭 간격 CSS
+    st.markdown("""
+        <style>
+            [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        </style>
+    """, unsafe_allow_html=True)
 
     
     @st.cache_data(ttl=3600)
@@ -223,14 +228,7 @@ def main():
     # ──────────────────────────────────
     # 1) 추이 요약
     # ──────────────────────────────────
-    
-    # 탭 간격 CSS
-    st.markdown("""
-        <style>
-          [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """, unsafe_allow_html=True)
-    
+    st.markdown(" ")
     q1, q2 = st.columns([6,2])
     with q1:
         st.markdown("<h5 style='margin:0'>추이 요약</h5>", unsafe_allow_html=True)      
