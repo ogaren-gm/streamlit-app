@@ -231,7 +231,7 @@ def main():
                 ("ENGAGEMENT",   "브랜드언급량"),       # 
                 ("ENGAGEMENT",   "링크클릭수"),         # 
                 ("GA",    "유입 세션수"),       # session_count
-                ("GA",    "평균세션시간(초)"),   # avg_session_duration_sec
+                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"),          # view_item_list_sessions
                 ("PDP조회",    "Acutal"),          # view_item_sessions
                 ("PDPscr50",    "Acutal"),         # scroll_50_sessions
@@ -253,7 +253,7 @@ def main():
                 ("ENGAGEMENT",   "브랜드언급량"),       # 
                 ("ENGAGEMENT",   "링크클릭수"),         # 
                 ("GA",    "유입 세션수"),       # session_count
-                ("GA",    "평균세션시간(초)"),   # avg_session_duration_sec
+                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"),          # view_item_list_sessions
                 ("PLP조회",    "CVR"),     
                 ("PDP조회",    "Acutal"),          # view_item_sessions
@@ -284,7 +284,7 @@ def main():
                 ("ENGAGEMENT",   "브랜드언급량"),       # 
                 ("ENGAGEMENT",   "링크클릭수"),         # 
                 ("GA",    "유입 세션수"),       # session_count
-                ("GA",    "평균세션시간(초)"),   # avg_session_duration_sec
+                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"),          # view_item_list_sessions
                 ("PLP조회",    "CPA"),     
                 ("PDP조회",    "Acutal"),          # view_item_sessions
@@ -315,7 +315,7 @@ def main():
                 ("ENGAGEMENT",   "브랜드언급량"),       # 
                 ("ENGAGEMENT",   "링크클릭수"),         # 
                 ("GA",    "유입 세션수"),       # session_count
-                ("GA",    "평균세션시간(초)"),   # avg_session_duration_sec
+                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"),          # view_item_list_sessions
                 ("PLP조회",    "CVR"),     
                 ("PLP조회",    "CPA"),     
@@ -358,7 +358,7 @@ def main():
                 ("ENGAGEMENT",   "브랜드언급량"):0,       # 
                 ("ENGAGEMENT",   "링크클릭수"):0,         # 
                 ("GA",    "유입 세션수"):0,       # session_count
-                ("GA",    "평균세션시간(초)"):0,   # avg_session_duration_sec
+                ("GA",    "평균체류시간(초)"):0,   # avg_session_duration_sec
                 ("PLP조회",    "Acutal"):0,          # view_item_list_sessions
                 ("PLP조회",    "CVR"):1,     
                 ("PLP조회",    "CPA"):0,     
