@@ -104,7 +104,7 @@ def main():
             return df
 
         def categorize_paid(df: pd.DataFrame) -> pd.Series:
-            paid_sources = ['google','naver','meta','meta_adv','mobon','mobion','naver_gfa','DV360','dv360','fb','sns','IGShopping','criteo']
+            paid_sources = ['google','naver','meta','meta_adv','mobon','mobion','naver_gfa','DV360','dv360','fb','sns','IGShopping','criteo', 'toss', 'cashwalk']
             owned_sources = ['litt.ly','instagram','l.instagram.com','instagram.com','blog.naver.com','m.blog.naver.com','smartstore.naver.com','m.brand.naver.com']
             earned_sources = ['youtube','youtube.com','m.youtube.com']
             sms_referral = ['m.facebook.com / referral','l.facebook.com / referral','facebook.com / referral']
