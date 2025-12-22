@@ -52,6 +52,8 @@ class BigQuery():
         self.tb_sleeper_product        = json_data[self.projectCode]['tb_sleeper_product']
         self.tb_media                  = json_data[self.projectCode]['tb_media']
         self.tb_sleeper_product_report = json_data[self.projectCode]['tb_sleeper_product_report']
+        self.tb_sleeper_sessionCMP = json_data[self.projectCode]['tb_sleeper_sessionCMP']
+
 
         try:
             self._bqstorage = BigQueryReadClient(credentials=self.credentialPath)

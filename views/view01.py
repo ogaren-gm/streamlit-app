@@ -77,12 +77,14 @@ def main():
         bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
         df_bq = bq.get_data("tb_media")        
         df_bq["event_date"] = pd.to_datetime(df_bq["event_date"], format="%Y%m%d")
-        parts = df_bq['campaign_name'].str.split('_', n=5, expand=True)
-        df_bq['campaign_name_short'] = df_bq['campaign_name']
-        mask = parts[5].notna()
-        df_bq.loc[mask, 'campaign_name_short'] = (
-            parts.loc[mask, :4].apply(lambda r: '_'.join(r.dropna().astype(str)), axis=1)
+
+        df_bq["campaign_name_short"] = (
+            df_bq["campaign_name"]
+            .astype(str)
+            .str.split("_")
+            .apply(lambda x: "_".join(x[:5]))
         )
+
         # 2) Google Sheet
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         
@@ -467,6 +469,7 @@ def main():
         # sub_bd__lut_ga = "#fdba74"
         # sub_fg__lut_ga = "#c2410c"
 
+        
         
         # 렌더링
         st.markdown(
