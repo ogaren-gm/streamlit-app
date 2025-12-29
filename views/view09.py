@@ -153,6 +153,39 @@ def apply_heatmap(
         .set_properties(**{"white-space": "nowrap"})
     )
 
+def _plot_trend_lines(
+    *,
+    pvt_counts: pd.DataFrame,
+    x_order: list[str],
+    rows: list[str],
+    y_scale: str,
+    key_prefix: str,
+    height: int = 340
+):
+    rows = [r for r in rows if r in pvt_counts.index]
+    if not rows:
+        st.info("표시할 라인 데이터가 없습니다.")
+        return
+
+    fig = go.Figure()
+    for r in rows:
+        y = pd.to_numeric(pvt_counts.loc[r, x_order], errors="coerce").fillna(0).astype(float).tolist()
+        fig.add_trace(go.Scatter(x=x_order, y=y, mode="lines+markers", name=str(r)))
+
+    fig.update_layout(
+        height=height,
+        margin=dict(l=20, r=20, t=10, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+    )
+
+    if y_scale == "로그":
+        for tr in fig.data:
+            tr.y = [max(float(v), 0.1) for v in tr.y]
+        fig.update_yaxes(type="log")
+
+    st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}__trend")
+
+
 
 # ──────────────────────────────────
 # Main
@@ -424,23 +457,23 @@ def main():
                 key="view_grain_main"
             )
 
-        # ✅ (NEW) ISO week 셀을 f0에서 분리해서 '줄바꿈' 없애기
         with f0b:
             sel_iso_weeks = None
-            iso_opts = week_order[:]  # 이미 정렬된 iso_week
-            default_iso = [iso_opts[-1]] if iso_opts else []
+
+            # ✅ 내림차순 표시 + 기본 2개 선택
+            iso_opts_desc = week_order[::-1]  # week_order는 오름차순이므로 뒤집기
+            default_iso = iso_opts_desc[:2] if len(iso_opts_desc) >= 2 else iso_opts_desc
 
             if view_grain == "일별":
                 sel_iso_weeks = st.multiselect(
                     "일별 표시할 ISO Week",
-                    iso_opts,
-                    default=default_iso,
+                    iso_opts_desc,           # ✅ 내림차순 옵션
+                    default=default_iso,     # ✅ 기본 2개
                     key="sel_iso_weeks_main"
                 )
                 if not sel_iso_weeks:
                     sel_iso_weeks = default_iso
             else:
-                # 자리만 유지(한 줄 유지용)
                 st.selectbox(
                     "일별 표시할 ISO Week",
                     ["(일별 선택 시 활성화)"],
@@ -448,6 +481,7 @@ def main():
                     disabled=True,
                     key="sel_iso_weeks_main__disabled"
                 )
+
 
         with f1:
             agg_choice = st.radio("집계 기준", ["세션수", "유저수"], index=0, horizontal=True, key="agg_choice_main")
@@ -678,7 +712,9 @@ def main():
     mask_01 = df["isSessionStart"].isin(list(allow_is))
     df = df[mask_total2 | mask_01].copy()
 
-    tab1, tab2 = st.tabs(["Scroll 액션", "CTA 액션"])
+
+    # tab1, tab2 = st.tabs(["Scroll 액션", "CTA 액션"])
+    tab1, tab2, tab3 = st.tabs(["Scroll 액션", "CTA 액션", "이후 액션"])
 
     # ──────────────────────────────────
     # tab1: CMP랜딩_SCROLL
@@ -793,6 +829,114 @@ def main():
 
             sty_cta = apply_heatmap(pvt_disp_show, pvt_cnt_show, HEAT_ROWS__TAB2)
             st.dataframe(sty_cta, use_container_width=True, height=500)
+
+    # ──────────────────────────────────
+    # tab3: 이후 액션 (NEW)
+    #   - cmp_session_start 대비 전환율(%) 함께 표시
+    # ──────────────────────────────────
+    with tab3:
+        AFTER_ACTION_ORDER = [
+            "cmp_session_start",
+            "view_item",
+            "view_item_list",
+            "product_page_scroll_25",
+            "product_option_price",
+            "find_nearby_showroom",
+            "showroom_10s",
+            "showroom_leads",
+            "add_to_cart",
+        ]
+
+        # ✅ 대상 이벤트만
+        df_a = df[df["event_name"].astype(str).isin(AFTER_ACTION_ORDER)].copy()
+
+        if df_a.empty:
+            st.info("집계할 데이터가 없습니다.")
+        else:
+            pvt_a = _pivot_counts(df_a, "event_name", pivot_col, value_col, order_cols).reindex(AFTER_ACTION_ORDER)
+
+            den = (
+                pvt_a.loc["cmp_session_start"]
+                if "cmp_session_start" in pvt_a.index
+                else pd.Series(0, index=order_cols)
+            )
+
+            # cmp_session_start는 raw, 나머지는 cnt + (conv%)
+            pvt_a_disp = _format_pivot_disp(
+                pvt_counts=pvt_a,
+                den=den,
+                wlist=order_cols,
+                raw_rows={"cmp_session_start"},
+                pct_decimals=1,
+                pct_round0_for_scroll=False,
+            )
+
+            _theme_bar_compare(
+                pvt_counts=pvt_a,
+                theme_opts=theme_opts,
+                default_left=default_left,
+                default_right=default_right,
+                theme_weeks=theme_cols,
+                x_rows=[
+                    "cmp_session_start",
+                    "view_item",
+                    "product_option_price",
+                    "find_nearby_showroom",
+                    "showroom_leads",
+                    "add_to_cart",
+                ],
+                conv_rows=set([
+                    "view_item",
+                    "product_option_price",
+                    "find_nearby_showroom",
+                    "showroom_leads",
+                    "add_to_cart",
+                ]),
+                den_row="cmp_session_start",
+                y_scale=y_scale,
+                key_prefix="after",
+            )
+
+            pvt_a_disp_show = pvt_a_disp.copy()
+            pvt_a_disp_show.columns = col_mi
+
+            pvt_a_cnt_show = pvt_a.copy()
+            pvt_a_cnt_show.columns = col_mi
+
+            # 히트맵 대상 행은 별도 관리(없으면 TAB1 규칙 재사용)
+            sty_after = apply_heatmap(pvt_a_disp_show, pvt_a_cnt_show, HEAT_ROWS__TAB1)
+            st.dataframe(sty_after, use_container_width=True, height=500)
+
+            # ✅ (NEW) 기간 추이(라인) — tab3에만 추가
+            st.markdown("##### 기간 추이 (선 그래프)")
+            rows_default = [
+                "cmp_session_start",
+                "view_item",
+                "product_option_price",
+                "find_nearby_showroom",
+                "showroom_leads",
+                "add_to_cart",
+            ]
+
+            rows_sel = st.multiselect(
+                "선 그래프로 볼 액션",
+                [r for r in AFTER_ACTION_ORDER if r in pvt_a.index],
+                default=[r for r in rows_default if r in pvt_a.index],
+                key="tab3_after__rows_sel"
+            )
+
+            if rows_sel:
+                _plot_trend_lines(
+                    pvt_counts=pvt_a,
+                    x_order=order_cols,     # 주별이면 iso_week, 일별이면 event_day
+                    rows=rows_sel,
+                    y_scale=y_scale,
+                    key_prefix="tab3_after"
+                )
+            else:
+                st.info("선 그래프로 볼 액션을 1개 이상 선택해 주세요.")
+
+
 
     # ──────────────────────────────────
     # 9) 두번째 영역: 드릴다운 + breakdown

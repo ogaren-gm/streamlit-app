@@ -29,9 +29,9 @@ import views.view07
 importlib.reload(views.view07)
 from views.view07 import main as view07_main
 
-import views.view09
-importlib.reload(views.view09)
-from views.view09 import main as view09_main
+import views.view08
+importlib.reload(views.view08)
+from views.view08 import main as view08_main
 
 from streamlit_option_menu import option_menu
 
@@ -50,7 +50,7 @@ view04_name = "언드·PPL 대시보드"
 view05_name = "키워드 대시보드"
 view06_name = "GA 트래픽 대시보드"
 view07_name = "GA PDP 대시보드"
-view09_name = "GA CMP 대시보드"
+view08_name = "GA CMP 대시보드"
 
 
 # 색깔 선언
@@ -70,7 +70,7 @@ with st.sidebar:
         """
         <div style="display:flex; align-items:baseline;">
             <span style="font-size:26px; font-weight:700; color:#31333F;">O\u200AR\u200AA\u200AN\u200AG\u200AE</span>
-            <span style="font-size:16px; color:#8E9097; margin-left:10px;">Dashboard</span>
+            <span style="font-size:16px; color:#8E9087; margin-left:10px;">Dashboard</span>
         </div>
         """,
         unsafe_allow_html=True
@@ -107,7 +107,7 @@ with st.sidebar:
             view05_name,
             view06_name,
             view07_name,
-            view09_name,
+            view08_name,
         ],
         # icons=[
         #     # https://icons.getbootstrap.com
@@ -156,5 +156,5 @@ elif selected == view06_name:
     view06_main()
 elif selected == view07_name:
     view07_main()
-elif selected == view09_name:
-    view09_main()
+elif selected == view08_name:
+    view08_main()
