@@ -262,7 +262,7 @@ def main():
     # 제목
     # 설명
     # 업데이트 상태
-    st.subheader("GA PDP 대시보드 (v2 Test)")
+    st.subheader("GA PDP 대시보드 V2")
 
     if "refresh" in st.query_params:
         st.cache_data.clear()
@@ -274,8 +274,8 @@ def main():
         st.markdown(
             """
             <div style="font-size:14px; line-height:1.5;">
-            이 대시보드에서는 <b>브랜드·카테고리·제품</b> 단위의
-            <b>제품 상세 페이지 조회량(view_item)</b>을 확인할 수 있습니다.<br>
+            <b>PDP 조회</b>에 대한 추이와 유입경로를
+            <b>브랜드·품목·제품</b> 단위로 확인할 수 있는 대시보드 입니다.<br>
             </div>
             <div style="color:#6c757d; font-size:14px; line-height:2.0;">
             ※ GA D-1 데이터의 세션 수치는 <b>오전에 1차</b> 집계되나 , 세션의 유입출처는 <b>오후에 2차</b> 반영됩니다.
@@ -339,10 +339,20 @@ def main():
     # 1) PDP조회 추이
     # ──────────────────────────────────
     st.markdown(" ")
-    st.markdown("<h5 style='margin:0'>PDP조회 추이<span style='color:#FF4B4B;'></span></h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ**유저수**는 고유 사람, **세션수**는 방문 단위, **이벤트수**는 방문 안에서 발생한 view_item의 총 횟수 입니다.")
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>PDP조회 </span>추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤPDP 조회량의 증감 추이를 확인합니다.")
 
-    with st.expander("Filter", expanded=True):
+    with st.popover("🤔 유저 VS 세션 VS 이벤트 차이점"):
+        st.markdown("""
+                    - **유저수** (user_pseudo_id) : 고유 사람수  
+                    - **세션수** (pseudo_session_id) : 방문 단위수  
+                    - **이벤트수** (view_item) : 방문 안에서 발생한 이벤트 총 횟수  
+                    - 사람 A가 1월 1일 오전에 시그니처를 조회 후 이탈, 오후에 시그니처와 허쉬를 재조회했다면,  
+                      1월 1일의 **유저수**는 1, **세션수**는 2, **이벤트수**는 3 입니다.
+                    - 유저수 ≤ 세션수 ≤ 이벤트수 입니다.
+                    """)
+
+    with st.expander("Filter", expanded=False): # 닫아두기 
         r0_1, r0_2 = st.columns([1.3, 2.7], vertical_alignment="bottom")
         with r0_1:
             mode_all = st.radio("기간 단위", ["일별", "주별"], horizontal=True, key="mode_all")
@@ -413,15 +423,15 @@ def main():
     # 2) PDP조회 유입
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>PDP조회 유입<span style='color:#FF4B4B;'></span></h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤPDP 조회가 발생한 세션을 기준으로, 매체/채널별 증감 변화를 확인합니다.")
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>PDP조회 </span>유입</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤPDP 조회가 발생한 세션의 유입경로를 확인합니다.")
 
     with st.expander("Filter", expanded=True):
         r1, r2, r3 = st.columns([3, 3, 3], vertical_alignment="bottom")
         with r1:
             mode_path = st.radio("기간 단위", ["일별", "주별"], horizontal=True, key="mode_path")
         with r2:
-            path_dim = st.selectbox("유입 단위", CFG["PATH_DIM_OPTS"], index=CFG["PATH_DIM_DEFAULT_IDX"], key="path_dim")
+            path_dim = st.selectbox("유입 기준", CFG["PATH_DIM_OPTS"], index=CFG["PATH_DIM_DEFAULT_IDX"], key="path_dim")
         with r3:
             topk_path = st.selectbox("표시 Top K", CFG["TOPK_PATH_OPTS"], index=1, key="topk_path")
 
@@ -451,8 +461,21 @@ def main():
     # 3) 품목별 PDP조회 추이
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>품목별 </span>PDP조회 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤPDP조회가 어떤 상품군에서 발생하고 있는지 보여줍니다.")
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>품목별 </span>추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ품목 뎁스별로 어떤 상품군이 PDP 조회량에 영향을 주는지 확인합니다.")
+
+    with st.popover("🤔 품목 뎁스 설명"):
+        st.markdown("""
+                    - **대분류(브랜드)** : 슬립퍼 or 누어 
+                    - **중분류** : 매트리스 or 프레임 or 부자재
+                    - **소분류** :  
+                        - 매트리스는 모두 매트리스/토퍼  
+                        - 슬립퍼 **프레임** : 원목 or 패브릭 or 호텔침대  
+                        - 누어 **프레임** : 룬드 or 수입파운 or 원목  
+                        - 슬립퍼 **부자재** : 경추베개 외 기타  
+                        - 누어 **부자재** : 룬드 라이브러리 외 기타  
+                    - 소분류 중 부자재의 '기타' 외 세부 구성은 변경될 수 있으며, 필요 시 별도 문의 바랍니다.  
+                    """)
 
     tab1, tab2 = st.tabs(["커스텀", "[고정뷰 예시] 슬립퍼 프레임별"])
 
@@ -707,8 +730,8 @@ def main():
     # 4) 품목별 PDP조회 유입
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>품목별 </span>PDP조회 유입</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ품목별로 어떤 세션을 통해 이벤트가 발생했는지, 매체/채널별 증감 변화를 확인합니다.", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>품목별 </span>유입</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ품목 뎁스별로 특정 상품군의 PDP 조회가 발생한 세션의 유입경로를 확인합니다.", unsafe_allow_html=True)
 
     with st.expander("Filter", expanded=True):
         r1, r2, r3, r4 = st.columns([1.4, 2.6, 2.0, 2.0], vertical_alignment="bottom")
@@ -719,7 +742,7 @@ def main():
         with r3:
             topk_path_pp = st.selectbox("표시 Top K", CFG["TOPK_PATH_OPTS"], index=1, key="topk_path_pp")
         with r4:
-            path_dim_pp = st.selectbox("유입 단위", CFG["PATH_DIM_OPTS"], index=CFG["PATH_DIM_DEFAULT_IDX"], key="path_dim_prod_path")
+            path_dim_pp = st.selectbox("유입 기준", CFG["PATH_DIM_OPTS"], index=CFG["PATH_DIM_DEFAULT_IDX"], key="path_dim_prod_path")
 
         base4 = df
         brand_order = CFG["BRAND_ORDER"]
