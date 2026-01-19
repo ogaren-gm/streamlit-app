@@ -182,17 +182,108 @@ def render_line_graph(df: pd.DataFrame, x: str, y: list[str] | str, height: int 
     st.plotly_chart(fig, use_container_width=True)
 
 
-def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int = 360, opacity: float = 0.6, title: str | None = None, show_value_in_hover: bool = False, key: str | None = None) -> None:
+# def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int = 360, opacity: float = 0.6, title: str | None = None, show_value_in_hover: bool = False, key: str | None = None) -> None:
+#     """
+#     기간 추이를 누적 막대그래프로 시각화하는 공통 렌더 함수.
+
+#     기능
+#     - px.bar(stacked) 기반 누적 막대 그래프 생성
+#     - x별 비중(%) 계산 후 hover에 표시
+#     - (옵션) hover에 원값(value) 함께 표시 가능
+#     - 주말(토·일) 구간 음영 자동 표시 (일별일 때만)
+#     - 범례 상단 고정
+#     - x축 날짜 포맷 '%m월 %d일' 적용 (일별일 때만)
+#     """
+#     if df is None or df.empty:
+#         st.info("표시할 데이터가 없습니다.")
+#         return
+
+#     d = df.copy()
+
+#     # --- x별 비중 계산 ---
+#     d[y] = pd.to_numeric(d[y], errors="coerce").fillna(0)
+#     tot = d.groupby(x, dropna=False)[y].transform("sum").replace(0, np.nan)
+#     d["_share_pct"] = ((d[y] / tot) * 100).fillna(0)
+
+#     # ✅ 일별/주별 판단 (라벨에 " ~ " 포함 여부)
+#     try:
+#         x0 = d[x].astype(str).iloc[0] if len(d) else ""
+#     except Exception:
+#         x0 = ""
+#     is_daily = (" ~ " not in str(x0))
+
+#     # ✅ 일별이면 datetime 축으로 강제 (주말 shading용)
+#     x_plot = x
+#     if is_daily:
+#         d["_x_dt"] = pd.to_datetime(d[x], errors="coerce")
+#         x_plot = "_x_dt"
+
+#     fig = px.bar(
+#         d,
+#         x=x_plot,
+#         y=y,
+#         color=color,
+#         barmode="relative",
+#         opacity=opacity,
+#         title=title,
+#         custom_data=[color, "_share_pct", y],
+#     )
+
+#     # ✅ 누적막대 강제 (배포에서 group으로 갈리는 현상 방지)
+#     fig.update_layout(barmode="relative")
+#     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+
+#     # hover (비중 + (옵션) 값)
+#     if show_value_in_hover:
+#         fig.update_traces(
+#             hovertemplate="%{customdata[0]}<br>비중: %{customdata[1]:.1f}%<br>값: %{customdata[2]:,.0f}<extra></extra>"
+#         )
+#     else:
+#         fig.update_traces(
+#             hovertemplate="%{customdata[0]}<br>비중: %{customdata[1]:.1f}%<extra></extra>"
+#         )
+
+#     # ✅ 주말 음영 + tickformat (일별일 때만)
+#     if is_daily:
+#         fig.update_xaxes(type="date", tickformat="%m월 %d일")
+#         add_weekend_shading(fig, d["_x_dt"])
+
+#     fig.update_layout(
+#         height=height,
+#         xaxis_title=None,
+#         yaxis_title=None,
+#         legend=dict(
+#             orientation="h",
+#             y=1.02,
+#             x=1,
+#             xanchor="right",
+#             yanchor="bottom",
+#         ),
+#         legend_title_text="",
+#         bargap=0.5,
+#         bargroupgap=0.1,
+#     )
+
+#     st.plotly_chart(fig, use_container_width=True, key=key)
+
+
+def render_stack_graph(
+    df: pd.DataFrame,
+    x: str,
+    y: str,
+    color: str,
+    height: int = 360,
+    opacity: float = 0.6,
+    title: str | None = None,
+    show_value_in_hover: bool = False,
+    key: str | None = None
+) -> None:
     """
     기간 추이를 누적 막대그래프로 시각화하는 공통 렌더 함수.
 
-    기능
-    - px.bar(stacked) 기반 누적 막대 그래프 생성
-    - x별 비중(%) 계산 후 hover에 표시
-    - (옵션) hover에 원값(value) 함께 표시 가능
-    - 주말(토·일) 구간 음영 자동 표시 (일별일 때만)
-    - 범례 상단 고정
-    - x축 날짜 포맷 '%m월 %d일' 적용 (일별일 때만)
+    핵심 보정:
+    - x가 '일별처럼 보이지만' datetime 변환 결과가 대부분 NaT면 => 주별/라벨축으로 fallback
+    - 그 결과 "빈 그래프" 방지
     """
     if df is None or df.empty:
         st.info("표시할 데이터가 없습니다.")
@@ -200,17 +291,40 @@ def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int
 
     d = df.copy()
 
-    # --- x별 비중 계산 ---
+    # --- numeric ---
     d[y] = pd.to_numeric(d[y], errors="coerce").fillna(0)
+
+    # --- share pct ---
     tot = d.groupby(x, dropna=False)[y].transform("sum").replace(0, np.nan)
     d["_share_pct"] = ((d[y] / tot) * 100).fillna(0)
 
-    # ✅ 핵심: customdata mismatch 방지
-    # - px가 color별로 trace를 쪼개므로, update_traces(customdata=np.stack(...))를 쓰면 어긋날 수 있음
-    # - 반드시 px.bar(custom_data=...)로 row 단위 매핑을 태워야 함
+    # --- 일별/주별 "추정" (여기만 믿지 말고 아래에서 검증) ---
+    x0 = str(d[x].astype(str).iloc[0]) if len(d) else ""
+    is_daily_guess = ("~" not in x0)  # ✅ 공백/nbsp/포맷 차이 무시하고 ~ 존재만 체크
+
+    x_plot = x
+    use_datetime_x = False
+
+    if is_daily_guess:
+        # 일별로 그려보되, NaT 비율이 높으면 즉시 fallback
+        x_dt = pd.to_datetime(d[x], errors="coerce")
+        nat_ratio = float(x_dt.isna().mean()) if len(x_dt) else 1.0
+
+        if nat_ratio < 0.2:  # ✅ 80% 이상이 정상 datetime이면 "진짜 일별"로 확정
+            d["_x_dt"] = x_dt
+            x_plot = "_x_dt"
+            use_datetime_x = True
+        else:
+            # ✅ 주별 라벨/문자축 fallback (빈 그래프 방지)
+            d[x] = d[x].astype(str)
+
+    else:
+        # 주별은 무조건 라벨축(문자)
+        d[x] = d[x].astype(str)
+
     fig = px.bar(
         d,
-        x=x,
+        x=x_plot,
         y=y,
         color=color,
         barmode="relative",
@@ -218,11 +332,13 @@ def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int
         title=title,
         custom_data=[color, "_share_pct", y],
     )
-    
-    # ✅ 누적막대 강제 (배포에서 group으로 갈리는 현상 방지)
+
+    # ✅ 누적막대 강제
     fig.update_layout(barmode="relative")
     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
 
+
+    # hover
     if show_value_in_hover:
         fig.update_traces(
             hovertemplate="%{customdata[0]}<br>비중: %{customdata[1]:.1f}%<br>값: %{customdata[2]:,.0f}<extra></extra>"
@@ -232,17 +348,19 @@ def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int
             hovertemplate="%{customdata[0]}<br>비중: %{customdata[1]:.1f}%<extra></extra>"
         )
 
-    # ✅ [CHANGED] 일별/주별 판단을 dtype가 아니라 " ~ " 여부로 통일 (render_line_graph와 동일)
-    try:
-        x0 = d[x].astype(str).iloc[0] if len(d) else ""
-    except Exception:
-        x0 = ""
+    # ✅ 주말 음영은 "진짜 일별(datetime 축)"일 때만
+    if use_datetime_x:
+        fig.update_xaxes(type="date", tickformat="%m월 %d일")
+        x_vals = d["_x_dt"].dropna()
+        if len(x_vals) > 0:
+            try:
+                add_weekend_shading(fig, x_vals)
+            except Exception:
+                pass
+    else:
+        # 라벨축일 때는 카테고리로 고정(Plotly가 임의 정렬하지 않게)
+        fig.update_xaxes(type="category")
 
-    if " ~ " not in str(x0):  # 일별(YYYY-MM-DD)만 shading + 00월 00일 포맷
-        add_weekend_shading(fig, d[x])
-        fig.update_xaxes(tickformat="%m월 %d일")
-
-    # 레이아웃 통일
     fig.update_layout(
         height=height,
         xaxis_title=None,
@@ -254,12 +372,13 @@ def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int
             xanchor="right",
             yanchor="bottom",
         ),
-        legend_title_text="",      # ✅ 범례 제목 제거
+        legend_title_text="",
         bargap=0.5,
         bargroupgap=0.1,
     )
 
     st.plotly_chart(fig, use_container_width=True, key=key)
+
 
 
 
