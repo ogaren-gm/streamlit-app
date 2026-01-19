@@ -52,7 +52,8 @@ class BigQuery():
         self.tb_sleeper_product        = json_data[self.projectCode]['tb_sleeper_product']
         self.tb_media                  = json_data[self.projectCode]['tb_media']
         self.tb_sleeper_product_report = json_data[self.projectCode]['tb_sleeper_product_report']
-        self.tb_sleeper_sessionCMP = json_data[self.projectCode]['tb_sleeper_sessionCMP']
+        self.tb_sleeper_sessionCMP     = json_data[self.projectCode]['tb_sleeper_sessionCMP']
+        self.geo_city_kr_raw           = json_data[self.projectCode]['geo_city_kr_raw']
 
 
         try:
@@ -156,10 +157,14 @@ class BigQuery():
         )
 
         df = rows.to_dataframe(create_bqstorage_client=self._bqstorage)
-        df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d")
-        start = datetime.now().date() - pd.Timedelta(days=self.startDate)
-        end   = datetime.now().date() - pd.Timedelta(days=self.endDate)
-        df = df[(df["event_date"].dt.date >= start) & (df["event_date"].dt.date <= end)]
+        
+        # df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d")
+
+        if "event_date" in df.columns:
+            df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d", errors="coerce")
+            start = datetime.now().date() - pd.Timedelta(days=self.startDate)
+            end   = datetime.now().date() - pd.Timedelta(days=self.endDate)
+            df = df[(df["event_date"].dt.date >= start) & (df["event_date"].dt.date <= end)]
         
         
         # df_bigquery 전처리 (mask_invalid_domains)

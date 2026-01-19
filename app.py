@@ -49,7 +49,7 @@ view03_name = "퍼포먼스 대시보드"
 view04_name = "언드·PPL 대시보드"
 view05_name = "키워드 대시보드"
 view06_name = "GA 트래픽 대시보드"
-view07_name = "GA PDP 대시보드"
+view07_name = "PDP조회 대시보드"
 view08_name = "GA CMP 대시보드"
 
 
