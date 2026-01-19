@@ -213,7 +213,7 @@ def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int
         x=x,
         y=y,
         color=color,
-        barmode="stack",
+        barmode="relative",
         opacity=opacity,
         title=title,
         custom_data=[color, "_share_pct", y],
