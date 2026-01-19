@@ -218,6 +218,10 @@ def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int
         title=title,
         custom_data=[color, "_share_pct", y],
     )
+    
+    # ✅ 누적막대 강제 (배포에서 group으로 갈리는 현상 방지)
+    fig.update_layout(barmode="relative")
+    fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
 
     if show_value_in_hover:
         fig.update_traces(
