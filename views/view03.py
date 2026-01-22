@@ -7,6 +7,7 @@ import importlib
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import sys
+import plotly.express as px
 
 import modules.bigquery
 importlib.reload(modules.bigquery)
@@ -36,6 +37,8 @@ CFG = {
     "TOPK_CAT_OPTS": [5, 7, 10, 15, 20],
     "PATH_DIM_OPTS": ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"],
     "PATH_DIM_DEFAULT_IDX": 0,
+    "SIZE_LABEL" : ["MS","S","SS","Q","K","LK","EK","S/SS","D/Q","Q/K","D/Q/K"],
+    "SIZE_LABEL_MATCH" : {"01":"MS","02":"S","03":"SS","04":"Q","05":"K","06":"LK","07":"EK","31":"S/SS","32":"D/Q","33":"Q/K","34":"D/Q/K"},
     "CSS_BLOCK_CONTAINER": """
         <style>
             .block-container {
@@ -87,12 +90,12 @@ def main():
     @st.cache_data(ttl=CFG["CACHE_TTL"])
     def load_data(cs: str, ce: str) -> tuple[pd.DataFrame, str | datetime]:
         bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
-        df = bq.get_data("tb_sleeper_e_pdp")
+        df = bq.get_data("tb_sleeper_e_cart")
         last_updated_time = df["event_date"].max()
 
         df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d", errors="coerce")
         if "event_name" in df.columns:
-            df = df[df["event_name"] == "view_item"].copy()
+            df = df[df["event_name"] == "add_to_cart"].copy()
 
         def _safe_str_col(colname: str) -> pd.Series:
             if colname in df.columns:
@@ -117,7 +120,7 @@ def main():
     # ──────────────────────────────────
     # D) Header
     # ──────────────────────────────────
-    st.subheader("PDP조회 대시보드")
+    st.subheader("장바구니 대시보드")
 
     if "refresh" in st.query_params:
         st.cache_data.clear()
@@ -129,7 +132,7 @@ def main():
         st.markdown(
             """
             <div style="font-size:14px; line-height:1.5;">
-            GA 기준 <b>PDP 조회</b> 추이와 유입경로를
+            GA 기준 <b>장바구니 담기</b> 추이와 유입경로를
             <b>브랜드·품목·제품</b> 단위로 확인할 수 있는 대시보드 입니다.<br>
             </div>
             <div style="color:#6c757d; font-size:14px; line-height:2.0;">
@@ -191,17 +194,17 @@ def main():
     st.divider()
 
     # ──────────────────────────────────
-    # 1) PDP조회 추이
+    # 1) 장바구니 추이
     # ──────────────────────────────────
     st.markdown(" ")
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>PDP조회 </span>추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤPDP 조회의 증감 추이를 확인합니다.")
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>장바구니 </span>추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ장바구니 담기의 증감 추이를 확인합니다.")
 
     with st.popover("🤔 유저 VS 세션 VS 이벤트 차이점"):
         st.markdown("""
                     - **유저수** (user_pseudo_id) : 고유 사람수  
                     - **세션수** (pseudo_session_id) : 방문 단위수  
-                    - **이벤트수** (view_item) : 방문 안에서 발생한 이벤트 총 횟수  
+                    - **이벤트수** (add_to_cart) : 방문 안에서 발생한 이벤트 총 횟수  
                     - 사람 A가 1월 1일 오전에 시그니처를 조회 후 이탈, 오후에 시그니처와 허쉬를 재조회했다면,  
                       1월 1일의 **유저수**는 1, **세션수**는 2, **이벤트수**는 3 입니다.
                     - 유저수 ≤ 세션수 ≤ 이벤트수 입니다.
@@ -212,7 +215,7 @@ def main():
         with r0_1:
             mode_all = st.radio("기간 단위", ["일별", "주별"], horizontal=True, key="mode_all")
         with r0_2:
-            metric_map = {"유저수": "view_item_users", "세션수": "view_item_sessions", "이벤트수": "view_item_events"}
+            metric_map = {"유저수": "add_to_cart_users", "세션수": "add_to_cart_sessions", "이벤트수": "add_to_cart_events"}
             sel_metrics = st.pills(
                 "집계 단위",
                 list(metric_map.keys()),
@@ -223,9 +226,9 @@ def main():
 
     base = ui.add_period_columns(df, "event_date", mode_all)
 
-    users = base.groupby("_period", dropna=False)["user_pseudo_id"].nunique().reset_index(name="view_item_users")
-    sessions = base.groupby("_period", dropna=False)["pseudo_session_id"].nunique().reset_index(name="view_item_sessions")
-    events = base.groupby("_period", dropna=False).size().reset_index(name="view_item_events")
+    users = base.groupby("_period", dropna=False)["user_pseudo_id"].nunique().reset_index(name="add_to_cart_users")
+    sessions = base.groupby("_period", dropna=False)["pseudo_session_id"].nunique().reset_index(name="add_to_cart_sessions")
+    events = base.groupby("_period", dropna=False).size().reset_index(name="add_to_cart_events")
     period_dt = base.groupby("_period", dropna=False)["_period_dt"].min().reset_index(name="_period_dt")
 
     df_all = (
@@ -238,15 +241,15 @@ def main():
     )
 
     # 파생지표
-    df_all["sessions_per_user"] = (df_all["view_item_sessions"] / df_all["view_item_users"]).replace([np.inf, -np.inf], np.nan)   # 유저당 세션수 (Sessions per User)
-    df_all["events_per_session"] = (df_all["view_item_events"] / df_all["view_item_sessions"]).replace([np.inf, -np.inf], np.nan) # 세션당 이벤트수 (Events per Session)
+    df_all["sessions_per_user"] = (df_all["add_to_cart_sessions"] / df_all["add_to_cart_users"]).replace([np.inf, -np.inf], np.nan)   # 유저당 세션수 (Sessions per User)
+    df_all["events_per_session"] = (df_all["add_to_cart_events"] / df_all["add_to_cart_sessions"]).replace([np.inf, -np.inf], np.nan) # 세션당 이벤트수 (Events per Session)
 
 
     # ✅ 그래프 범례명 한글로 고정
     plot_rename = {
-        "view_item_users": "유저수",
-        "view_item_sessions": "세션수",
-        "view_item_events": "이벤트수",
+        "add_to_cart_users": "유저수",
+        "add_to_cart_sessions": "세션수",
+        "add_to_cart_events": "이벤트수",
     }
     df_plot = df_all.rename(columns=plot_rename).copy()
 
@@ -261,9 +264,9 @@ def main():
 
     # ✅ (표) 이 부분은 “지표 고정 순서 + 표시 포맷”이라 공통화 대상 아님 → 그대로 유지
     rows = [
-        ("유저수", "view_item_users", "int"),
-        ("세션수", "view_item_sessions", "int"),
-        ("이벤트수", "view_item_events", "int"),
+        ("유저수", "add_to_cart_users", "int"),
+        ("세션수", "add_to_cart_sessions", "int"),
+        ("이벤트수", "add_to_cart_events", "int"),
         ("SPU (세션수/유저수)", "sessions_per_user", "float2"),
         ("EPS (이벤트수/세션수)", "events_per_session", "float2"),
     ]
@@ -296,11 +299,11 @@ def main():
     st.dataframe(pv, row_height=30, hide_index=True, use_container_width=True)
 
     # ──────────────────────────────────
-    # 2) PDP조회 유입
+    # 2) 장바구니 유입
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>PDP조회 </span>유입</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤPDP 조회가 발생한 세션의 유입경로를 확인합니다.")
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>장바구니 </span>유입</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ장바구니 담기가 발생한 세션의 유입경로를 확인합니다.")
 
     with st.expander("Filter", expanded=True):
         r1, r2, r3 = st.columns([3, 3, 3], vertical_alignment="bottom")
@@ -343,11 +346,11 @@ def main():
     ui.render_table(pv2, index_col="유입경로", decimals=0)
 
     # ──────────────────────────────────
-    # 3) 품목별 PDP조회 추이
+    # 3) 품목별 장바구니 추이
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>품목별 </span>추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ품목별로 PDP 조회의 증감 추이를 확인합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ품목별로 장바구니 담기의 증감 추이를 확인합니다.")
 
     with st.popover("🤔 품목 뎁스 설명"):
         st.markdown("""
@@ -501,7 +504,7 @@ def main():
         baseP = baseP[baseP["product_cat_a"].isin(sel_a)].copy()
 
         for brand in sel_a:
-            st.markdown(f"###### {brand}")
+            st.markdown(f"<h6 style='margin:0'>{brand}</h6>", unsafe_allow_html=True)
 
             tb = baseP[baseP["product_cat_a"] == brand].copy()
             if tb.empty:
@@ -571,7 +574,6 @@ def main():
 
             pv3 = ui.build_pivot_table(agg, index_col="구분", col_col="기간", val_col="sessions")
             ui.render_table(pv3, index_col="구분", decimals=0)
-            st.markdown(" ")
 
     with tab2:
         with st.expander("Filter", expanded=True):
@@ -585,7 +587,7 @@ def main():
             (baseX["product_cat_c"].isin(["원목", "패브릭", "호텔침대"]))
         ].copy()
 
-        st.markdown("###### 슬립퍼")
+        st.markdown("<h6 style='margin:0'>슬립퍼</h6>", unsafe_allow_html=True)
         if tb.empty:
             st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
         else:
@@ -610,11 +612,11 @@ def main():
             ui.render_table(pv3b, index_col="구분", decimals=0)
 
     # ──────────────────────────────────
-    # 4) 품목별 PDP조회 유입
+    # 4) 품목별 장바구니 유입
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>품목별 </span>유입</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ품목별로 PDP 조회가 발생한 세션의 유입경로를 확인합니다.", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ품목별로 장바구니 담기가 발생한 세션의 유입경로를 확인합니다.", unsafe_allow_html=True)
 
     with st.expander("Filter", expanded=True):
         r1, r2, r3, r4 = st.columns([1.4, 2.6, 2.0, 2.0], vertical_alignment="bottom")
@@ -748,8 +750,7 @@ def main():
         return
 
     for brand in sel_a_pp:
-        st.markdown(f"###### {brand}")
-
+        st.markdown(f"<h6 style='margin:0'>{brand}</h6>", unsafe_allow_html=True)
         df_b = df[df["product_cat_a"] == brand].copy()
         if df_b.empty:
             st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
@@ -817,8 +818,250 @@ def main():
 
         pv4 = ui.build_pivot_table(agg_path_brand, index_col="유입경로", col_col="기간", val_col="sessions")
         ui.render_table(pv4, index_col="유입경로", decimals=0)
+        
+
+    # ──────────────────────────────────
+    # 5) 장바구니 구성 분포
+    # ──────────────────────────────────
+    st.header(" ")
+    st.markdown("<h5 style='margin:0'>장바구니 옵션 분석 </h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ옵션 포함 기준의 담김 금액(가격대)·사이즈·옵션 조합의 비중을 확인합니다.", unsafe_allow_html=True)
+
+    # 해당 영역 전용 일회용 함수 
+    def make_price_bucket(s: pd.Series, step: int = 500_000) -> tuple[list[int], list[str]]:
+        v_max  = float(s.max() if not s.empty else 0)
+        v_edge = max(step, (int(v_max // step) + 1) * step)
+
+        bins = list(range(0, int(v_edge) + step, step))
+        if len(bins) < 2:
+            bins = [0, step]
+
+        labels = [
+            f"{bins[i] / 1_000_000:.1f}M ~ {bins[i + 1] / 1_000_000:.1f}M"
+            for i in range(len(bins) - 1)
+        ]
+        return bins, labels
+
+    def build_match_mask(s: pd.Series, q: str):
+        q = (q or "").strip()
+        if not q:
+            return pd.Series(False, index=s.index), "미입력"
+
+        if "&" in q:
+            parts = [p.strip() for p in q.split("&") if p.strip()]
+            m = pd.Series(True, index=s.index)
+            for p in parts:
+                m &= s.str.contains(p, regex=False, na=False)
+            return m, "AND"
+
+        if "|" in q:
+            try:
+                return s.str.contains(q, regex=True, na=False), "OR"
+            except Exception:
+                parts = [p.strip() for p in q.split("|") if p.strip()]
+                m = pd.Series(False, index=s.index)
+                for p in parts:
+                    m |= s.str.contains(p, regex=False, na=False)
+                return m, "OR"
+
+        return s.str.contains(q, regex=False, na=False), "부분일치"
+    
+    # 컬럼 전처리 
+    df["item_value_total"]    = pd.to_numeric(df.get("item_value_total"), errors="coerce").fillna(0)                                           # 숫자형 변환(결측=0)
+    df["items__item_variant"] = df.get("items__item_variant", "").astype(str).replace("nan","").fillna("").str.strip().replace("", "정보없음")  # 문자열 정리(빈값→정보없음)
+    df["variant_size_code"]   = df.get("variant_size_code", None)                                                                              # 코드 컬럼 유지(없으면 NaN)
+    v_bins, v_lbl = make_price_bucket(df["item_value_total"])
+    df["price_bucket"] = pd.cut(df["item_value_total"], bins=v_bins, labels=v_lbl, right=False, include_lowest=True).astype(str).replace("nan", v_lbl[0])
+
+    # 전체 필터 
+    with st.expander("Filter", expanded=True):      
+        prod_opts = ["전체"] + sorted(df["product_name"].dropna().astype(str).unique().tolist())
+        sel_prod = st.selectbox("제품 선택", prod_opts, index=0, key="dist__product")
+
+    df_f = df if sel_prod == "전체" else df[df["product_name"] == sel_prod]
+
+
+    if df_f.empty:
+        st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+    
+    else:
+        # ──────────────────────────────────
+        # 5-1) 가격대 분포도
+        # ──────────────────────────────────
         st.markdown(" ")
+        st.markdown("<h6 style='margin:0'>가격대 분포도</h6>", unsafe_allow_html=True)
+
+        # 데이터프레임 생성 (차트)
+        df_bucket = (
+            df_f.groupby("price_bucket", dropna=False).size()
+                .reindex(v_lbl, fill_value=0)  # 라벨 순서 고정
+                .reset_index(name="이벤트수")
+                .rename(columns={"price_bucket": "가격대"})
+        )
+        total_cnt = int(df_bucket["이벤트수"].sum())
+        df_bucket["비중"] = (df_bucket["이벤트수"] / max(1, total_cnt)).fillna(0)
+
+        # 데이터프레임 생성 (표)
+        rep_prod = (
+            df_f.groupby(["price_bucket", "product_name"], dropna=False).size()
+                .reset_index(name="이벤트수")
+                .sort_values(["price_bucket", "이벤트수", "product_name"], ascending=[True, False, True])
+                .drop_duplicates(subset=["price_bucket"], keep="first")
+                .rename(columns={
+                    "price_bucket": "가격대",
+                    "product_name": "대표 제품"
+                })[["가격대", "대표 제품"]]
+        )
+
+        df_bucket_tbl = df_bucket.merge(rep_prod, on="가격대", how="left")
+        df_bucket_tbl["대표 제품"] = df_bucket_tbl["대표 제품"].fillna("정보없음")
+        
+        cL, _p, cR = st.columns([6, 0.2, 4], vertical_alignment="top")
+        with cL:
+            fig_price = px.bar(df_bucket, x="가격대", y="이벤트수", hover_data={"비중": ":.1%"} )
+            fig_price.update_traces(opacity=0.60)
+            fig_price.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=40))
+            st.plotly_chart(fig_price, use_container_width=True)
+        with _p:
+            pass
+        with cR:
+            df_bucket_tbl["비중"] = (df_bucket_tbl["비중"] * 100).round(1).astype(str) + "%"
+            st.dataframe(df_bucket_tbl[["가격대", "이벤트수", "비중", "대표 제품"]], hide_index=True, row_height=30, use_container_width=True, height=320)
+
+
+        # ──────────────────────────────────
+        # 5-2) 사이즈 분포도
+        # ──────────────────────────────────
+        st.markdown(" ")
+        st.markdown("<h6 style='margin:0'>사이즈 분포도</h6>", unsafe_allow_html=True)
+
+        df_sz = df_f.assign(_vs=df_f["variant_size_code"].astype(str).str.strip().str.zfill(2).map(CFG["SIZE_LABEL_MATCH"])).loc[lambda x: x["_vs"].isin(CFG["SIZE_LABEL"])]
+
+        df_size = (
+            df_sz.groupby("_vs", dropna=False).size()
+                .reindex(CFG["SIZE_LABEL"], fill_value=0)
+                .reset_index(name="이벤트수")
+                .rename(columns={"_vs": "사이즈"})
+        )
+        size_total = int(df_size["이벤트수"].sum())
+        df_size["비중"] = (df_size["이벤트수"] / max(1, size_total)).fillna(0)
+
+        rep_size = (
+            df_sz.groupby(["_vs", "product_name"], dropna=False).size()
+                .reset_index(name="이벤트수")
+                .sort_values(["_vs", "이벤트수", "product_name"], ascending=[True, False, True])
+                .drop_duplicates(subset=["_vs"], keep="first")
+                .rename(columns={"_vs": "사이즈", "product_name": "대표 제품"})[["사이즈", "대표 제품"]]
+        )
+
+        df_size_tbl = df_size.merge(rep_size, on="사이즈", how="left")
+        df_size_tbl["대표 제품"] = df_size_tbl["대표 제품"].fillna("정보없음")
+        
+        cL, _p, cR = st.columns([6, 0.2, 4], vertical_alignment="top")
+        with cL:
+            fig_size = px.bar(df_size, x="사이즈", y="이벤트수", hover_data={"비중": ":.1%"} )
+            fig_size.update_traces(opacity=0.60)
+            fig_size.update_xaxes(type="category", categoryorder="array", categoryarray=CFG["SIZE_LABEL"], tickmode="array", tickvals=CFG["SIZE_LABEL"])
+            fig_size.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=40))
+            st.plotly_chart(fig_size, use_container_width=True)
+        with _p:
+            pass
+        with cR:
+            df_size_tbl["비중"] = (df_size_tbl["비중"] * 100).round(1).astype(str) + "%"
+            st.dataframe(df_size_tbl[["사이즈", "이벤트수", "비중", "대표 제품"]], hide_index=True, row_height=30, use_container_width=True, height=320)
+
+
+        # ──────────────────────────────────
+        # 5-3) 옵션조합 분포도 (동적 비교)
+        # ──────────────────────────────────
+        st.markdown(" ")
+        st.markdown("<h6 style='margin:0'>옵션조합 분포도</h6>", unsafe_allow_html=True)
+
+        if "var_blocks" not in st.session_state: st.session_state["var_blocks"] = 1
+        if "var_limit_hit" not in st.session_state: st.session_state["var_limit_hit"] = False
+
+
+        hL, hR = st.columns([6,0.4], vertical_alignment="center")
+
+        with hL:
+            with st.popover("🤔 옵션조합 검색 방법"):
+                st.markdown("""
+            - **단일 입력**  
+            입력한 단어를 *포함하는* 옵션을 찾습니다.  
+            예) `익스클루시브`
+
+            - **OR (`|`)**  
+            입력한 여러 단어 중 *하나라도 포함하는* 옵션을 찾습니다.  
+            예) `프라임|프레스티지` : 프라임 또는 프레스를 구매하는 비중이 궁금해  
+
+            - **AND (`&`)**  
+            입력한 *모든 단어가 포함되는* 옵션을 찾습니다.   
+            예) `익스클루시브&토퍼` : 익스클을 토퍼와 함께 구매하는 비중이 궁금해  
+            """)
+
+        with hR:
+            cA, cR= st.columns([1,1], gap="small")
+            with cA:
+                if st.button("＋", key="var_add"):
+                    if st.session_state["var_blocks"] < 4: st.session_state["var_blocks"] += 1
+                    else: st.session_state["var_limit_hit"] = True
+            with cR:
+                if st.button("↺", key="var_reset"):
+                    st.session_state["var_blocks"] = 1
+                    st.session_state["var_limit_hit"] = False
+
+
+        HOLE, RED, GRAY = 0.58, "#FF4B4B", "#E5E7EB"
+        s_all = df_f["items__item_variant"].astype(str)
+        n_all = int(len(df_f))
+
+        def _build_match_mask(s: pd.Series, q: str):
+            q = (q or "").strip()
+            if not q: return pd.Series(False, index=s.index), "미입력"
+            if "&" in q:
+                parts = [p.strip() for p in q.split("&") if p.strip()]
+                m = pd.Series(True, index=s.index)
+                for p in parts: m &= s.str.contains(p, regex=False, na=False)
+                return m, "AND"
+            if "|" in q:
+                try: return s.str.contains(q, regex=True, na=False), "OR"
+                except Exception:
+                    parts = [p.strip() for p in q.split("|") if p.strip()]
+                    m = pd.Series(False, index=s.index)
+                    for p in parts: m |= s.str.contains(p, regex=False, na=False)
+                    return m, "OR"
+            return s.str.contains(q, regex=False, na=False), "부분일치"
+
+        for i in range(1, st.session_state["var_blocks"] + 1):
+            q = st.text_input(f"검색 {i}", value="", placeholder="[🤔 옵션조합 검색 방법] 을 참고하여, 텍스트나 조건식을 입력하세요.", key=f"var_q_{i}").strip()
+            m, _mode = _build_match_mask(s_all, q)
+            n_match, n_other = int(m.sum()), int(n_all - int(m.sum()))
+            df_pie = pd.DataFrame({"구분": ["검색어 매칭", "비매칭"], "이벤트수": [n_match, n_other]}) if q else pd.DataFrame({"구분": ["검색어 미입력"], "이벤트수": [1]})
+
+            fig_pie = px.pie(df_pie, names="구분", values="이벤트수", hole=HOLE)
+            fig_pie.update_traces(sort=False, direction="clockwise", rotation=0, marker=dict(colors=([RED, GRAY] if q else [GRAY])), hovertemplate="%{label}<br>%{value:,} (%{percent:.1%})<extra></extra>", textinfo=("none" if not q else "percent"))
+            fig_pie.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
+
+            cL, cR = st.columns([3, 7], vertical_alignment="top")
+            with cL:
+                st.plotly_chart(fig_pie, use_container_width=True, key=f"var_pie_{i}")
+            with cR:
+                if q:
+                    df_tbl = (df_f.loc[m].groupby("items__item_variant", dropna=False).size().reset_index(name="이벤트수").rename(columns={"items__item_variant": "옵션조합"}).sort_values(["이벤트수", "옵션조합"], ascending=[False, True]).reset_index(drop=True))
+                    tot = int(df_tbl["이벤트수"].sum())
+                    df_tbl["비중 (검색결과내)"] = (df_tbl["이벤트수"] / max(1, tot) * 100).round(1).astype(str) + "%"
+                    st.dataframe(df_tbl[["옵션조합", "이벤트수", "비중 (검색결과내)"]], hide_index=True, row_height=30, use_container_width=True, height=320)
+                else:
+                    df_tbl = (df_f.groupby("items__item_variant", dropna=False).size().reset_index(name="이벤트수").rename(columns={"items__item_variant": "옵션조합"}).sort_values(["이벤트수", "옵션조합"], ascending=[False, True]).reset_index(drop=True))
+                    tot = int(df_tbl["이벤트수"].sum())
+                    df_tbl["비중"] = (df_tbl["이벤트수"] / max(1, tot) * 100).round(1).astype(str) + "%"
+                    st.dataframe(df_tbl[["옵션조합", "이벤트수", "비중"]], hide_index=True, row_height=30, use_container_width=True, height=320)
+            
+            st.markdown(" ")
+            if i == 4 and st.session_state.get("var_limit_hit"):
+                st.warning("옵션조합 비교는 최대 4개까지 가능합니다."); st.session_state["var_limit_hit"] = False
 
 
 if __name__ == "__main__":
     main()
+

@@ -96,8 +96,8 @@ EVENTS_META = [
 
 EVENT_GROUPS = {
     "🔍 제품탐색": ["view_item", "product_page_scroll_50"],
-    "❤️ 관심표현": ["product_option_price", "find_nearby_showroom", "showroom_10s"],
-    "🛒 전환의도": ["add_to_cart", "showroom_leads"],
+    "💓 관심표현": ["product_option_price", "find_nearby_showroom", "showroom_10s"],
+    "🧺 전환의도": ["add_to_cart", "showroom_leads"],
 }
 
 
@@ -236,7 +236,7 @@ def main():
     # ──────────────────────────────────
     # D) Header
     # ──────────────────────────────────
-    st.subheader("트래픽 대시보드 V2")
+    st.subheader("트래픽 대시보드")
 
     if "refresh" in st.query_params:
         st.cache_data.clear()
@@ -656,9 +656,9 @@ def main():
     with col_a:
         ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["🔍 제품탐색"]), title="🔍 제품탐색")
     with col_b:
-        ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["❤️ 관심표현"]), title="❤️ 관심표현")
+        ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["💓 관심표현"]), title="💓 관심표현")
     with col_c:
-        ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["🛒 전환의도"]), title="🛒 전환의도")
+        ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["🧺 전환의도"]), title="🧺 전환의도")
 
     # long3 = metrics.melt(id_vars=["기간"], var_name="지표", value_name="값")
     long3 = metrics.drop(columns=["_period_dt"], errors="ignore").melt(id_vars=["기간"], var_name="지표", value_name="값")

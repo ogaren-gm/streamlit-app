@@ -20,12 +20,13 @@ DEV_MODE = os.getenv("DEV_MODE", "0") == "1"   # 운영: 0 / 개발: 1
 # - lazy import + (optional) reload
 # ---------------------------------------------------------------
 VIEWS = {
-    "🚀 트래픽 대시보드": ("views.view01", "main"),
-    "🚀 PDP조회 대시보드": ("views.view02", "main"),
-    "🔎 키워드 대시보드": ("views.view21", "main"),
-    "🔎 언드·PPL 대시보드": ("views.view22", "main"),
-    "🎯 매출 종합 대시보드": ("views.view31", "main"),
-    "🎯 퍼포먼스 대시보드": ("views.view32", "main"),
+    "🚀 트래픽 대시보드"   : ("views.view01", "main"),
+    "🔍 PDP조회 대시보드"  : ("views.view02", "main"),
+    "🧺 장바구니 대시보드"  : ("views.view03", "main"),
+    "키워드 대시보드"   : ("views.view21", "main"),
+    "언드·PPL 대시보드" : ("views.view22", "main"),
+    "매출 종합 대시보드" : ("views.view31", "main"),
+    "퍼포먼스 대시보드"  : ("views.view32", "main"),
 }
 
 

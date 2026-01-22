@@ -182,90 +182,6 @@ def render_line_graph(df: pd.DataFrame, x: str, y: list[str] | str, height: int 
     st.plotly_chart(fig, use_container_width=True)
 
 
-# def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int = 360, opacity: float = 0.6, title: str | None = None, show_value_in_hover: bool = False, key: str | None = None) -> None:
-#     """
-#     기간 추이를 누적 막대그래프로 시각화하는 공통 렌더 함수.
-
-#     기능
-#     - px.bar(stacked) 기반 누적 막대 그래프 생성
-#     - x별 비중(%) 계산 후 hover에 표시
-#     - (옵션) hover에 원값(value) 함께 표시 가능
-#     - 주말(토·일) 구간 음영 자동 표시 (일별일 때만)
-#     - 범례 상단 고정
-#     - x축 날짜 포맷 '%m월 %d일' 적용 (일별일 때만)
-#     """
-#     if df is None or df.empty:
-#         st.info("표시할 데이터가 없습니다.")
-#         return
-
-#     d = df.copy()
-
-#     # --- x별 비중 계산 ---
-#     d[y] = pd.to_numeric(d[y], errors="coerce").fillna(0)
-#     tot = d.groupby(x, dropna=False)[y].transform("sum").replace(0, np.nan)
-#     d["_share_pct"] = ((d[y] / tot) * 100).fillna(0)
-
-#     # ✅ 일별/주별 판단 (라벨에 " ~ " 포함 여부)
-#     try:
-#         x0 = d[x].astype(str).iloc[0] if len(d) else ""
-#     except Exception:
-#         x0 = ""
-#     is_daily = (" ~ " not in str(x0))
-
-#     # ✅ 일별이면 datetime 축으로 강제 (주말 shading용)
-#     x_plot = x
-#     if is_daily:
-#         d["_x_dt"] = pd.to_datetime(d[x], errors="coerce")
-#         x_plot = "_x_dt"
-
-#     fig = px.bar(
-#         d,
-#         x=x_plot,
-#         y=y,
-#         color=color,
-#         barmode="relative",
-#         opacity=opacity,
-#         title=title,
-#         custom_data=[color, "_share_pct", y],
-#     )
-
-#     # ✅ 누적막대 강제 (배포에서 group으로 갈리는 현상 방지)
-#     fig.update_layout(barmode="relative")
-#     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-
-#     # hover (비중 + (옵션) 값)
-#     if show_value_in_hover:
-#         fig.update_traces(
-#             hovertemplate="%{customdata[0]}<br>비중: %{customdata[1]:.1f}%<br>값: %{customdata[2]:,.0f}<extra></extra>"
-#         )
-#     else:
-#         fig.update_traces(
-#             hovertemplate="%{customdata[0]}<br>비중: %{customdata[1]:.1f}%<extra></extra>"
-#         )
-
-#     # ✅ 주말 음영 + tickformat (일별일 때만)
-#     if is_daily:
-#         fig.update_xaxes(type="date", tickformat="%m월 %d일")
-#         add_weekend_shading(fig, d["_x_dt"])
-
-#     fig.update_layout(
-#         height=height,
-#         xaxis_title=None,
-#         yaxis_title=None,
-#         legend=dict(
-#             orientation="h",
-#             y=1.02,
-#             x=1,
-#             xanchor="right",
-#             yanchor="bottom",
-#         ),
-#         legend_title_text="",
-#         bargap=0.5,
-#         bargroupgap=0.1,
-#     )
-
-#     st.plotly_chart(fig, use_container_width=True, key=key)
-
 
 def render_stack_graph(
     df: pd.DataFrame,
@@ -322,6 +238,29 @@ def render_stack_graph(
         # 주별은 무조건 라벨축(문자)
         d[x] = d[x].astype(str)
 
+    # ✅ [ADD] 라벨축일 때 x(기간) 날짜순 정렬 강제 (Plotly 임의정렬/입력순서 섞임 방지)
+    # - 기존 기능(일별 datetime 축/주말 음영/fallback)은 그대로 두고,
+    #   "문자열 축"인 경우에만 카테고리 순서를 확정해 줌.
+    x_cat_order = None
+    if not use_datetime_x:
+        try:
+            x_vals = d[x_plot].astype(str)
+
+            # 주별 라벨(YYYY-MM-DD ~ YYYY-MM-DD) 우선
+            if x_vals.str.contains(r"\s*~\s*", regex=True).any():
+                x_cat_order = sort_period_labels(x_vals.dropna().unique().tolist())
+            # 일별 라벨(YYYY-MM-DD)면 문자열 정렬로 충분
+            elif x_vals.str.match(r"^\d{4}-\d{2}-\d{2}$", na=False).any():
+                x_cat_order = sorted(x_vals.dropna().unique().tolist())
+            else:
+                # 그 외는 원래 등장 순서 유지(중복 제거)
+                x_cat_order = list(dict.fromkeys(x_vals.dropna().tolist()))
+
+            d[x_plot] = pd.Categorical(x_vals, categories=x_cat_order, ordered=True)
+            d = d.sort_values(x_plot).reset_index(drop=True)
+        except Exception:
+            x_cat_order = None
+
     fig = px.bar(
         d,
         x=x_plot,
@@ -336,7 +275,6 @@ def render_stack_graph(
     # ✅ 누적막대 강제
     fig.update_layout(barmode="relative")
     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-
 
     # hover
     if show_value_in_hover:
@@ -360,6 +298,9 @@ def render_stack_graph(
     else:
         # 라벨축일 때는 카테고리로 고정(Plotly가 임의 정렬하지 않게)
         fig.update_xaxes(type="category")
+        # ✅ [ADD] 카테고리 순서도 명시적으로 고정(혹시 모를 내부 재정렬 방지)
+        if x_cat_order:
+            fig.update_xaxes(categoryorder="array", categoryarray=x_cat_order)
 
     fig.update_layout(
         height=height,

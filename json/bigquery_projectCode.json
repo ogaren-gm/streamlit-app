@@ -4,9 +4,9 @@
         "credentialPath" : "json/sleeper-462701-admin.json",
         "tb_sleeper_flatten" : "tb_sleeper.tb_sleeper_flatten",
         "tb_sleeper_psi" : "tb_sleeper.tb_sleeper_psi",
-        "tb_sleeper_product" : "tb_sleeper.tb_sleeper_product",
+        "tb_sleeper_e_pdp" : "tb_sleeper.tb_sleeper_e_pdp",
+        "tb_sleeper_e_cart" : "tb_sleeper.tb_sleeper_e_cart",
         "tb_media" : "tb_sleeper.tb_media",
-        "tb_sleeper_product_report" : "tb_sleeper.tb_sleeper_product_report",
         "tb_sleeper_sessionCMP" : "tb_sleeper.tb_sleeper_sessionCMP",
         "geo_city_kr_raw" : "tb_sleeper.geo_city_kr_raw"
     }
