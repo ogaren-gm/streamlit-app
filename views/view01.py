@@ -201,7 +201,7 @@ def main():
         bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
         df = bq.get_data("tb_sleeper_psi")
         last_updated_time = df["event_date"].max()
-        geo_map = bq.get_data("geo_city_kr_raw")
+        geo_map = bq.get_data("raw_geo_city_kr")
 
         df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d", errors="coerce")
 

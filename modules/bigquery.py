@@ -53,7 +53,7 @@ class BigQuery():
         self.tb_sleeper_e_cart        = json_data[self.projectCode]['tb_sleeper_e_cart']
         self.tb_media                 = json_data[self.projectCode]['tb_media']
         self.tb_sleeper_sessionCMP    = json_data[self.projectCode]['tb_sleeper_sessionCMP']
-        self.geo_city_kr_raw          = json_data[self.projectCode]['geo_city_kr_raw']
+        self.raw_geo_city_kr          = json_data[self.projectCode]['raw_geo_city_kr']
 
 
         try:
