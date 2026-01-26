@@ -224,9 +224,28 @@ def main():
         df["_isUserNew_y"] = (fv == 1).astype(int)
         df["_isUserNew_n"] = (fv == 0).astype(int)
 
-        # 접속권역 파생컬럼 - geo__city 기준 조인
-        df = df.merge(geo_map, on="geo__city", how="left", suffixes=("", "__geo"))
+        # 접속권역 파생컬럼
+        # (GEO - 1) geo 컬럼 안전 전처리
+        df["geo__city"]   = _safe_str_col("geo__city").replace("", "(not set)")
+        df["geo__region"] = _safe_str_col("geo__region").replace("", "(not set)")
+
+        # (GEO - 2) 1차: is_region=0 (city 단위)로 geo__city_kr 붙이기
+        geo_city = (
+            geo_map.loc[geo_map["is_region"].eq(0), ["geo__city", "geo__city_kr"]]
+            .drop_duplicates(subset=["geo__city"], keep="first")
+        )
+        df = df.merge(geo_city, on="geo__city", how="left")
         df["geo__city_kr"] = df["geo__city_kr"].fillna("기타")
+
+        # (GEO - 3) 2차: geo__city_kr == "기타" 인 것만, geo__region (is_region=1) 매핑으로 값이 있으면 교체
+        geo_region_map = (
+            geo_map.loc[geo_map["is_region"].eq(1), ["geo__city", "geo__city_kr"]]
+            .drop_duplicates(subset=["geo__city"], keep="first")
+            .set_index("geo__city")["geo__city_kr"]
+        )
+
+        m = df["geo__city_kr"].eq("기타")
+        df.loc[m, "geo__city_kr"] = df.loc[m, "geo__region"].map(geo_region_map).fillna("기타")
 
         return df, last_updated_time
 
@@ -520,6 +539,7 @@ def main():
     tab_geo_kr, tab_geo, tab_src, tab_mix, tab_dev = st.tabs(["접속권역", "접속지역", "유입매체", "매체X지역", "디바이스"])
 
     with tab_geo_kr:
+
         with st.expander("Filter", expanded=True):
             c1, c2, c3, _p = st.columns([1,1,1,2], vertical_alignment="bottom")
             with c1:
