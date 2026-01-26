@@ -142,40 +142,58 @@ def main():
         )
 
     with col2:
-        if isinstance(last_updated_time, str):
-            latest_dt = datetime.strptime(last_updated_time, "%Y%m%d")
-        else:
-            latest_dt = last_updated_time
-        latest_date = latest_dt.date() if hasattr(latest_dt, "date") else datetime.now().date()
+        # if isinstance(last_updated_time, str):
+        #     latest_dt = datetime.strptime(last_updated_time, "%Y%m%d")
+        # else:
+        #     latest_dt = last_updated_time
+        # latest_date = latest_dt.date() if hasattr(latest_dt, "date") else datetime.now().date()
 
-        now_kst = datetime.now(ZoneInfo(CFG["TZ"]))
-        today_kst = now_kst.date()
-        delta_days = (today_kst - latest_date).days
-        hm_ref = now_kst.hour * 100 + now_kst.minute
+        # now_kst = datetime.now(ZoneInfo(CFG["TZ"]))
+        # today_kst = now_kst.date()
+        # delta_days = (today_kst - latest_date).days
+        # hm_ref = now_kst.hour * 100 + now_kst.minute
 
-        msg = "집계 예정 (AM 08:50 / PM 15:35)"
-        sub_bg, sub_bd, sub_fg = "#f8fafc", "#e2e8f0", "#475569"
+        # msg = "집계 예정 (AM 08:50 / PM 15:35)"
+        # sub_bg, sub_bd, sub_fg = "#f8fafc", "#e2e8f0", "#475569"
 
-        if delta_days >= 2:
-            msg = "업데이트가 지연되고 있습니다"
-            sub_bg, sub_bd, sub_fg = "#fef2f2", "#fee2e2", "#b91c1c"
-        elif delta_days == 1:
-            if hm_ref >= CFG["HEADER_UPDATE_PM"]:
-                msg = "2차 업데이트 완료 (PM 15:35)"
-                sub_bg, sub_bd, sub_fg = "#fff7ed", "#fdba74", "#c2410c"
-            elif hm_ref >= CFG["HEADER_UPDATE_AM"]:
-                msg = "1차 업데이트 완료 (AM 08:50)"
+        # if delta_days >= 2:
+        #     msg = "업데이트가 지연되고 있습니다"
+        #     sub_bg, sub_bd, sub_fg = "#fef2f2", "#fee2e2", "#b91c1c"
+        # elif delta_days == 1:
+        #     if hm_ref >= CFG["HEADER_UPDATE_PM"]:
+        #         msg = "2차 업데이트 완료 (PM 15:35)"
+        #         sub_bg, sub_bd, sub_fg = "#fff7ed", "#fdba74", "#c2410c"
+        #     elif hm_ref >= CFG["HEADER_UPDATE_AM"]:
+        #         msg = "1차 업데이트 완료 (AM 08:50)"
+
+        # st.markdown(
+        #     f"""
+        #     <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
+        #     <span style="
+        #         display:inline-flex;align-items:center;justify-content:center;
+        #         height:26px;padding:0 8px;font-size:13px;line-height:1;
+        #         color:{sub_fg};background:{sub_bg};border:1px solid {sub_bd};
+        #         border-radius:10px;white-space:nowrap;">
+        #         🔔 {msg}
+        #     </span>
+        #     <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
+        #         <span style="
+        #         display:inline-flex;align-items:center;justify-content:center;
+        #         height:26px;padding:0 8px;font-size:13px;line-height:1;
+        #         color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
+        #         border-radius:10px;white-space:nowrap;">
+        #         🗑️ 캐시 초기화
+        #         </span>
+        #     </a>
+        #     </div>
+        #     """,
+        #     unsafe_allow_html=True
+        # )
+
 
         st.markdown(
             f"""
             <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
-            <span style="
-                display:inline-flex;align-items:center;justify-content:center;
-                height:26px;padding:0 8px;font-size:13px;line-height:1;
-                color:{sub_fg};background:{sub_bg};border:1px solid {sub_bd};
-                border-radius:10px;white-space:nowrap;">
-                🔔 {msg}
-            </span>
             <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
                 <span style="
                 display:inline-flex;align-items:center;justify-content:center;
