@@ -74,7 +74,7 @@ def main():
         max_value=default_end
     )
     cs = start_date.strftime("%Y%m%d")
-    ce_exclusive = (end_date + timedelta(days=1)).strftime("%Y%m%d")
+    ce = (end_date + timedelta(days=1)).strftime("%Y%m%d")
 
     # ──────────────────────────────────
     # C) Data Load
@@ -89,7 +89,10 @@ def main():
         df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d", errors="coerce")
         if "event_name" in df.columns:
             df = df[df["event_name"] == "view_item"]
-
+                    
+        # ✅ 선택기간으로 강제 필터 (ce는 exclusive)
+        df = df[(df["event_date"] >= pd.to_datetime(cs)) & (df["event_date"] < pd.to_datetime(ce))]
+        
         def _safe_str_col(colname: str) -> pd.Series:
             if colname in df.columns:
                 s = df[colname]
@@ -111,7 +114,7 @@ def main():
         return df, last_updated_time
 
     with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df, last_updated_time = load_data(cs, ce_exclusive)
+        df, last_updated_time = load_data(cs, ce)
 
     # ──────────────────────────────────
     # D) Header

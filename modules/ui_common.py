@@ -12,84 +12,62 @@ from modules.style import style_format
 # ──────────────────────────────────
 def add_period_columns(df: pd.DataFrame, date_col: str, mode: str) -> pd.DataFrame:
     """
-    날짜 컬럼을 기준으로 분석용 기간 컬럼을 생성하는 공통 유틸 함수.
-
-    기능:
-    - date_col을 datetime으로 안전하게 변환 (yyyymmdd, yyyy-mm-dd 형식 모두 처리)
-    - 일별 / 주별 기준으로 기간 라벨 생성
-
     결과:
-    - _period_dt : 정렬·집계용 datetime 컬럼
-    - _period    : 화면 표시용 기간 문자열
-        - 일별  → YYYY-MM-DD
-        - 주별  → YYYY-MM-DD ~ YYYY-MM-DD (월~일)
+    - _period_dt : 정렬·집계용 datetime (일별: 해당 일, 주별: 주 시작일(Mon))
+    - _period    : 화면/라벨용 문자열 (연도 포함)
+        - 일별  → "YYYY-MM-DD"
+        - 주별  → "YYYY-MM-DD ~ YYYY-MM-DD"
     """
     w = df.copy()
-
-    # 문자열/숫자 혼합 날짜 → datetime (yyyymmdd, yyyy-mm-dd 모두 허용)
     w[date_col] = pd.to_datetime(w[date_col], errors="coerce")
     w = w.dropna(subset=[date_col])
 
     if mode == "일별":
         dt = w[date_col].dt.floor("D")
         w["_period_dt"] = dt
-        w["_period"] = dt.dt.strftime("%m월 %d일")
+        w["_period"] = dt.dt.strftime("%Y-%m-%d")
     else:
         ws = w[date_col].dt.floor("D") - pd.to_timedelta(w[date_col].dt.weekday, unit="D")
         we = ws + pd.to_timedelta(6, unit="D")
         w["_period_dt"] = ws
-        w["_period"] = (
-            ws.dt.strftime("%m월 %d일")
-            + " ~ "
-            + we.dt.strftime("%m월 %d일")
-        )
-
+        w["_period"] = ws.dt.strftime("%Y-%m-%d") + " ~ " + we.dt.strftime("%Y-%m-%d")
 
     return w
 
 
-
-def sort_period_labels(cols: list[str]) -> list[str]:
+def sort_period_labels(cols: list) -> list:
     """
-    기간 컬럼을 시간 순서대로 정렬하는 유틸 함수.
-
-    기능
-    - pivot 결과처럼 기간이 가로 컬럼이 되었을 때 사용
-    - 일별(YYYY-MM-DD) / 주별(YYYY-MM-DD ~ YYYY-MM-DD) 형식을 모두 처리
-
-    결과
-    - 시간 흐름에 맞는 컬럼 순서를 보장
+    기간 컬럼을 시간 순서대로 정렬.
+    - datetime/Timestamp/np.datetime64: 그대로 시간순
+    - str: "YYYY-MM-DD" 또는 "YYYY-MM-DD ~ YYYY-MM-DD"의 시작일 기준
     """
-    return sorted(cols, key=lambda x: x.split(" ~ ")[0] if " ~ " in x else x)
+    def _key(v):
+        # datetime 계열
+        if isinstance(v, (pd.Timestamp, datetime, np.datetime64)):
+            return pd.to_datetime(v, errors="coerce")
+
+        s = str(v)
+
+        # "YYYY-MM-DD ~ YYYY-MM-DD"
+        if " ~ " in s:
+            s0 = s.split(" ~ ")[0].strip()
+            return pd.to_datetime(s0, errors="coerce")
+
+        # "YYYY-MM-DD"
+        return pd.to_datetime(s, errors="coerce")
+
+    return sorted(cols, key=_key)
 
 
 def get_topk_values(s: pd.Series, k: int) -> list[str]:
-    """
-    시리즈에서 등장 빈도 기준 Top K 값 목록을 반환하는 함수.
-
-    기능
-    - 빈 문자열("")는 제외
-    - 결측값(NaN)은 제외
-    - value_counts 기준으로 상위 K개 추출
-
-    결과
-    - 빈도순으로 정렬된 문자열 리스트 (길이 ≤ K)
-    """
     vc = s.replace("", np.nan).dropna().value_counts()
     return vc.head(k).index.tolist()
 
 
 def add_weekend_shading(fig, x_vals: pd.Series):
     """
-    날짜 축을 기준으로 주말(토/일) 구간에 음영(vrect)을 추가하는 함수.
-
-    기능
-    - x축 날짜 값에서 일 단위 날짜를 추출
-    - 토요일 / 일요일에 해당하는 구간에만 배경 음영 표시
-    - 그래프 중앙 기준(정오~다음날 정오)으로 vrect 적용
-
-    결과
-    - Plotly 그래프에 주말 구간이 시각적으로 강조됨
+    날짜 축 기준 주말(토/일) 음영(vrect).
+    - 기존 방식(정오~정오)은 유지 (x축 튐은 view단에서 x축 range 고정 or 표를 datetime 기준으로 맞추면 해결)
     """
     xs = pd.to_datetime(pd.Series(x_vals), errors="coerce").dropna().dt.floor("D").unique()
 
@@ -112,27 +90,43 @@ def add_weekend_shading(fig, x_vals: pd.Series):
             )
 
 
+def _is_datetime_like(s: pd.Series) -> bool:
+    if pd.api.types.is_datetime64_any_dtype(s):
+        return True
+    # object라도 Timestamp가 섞인 경우
+    try:
+        ok = pd.to_datetime(s.dropna().iloc[:5], errors="coerce").notna().all()
+        return bool(ok)
+    except Exception:
+        return False
+
+
+def _looks_weekly_dt(x_dt: pd.Series) -> bool:
+    """
+    주별(주 시작일) datetime처럼 보이면 True:
+    - unique 간격 중앙값이 6일 이상
+    """
+    x_u = pd.to_datetime(pd.Series(x_dt), errors="coerce").dropna().dt.floor("D").drop_duplicates().sort_values()
+    if len(x_u) <= 2:
+        return False
+    diffs = x_u.diff().dropna().dt.days
+    if diffs.empty:
+        return False
+    return float(diffs.median()) >= 6.0
+
+
 # ──────────────────────────────────
 # 공통 렌더 함수
 # ──────────────────────────────────
-def render_line_graph(df: pd.DataFrame, x: str, y: list[str] | str, height: int = 360, title: str | None = None) -> None:
-    """
-    기간 추이를 라인 차트로 시각화하는 공통 렌더 함수.
-
-    기능
-    - px.line 기반 라인 차트 생성 (마커 포함)
-    - 단일 y / 복수 y 컬럼 모두 지원
-    - 주말(토·일) 구간 음영 자동 표시
-    - 범례를 그래프 상단에 고정해 겹침 방지
-    - x축 날짜 포맷을 '%m월 %d일'로 통일
-
-    결과
-    - Streamlit 화면에 일관된 스타일의 추이 그래프 출력
-    """
-    # 단일 y → 리스트로 통일
+def render_line_graph(
+    df: pd.DataFrame,
+    x: str,
+    y: list[str] | str,
+    height: int = 360,
+    title: str | None = None
+) -> None:
     y_cols = [y] if isinstance(y, str) else y
 
-    # 라인 차트 생성
     fig = px.line(
         df,
         x=x,
@@ -142,25 +136,24 @@ def render_line_graph(df: pd.DataFrame, x: str, y: list[str] | str, height: int 
         title=title,
     )
 
-    # ✅ hover 값: 지표명 + 천단위 콤마
     fig.update_traces(
         hovertemplate="%{fullData.name}<br>값: %{y:,.0f}<extra></extra>"
     )
 
+    # ✅ 주말 음영: "진짜 일별 datetime"일 때만
+    if x in df.columns and _is_datetime_like(df[x]):
+        x_dt = pd.to_datetime(df[x], errors="coerce")
+        if not _looks_weekly_dt(x_dt):
+            try:
+                add_weekend_shading(fig, x_dt)
+            except Exception:
+                pass
 
+        fig.update_xaxes(type="date", tickformat="%Y-%m-%d")
+    else:
+        # 문자열 라벨축(주별 라벨 등)
+        fig.update_xaxes(type="category")
 
-
-    # 주말 음영 추가 (주별 라벨이면 적용 안 함)
-    try:
-        x0 = df[x].astype(str).iloc[0] if len(df) else ""
-    except Exception:
-        x0 = ""
-
-    if " ~ " not in str(x0):  # 일별(YYYY-MM-DD)만 shading
-        add_weekend_shading(fig, df[x])
-
-
-    # 레이아웃 통일 (범례 상단 고정)
     fig.update_layout(
         height=height,
         xaxis_title=None,
@@ -172,15 +165,10 @@ def render_line_graph(df: pd.DataFrame, x: str, y: list[str] | str, height: int 
             xanchor="right",
             yanchor="bottom",
         ),
-        legend_title_text="",   # ✅ 추가
+        legend_title_text="",
     )
 
-    # x축 날짜 표시 포맷
-    fig.update_xaxes(tickformat="%m월 %d일")
-
-    # Streamlit 렌더
     st.plotly_chart(fig, use_container_width=True)
-
 
 
 def render_stack_graph(
@@ -195,71 +183,44 @@ def render_stack_graph(
     key: str | None = None
 ) -> None:
     """
-    기간 추이를 누적 막대그래프로 시각화하는 공통 렌더 함수.
-
-    핵심 보정:
-    - x가 '일별처럼 보이지만' datetime 변환 결과가 대부분 NaT면 => 주별/라벨축으로 fallback
-    - 그 결과 "빈 그래프" 방지
+    누적 막대 그래프.
+    - x가 datetime이면 date 축(일별이면 shading)
+    - x가 문자열이면 category 축(기간 정렬 강제)
     """
     if df is None or df.empty:
         st.info("표시할 데이터가 없습니다.")
         return
 
     d = df.copy()
-
-    # --- numeric ---
     d[y] = pd.to_numeric(d[y], errors="coerce").fillna(0)
 
-    # --- share pct ---
+    # share pct
     tot = d.groupby(x, dropna=False)[y].transform("sum").replace(0, np.nan)
     d["_share_pct"] = ((d[y] / tot) * 100).fillna(0)
 
-    # --- 일별/주별 "추정" (여기만 믿지 말고 아래에서 검증) ---
-    x0 = str(d[x].astype(str).iloc[0]) if len(d) else ""
-    is_daily_guess = ("~" not in x0)  # ✅ 공백/nbsp/포맷 차이 무시하고 ~ 존재만 체크
+    use_dt = (x in d.columns) and _is_datetime_like(d[x])
 
     x_plot = x
-    use_datetime_x = False
-
-    if is_daily_guess:
-        # 일별로 그려보되, NaT 비율이 높으면 즉시 fallback
-        x_dt = pd.to_datetime(d[x], errors="coerce")
-        nat_ratio = float(x_dt.isna().mean()) if len(x_dt) else 1.0
-
-        if nat_ratio < 0.2:  # ✅ 80% 이상이 정상 datetime이면 "진짜 일별"로 확정
-            d["_x_dt"] = x_dt
-            x_plot = "_x_dt"
-            use_datetime_x = True
-        else:
-            # ✅ 주별 라벨/문자축 fallback (빈 그래프 방지)
-            d[x] = d[x].astype(str)
-
-    else:
-        # 주별은 무조건 라벨축(문자)
-        d[x] = d[x].astype(str)
-
-    # ✅ [ADD] 라벨축일 때 x(기간) 날짜순 정렬 강제 (Plotly 임의정렬/입력순서 섞임 방지)
-    # - 기존 기능(일별 datetime 축/주말 음영/fallback)은 그대로 두고,
-    #   "문자열 축"인 경우에만 카테고리 순서를 확정해 줌.
     x_cat_order = None
-    if not use_datetime_x:
-        try:
-            x_vals = d[x_plot].astype(str)
 
-            # 주별 라벨(YYYY-MM-DD ~ YYYY-MM-DD) 우선
-            if x_vals.str.contains(r"\s*~\s*", regex=True).any():
-                x_cat_order = sort_period_labels(x_vals.dropna().unique().tolist())
-            # 일별 라벨(YYYY-MM-DD)면 문자열 정렬로 충분
-            elif x_vals.str.match(r"^\d{4}-\d{2}-\d{2}$", na=False).any():
-                x_cat_order = sorted(x_vals.dropna().unique().tolist())
-            else:
-                # 그 외는 원래 등장 순서 유지(중복 제거)
-                x_cat_order = list(dict.fromkeys(x_vals.dropna().tolist()))
+    if use_dt:
+        d[x_plot] = pd.to_datetime(d[x_plot], errors="coerce")
+        # NaT 제거(축 깨짐 방지)
+        d = d.dropna(subset=[x_plot])
 
-            d[x_plot] = pd.Categorical(x_vals, categories=x_cat_order, ordered=True)
-            d = d.sort_values(x_plot).reset_index(drop=True)
-        except Exception:
-            x_cat_order = None
+        # 일별인지 판단되면 shading
+        if len(d) and not _looks_weekly_dt(d[x_plot]):
+            try:
+                add_weekend_shading(fig=None, x_vals=pd.Series(dtype="datetime64[ns]"))  # dummy to keep structure
+            except Exception:
+                pass
+    else:
+        # 문자열 축: 날짜순 카테고리 고정
+        s = d[x_plot].astype(str)
+        # 주별 라벨이면 sort_period_labels, 일별(YYYY-MM-DD)도 sort_period_labels로 통일
+        x_cat_order = sort_period_labels(s.dropna().unique().tolist())
+        d[x_plot] = pd.Categorical(s, categories=x_cat_order, ordered=True)
+        d = d.sort_values(x_plot).reset_index(drop=True)
 
     fig = px.bar(
         d,
@@ -272,11 +233,9 @@ def render_stack_graph(
         custom_data=[color, "_share_pct", y],
     )
 
-    # ✅ 누적막대 강제
     fig.update_layout(barmode="relative")
     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
 
-    # hover
     if show_value_in_hover:
         fig.update_traces(
             hovertemplate="%{customdata[0]}<br>비중: %{customdata[1]:.1f}%<br>값: %{customdata[2]:,.0f}<extra></extra>"
@@ -286,19 +245,19 @@ def render_stack_graph(
             hovertemplate="%{customdata[0]}<br>비중: %{customdata[1]:.1f}%<extra></extra>"
         )
 
-    # ✅ 주말 음영은 "진짜 일별(datetime 축)"일 때만
-    if use_datetime_x:
-        fig.update_xaxes(type="date", tickformat="%m월 %d일")
-        x_vals = d["_x_dt"].dropna()
-        if len(x_vals) > 0:
+    if use_dt:
+        # ✅ tickformat: YYYY-MM-DD 통일
+        fig.update_xaxes(type="date", tickformat="%Y-%m-%d")
+
+        # ✅ 주말 음영: "진짜 일별"만
+        x_dt = pd.to_datetime(d[x_plot], errors="coerce")
+        if len(x_dt) and not _looks_weekly_dt(x_dt):
             try:
-                add_weekend_shading(fig, x_vals)
+                add_weekend_shading(fig, x_dt)
             except Exception:
                 pass
     else:
-        # 라벨축일 때는 카테고리로 고정(Plotly가 임의 정렬하지 않게)
         fig.update_xaxes(type="category")
-        # ✅ [ADD] 카테고리 순서도 명시적으로 고정(혹시 모를 내부 재정렬 방지)
         if x_cat_order:
             fig.update_xaxes(categoryorder="array", categoryarray=x_cat_order)
 
@@ -321,19 +280,12 @@ def render_stack_graph(
     st.plotly_chart(fig, use_container_width=True, key=key)
 
 
-
-
 def build_pivot_table(long: pd.DataFrame, index_col: str, col_col: str, val_col: str) -> pd.DataFrame:
     """
-    long(df) → wide(pivot)로 변환한 뒤, 기간 컬럼을 시간순으로 정렬하고
-    행은 전체 합계 기준으로 내림차순 정렬해 반환합니다.
-
-    결과
-    - index_col: 행(카테고리/항목)
-    - col_col:   열(기간/날짜)
-    - val_col:   값(집계값)
+    long → wide(pivot)
+    - col_col이 datetime이면 datetime 기준으로 정렬
+    - 최종 표 컬럼 표기는 YYYY-MM-DD(또는 주 시작일 YYYY-MM-DD)로 통일
     """
-    # 1) long → wide (없으면 0으로 채움)
     pv = (
         long.pivot_table(
             index=index_col,
@@ -345,13 +297,30 @@ def build_pivot_table(long: pd.DataFrame, index_col: str, col_col: str, val_col:
         .reset_index()
     )
 
-    # 2) 기간(열)만 뽑아서 시간순 정렬 후 재배치
+    # 기간 컬럼만 추출
     period_cols = [c for c in pv.columns if c != index_col]
-    pv = pv[[index_col] + sort_period_labels(period_cols)]
-    
-    # ✅ 합계/정렬은 "숫자 컬럼"만 대상으로 수행 (Timestamp 섞여도 안전)
-    num_cols = [c for c in period_cols if pd.api.types.is_numeric_dtype(pv[c])]
 
+    # 정렬
+    ordered = sort_period_labels(period_cols)
+    pv = pv[[index_col] + ordered]
+
+    # ✅ datetime 컬럼이면 표 컬럼명을 "YYYY-MM-DD" 문자열로 변환 (표기 통일)
+    rename_map = {}
+    for c in ordered:
+        if isinstance(c, (pd.Timestamp, datetime, np.datetime64)):
+            cc = pd.to_datetime(c, errors="coerce")
+            if pd.notna(cc):
+                rename_map[c] = cc.strftime("%Y-%m-%d")
+    if rename_map:
+        pv = pv.rename(columns=rename_map)
+
+        # 변환 후 period_cols 재계산
+        period_cols2 = [c for c in pv.columns if c != index_col]
+    else:
+        period_cols2 = period_cols
+
+    # ✅ 합계/정렬은 숫자 컬럼만
+    num_cols = [c for c in period_cols2 if pd.api.types.is_numeric_dtype(pv[c])]
     if num_cols:
         pv["_sum"] = pv[num_cols].sum(axis=1)
         pv = pv.sort_values("_sum", ascending=False).drop(columns=["_sum"])
@@ -360,22 +329,8 @@ def build_pivot_table(long: pd.DataFrame, index_col: str, col_col: str, val_col:
 
 
 def render_table(df_wide: pd.DataFrame, index_col: str, decimals: int = 0):
-    """
-    wide 형태의 DataFrame을 표로 렌더링합니다.
-
-    기능
-    - index_col을 제외한 모든 숫자 컬럼에 소수점 포맷 적용
-    - 공통 style_format을 사용해 숫자 표현 통일
-    - Streamlit dataframe으로 출력
-
-    결과
-    - 그래프 하단에 바로 붙여 쓰기 좋은 정렬된 테이블
-    """
-    # index_col을 제외한 숫자 컬럼에 동일한 소수점 포맷 적용
     styled = style_format(
         df_wide,
         decimals_map={c: decimals for c in df_wide.columns if c != index_col},
     )
-
-    # 표 렌더링 (index 숨김, 행 높이 고정)
     st.dataframe(styled, row_height=30, hide_index=True)

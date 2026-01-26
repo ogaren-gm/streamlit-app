@@ -63,6 +63,7 @@ def pivot_period_usersessions(
 ) -> pd.DataFrame:
     w = ui.add_period_columns(df, "event_date", mode)
     cols = ["_period"] + (group_cols or [])
+
     out = (
         w.groupby(cols, as_index=False)
          .agg(
@@ -74,14 +75,19 @@ def pivot_period_usersessions(
          .rename(columns={"_period": "기간"})
     )
 
+    # ✅ dt_map: 기간(= _period)당 _period_dt "딱 1개"만 남겨서 다대다 merge 원천 차단
     dt_map = (
         w[["_period", "_period_dt"]]
-        .drop_duplicates()
+        .assign(_period_dt=lambda x: pd.to_datetime(x["_period_dt"], errors="coerce"))
+        .dropna(subset=["_period_dt"])
+        .groupby("_period", as_index=False)["_period_dt"].min()
         .rename(columns={"_period": "기간"})
     )
+
     out = out.merge(dt_map, on="기간", how="left")
     out = out.sort_values("_period_dt").reset_index(drop=True)
     return out
+
 
 
 EVENTS_META = [
@@ -116,12 +122,15 @@ def pivot_event_overview(df: pd.DataFrame, mode: str, metric_mode: str) -> pd.Da
         else:
             w[ev] = 0
 
-    # ✅ 기간 정렬/샤딩용 _period_dt 확보
+    # ✅ 기간 정렬/샤딩용 _period_dt 확보 (기간당 1행 강제)
     dt_map = (
         w[["_period", "_period_dt"]]
-        .drop_duplicates()
+        .assign(_period_dt=lambda x: pd.to_datetime(x["_period_dt"], errors="coerce"))
+        .dropna(subset=["_period_dt"])
+        .groupby("_period", as_index=False)["_period_dt"].min()
         .rename(columns={"_period": "기간"})
     )
+
 
     if metric_mode == "이벤트수":
         agg_map = {f"{label}_이벤트수": (ev, "sum") for ev, label in EVENTS_META}
@@ -191,7 +200,7 @@ def main():
         max_value=default_end
     )
     cs = start_date.strftime("%Y%m%d")
-    ce_exclusive = (end_date + timedelta(days=1)).strftime("%Y%m%d")
+    ce = (end_date + timedelta(days=1)).strftime("%Y%m%d")
 
     # ──────────────────────────────────
     # C) Data Load
@@ -204,6 +213,10 @@ def main():
         geo_map = bq.get_data("raw_geo_city_kr")
 
         df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d", errors="coerce")
+
+        # ✅ 선택기간으로 강제 필터 (ce는 exclusive)
+        df = df[(df["event_date"] >= pd.to_datetime(cs)) & (df["event_date"] < pd.to_datetime(ce))]
+
 
         def _safe_str_col(colname: str) -> pd.Series:
             if colname in df.columns:
@@ -250,7 +263,7 @@ def main():
         return df, last_updated_time
 
     with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df, last_updated_time = load_data(cs, ce_exclusive)
+        df, last_updated_time = load_data(cs, ce)
 
     # ──────────────────────────────────
     # D) Header
@@ -345,7 +358,7 @@ def main():
         - **유저수** (user_pseudo_id) : 고유 사람수  
         - **세션수** (pseudo_session_id) : 방문 단위수  
         - 사람 A가 1월 1일 오전에 신규방문 후 이탈, 오후에 재방문했다면,  
-          1월 1일의 **유저수**는 1, **세션수**는 2, **신규방문수**는 1, **재방문수**는 1 입니다.
+        1월 1일의 **유저수**는 1, **세션수**는 2, **신규방문수**는 1, **재방문수**는 1 입니다.
         - 유저수 ≤ 세션수 입니다.
         """)
 
@@ -363,42 +376,77 @@ def main():
             )
 
     base1 = pivot_period_usersessions(df, mode=mode_1)
-    base1 = base1.rename(columns={"기간": "x"})
-    x_col_1 = "_period_dt" if mode_1 == "일별" else "x"
+
+    # ✅ 핵심: _period_dt를 "순수 datetime"으로 강제하고, 중복 dt가 있으면 재집계로 1행 보장
+    base1["_period_dt"] = pd.to_datetime(base1["_period_dt"], errors="coerce")
+    base1 = base1.dropna(subset=["_period_dt"])
+
+    # (혹시라도 같은 _period_dt가 2행 이상 나오면 여기서 확실히 1행으로 합침)
+    agg_cols = ["유저수", "세션수", "신규방문", "재방문"]
+    base1[agg_cols] = base1[agg_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+
+    base1 = (
+        base1.groupby("_period_dt", as_index=False)
+            .agg(
+                기간=("기간", "first"),   # period 라벨은 첫 값 사용(일별이면 YYYY-MM-DD, 주별이면 YYYY-MM-DD ~)
+                유저수=("유저수", "sum"),
+                세션수=("세션수", "sum"),
+                신규방문=("신규방문", "sum"),
+                재방문=("재방문", "sum"),
+            )
+            .sort_values("_period_dt")
+            .reset_index(drop=True)
+    )
+
+    # ✅ x는 무조건 datetime 1개만 사용
+    x_dt = base1["_period_dt"].dt.to_pydatetime()
+
+    # ✅ 표와 동일한 날짜 표기(네가 말한대로 월/일 폐기: 기간 라벨 그대로 사용)
+    # - 일별: "YYYY-MM-DD"
+    # - 주별: "YYYY-MM-DD ~ YYYY-MM-DD"
+    tick_text = base1["기간"].astype(str).tolist()
 
     fig = go.Figure()
-    d_bar = base1.copy()
-    for col in ["신규방문", "재방문"]:
-        d_bar[col] = pd.to_numeric(d_bar[col], errors="coerce").fillna(0)
 
+    # bar 데이터
+    d_bar = base1.copy()
     d_bar["_bar_total"] = (d_bar["신규방문"] + d_bar["재방문"]).replace(0, np.nan)
     d_bar["_share_new"] = (d_bar["신규방문"] / d_bar["_bar_total"] * 100).round(1).fillna(0)
     d_bar["_share_ret"] = (d_bar["재방문"] / d_bar["_bar_total"] * 100).round(1).fillna(0)
 
     fig.add_bar(
-        x=d_bar[x_col_1], y=d_bar["신규방문"], name="신규방문", opacity=0.6,
+        x=x_dt, y=d_bar["신규방문"], name="신규방문", opacity=0.6,
         customdata=np.stack([d_bar["_share_new"], d_bar["신규방문"]], axis=1),
         hovertemplate="신규방문<br>비중: %{customdata[0]}%<br>값: %{customdata[1]:,.0f}<extra></extra>"
     )
     fig.add_bar(
-        x=d_bar[x_col_1], y=d_bar["재방문"], name="재방문", opacity=0.6,
+        x=x_dt, y=d_bar["재방문"], name="재방문", opacity=0.6,
         customdata=np.stack([d_bar["_share_ret"], d_bar["재방문"]], axis=1),
         hovertemplate="재방문<br>비중: %{customdata[0]}%<br>값: %{customdata[1]:,.0f}<extra></extra>"
     )
 
+    # line 데이터
     for u in (sel_units_1 or []):
         if u in base1.columns:
             fig.add_scatter(
-                x=base1[x_col_1],
+                x=x_dt,
                 y=base1[u],
                 name=u,
                 mode="lines+markers",
                 hovertemplate=f"{u}<br>값: %{{y:,.0f}}<extra></extra>",
             )
 
-    # ✅ shading: 일별만 (주별 라벨/주별 dt는 스킵)
+    # ✅ shading: 일별만
     if mode_1 == "일별":
         ui.add_weekend_shading(fig, base1["_period_dt"])
+
+    # ✅ 여기서 "축 중복"을 끝내는 핵심: tick을 우리가 박아버림
+    fig.update_xaxes(
+        type="date",
+        tickmode="array",
+        tickvals=x_dt,
+        ticktext=tick_text,
+    )
 
     fig.update_layout(
         barmode="relative",
@@ -408,13 +456,15 @@ def main():
         bargap=0.5,
         bargroupgap=0.2,
         legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom"),
-        legend_title_text="",  # ✅ 범례 제목 제거
+        legend_title_text="",
         margin=dict(l=10, r=10, t=40, b=10),
     )
-    if mode_1 == "일별":
-        fig.update_xaxes(tickformat="%m월 %d일")
+
     st.plotly_chart(fig, use_container_width=True)
 
+    # ------------------------------
+    # 표 (pivot)
+    # ------------------------------
     tbl1 = base1.copy()
 
     den = pd.to_numeric(tbl1["세션수"], errors="coerce").replace(0, np.nan)
@@ -427,9 +477,8 @@ def main():
     show_metrics_1 = ["세션수", "유저수", "SPU (세션수/유저수)", "신규방문", "재방문", "신규방문 비중(%)", "재방문 비중(%)"]
 
     long1 = (
-        tbl1[["x"] + show_metrics_1]
-        .melt(id_vars=["x"], var_name="지표", value_name="값")
-        .rename(columns={"x": "기간"})
+        tbl1[["기간"] + show_metrics_1]
+        .melt(id_vars=["기간"], var_name="지표", value_name="값")
     )
 
     long1["지표"] = pd.Categorical(long1["지표"], categories=show_metrics_1, ordered=True)
@@ -457,6 +506,7 @@ def main():
         styled = styled.format("{:.2f}", subset=pd.IndexSlice[spu_idx, val_cols])
 
     st.dataframe(styled, row_height=30, hide_index=True)
+
 
     # ──────────────────────────────────
     # 2) 트래픽 현황
@@ -487,7 +537,7 @@ def main():
         topk: int | None,
         extra_filter: dict[str, str] | None = None
     ):
-        df_f = df_in.copy()
+        df_f = df_in
         if extra_filter:
             for c, v in extra_filter.items():
                 if v != "전체" and c in df_f.columns:
@@ -495,10 +545,12 @@ def main():
 
         tmp = ui.add_period_columns(df_f, "event_date", mode)
 
-        # ✅ 기간 dt 매핑 추가(차트 shading/정렬용)
+        # ✅ dt_map: 기간당 1행 강제 (다대다 merge 방지)
         dt_map = (
             tmp[["_period", "_period_dt"]]
-            .drop_duplicates()
+            .assign(_period_dt=lambda x: pd.to_datetime(x["_period_dt"], errors="coerce"))
+            .dropna(subset=["_period_dt"])
+            .groupby("_period", as_index=False)["_period_dt"].min()
             .rename(columns={"_period": "기간"})
         )
 
@@ -523,14 +575,69 @@ def main():
             .rename(columns={"_period": "기간", "_dim2": dim_label})
         )
 
-        grp = grp.merge(dt_map, on="기간", how="left").sort_values("_period_dt").reset_index(drop=True)
+        grp = grp.merge(dt_map, on="기간", how="left")
+        grp["_period_dt"] = pd.to_datetime(grp["_period_dt"], errors="coerce")
+        grp = grp.dropna(subset=["_period_dt"]).sort_values("_period_dt").reset_index(drop=True)
 
+        # ✅ 차트: 일별은 x를 datetime으로 고정 + ticktext 강제 (중복 라벨 차단)
         chart_key = f"stack::{dim_label}::{dim_col}::{mode}::{unit}::{topk}"
         if extra_filter:
             chart_key += "::" + "::".join([f"{k}={v}" for k, v in sorted(extra_filter.items())])
 
-        x_col = "_period_dt" if mode == "일별" else "기간"
-        ui.render_stack_graph(grp, x=x_col, y=unit, color=dim_label, key=chart_key, show_value_in_hover=True)
+        if mode == "일별":
+            # x_dt / tick_text는 "기간" 기준으로 1번만 만든다
+            x_base = (
+                grp[["기간", "_period_dt"]]
+                .drop_duplicates(subset=["기간"])
+                .sort_values("_period_dt")
+                .reset_index(drop=True)
+            )
+            x_dt = x_base["_period_dt"].dt.to_pydatetime()
+            tick_text = x_base["기간"].astype(str).tolist()
+
+            # bar용 wide로 변환해서 trace별 dtype 섞임 방지
+            wv = (
+                grp.pivot_table(index="기간", columns=dim_label, values=unit, aggfunc="sum", fill_value=0)
+                .reset_index()
+            )
+            wv = wv.merge(x_base, on="기간", how="left").sort_values("_period_dt").reset_index(drop=True)
+
+            fig = go.Figure()
+            cols = [c for c in wv.columns if c not in ["기간", "_period_dt"]]
+
+            for c in cols:
+                fig.add_bar(
+                    x=wv["_period_dt"].dt.to_pydatetime(),
+                    y=pd.to_numeric(wv[c], errors="coerce").fillna(0),
+                    name=str(c),
+                    opacity=0.6,
+                )
+
+            ui.add_weekend_shading(fig, wv["_period_dt"])
+
+            fig.update_xaxes(
+                type="date",
+                tickmode="array",
+                tickvals=x_dt,
+                ticktext=tick_text,
+            )
+            fig.update_layout(
+                barmode="relative",
+                height=360,
+                xaxis_title=None,
+                yaxis_title=None,
+                bargap=0.5,
+                bargroupgap=0.2,
+                legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom"),
+                legend_title_text="",
+                margin=dict(l=10, r=10, t=40, b=10),
+            )
+            st.plotly_chart(fig, use_container_width=True, key=chart_key)
+
+        else:
+            # 주별은 라벨 자체가 기간이라 category OK (단, 기간 정렬은 _period_dt로 이미 끝냄)
+            x_col = "기간"
+            ui.render_stack_graph(grp, x=x_col, y=unit, color=dim_label, key=chart_key, show_value_in_hover=True)
 
         long = grp[["기간", dim_label, unit]].rename(columns={unit: "값"})
         pv = ui.build_pivot_table(long, index_col=dim_label, col_col="기간", val_col="값")
@@ -655,6 +762,22 @@ def main():
             )
 
     metrics = pivot_event_overview(df, mode=mode_3, metric_mode=metric_mode_3)
+
+
+    metrics["_period_dt"] = pd.to_datetime(metrics.get("_period_dt"), errors="coerce")
+    metrics = metrics.dropna(subset=["_period_dt"])
+
+    # ✅ 혹시라도 기간 복제(merge 다대다)가 있었으면 기간당 1행으로 정리
+    num_cols = [c for c in metrics.columns if c not in ["기간", "_period_dt"]]
+    for c in num_cols:
+        metrics[c] = pd.to_numeric(metrics[c], errors="coerce").fillna(0)
+
+    metrics = (
+        metrics.groupby(["기간", "_period_dt"], as_index=False)[num_cols].sum()
+            .sort_values("_period_dt")
+            .reset_index(drop=True)
+    )
+
 
     def _cols_for(events: list[str]) -> list[str]:
         label_map = {ev: label for ev, label in EVENTS_META}
