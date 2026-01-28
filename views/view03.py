@@ -1,4 +1,5 @@
-# 2026-01-23 ver. (REFAC -> GEO)
+# SEOHEE
+# 2026-01-27 ver.
 
 import streamlit as st
 import pandas as pd
@@ -26,14 +27,18 @@ CFG = {
     "DEFAULT_LOOKBACK_DAYS": 14,
     "HEADER_UPDATE_AM": 850,
     "HEADER_UPDATE_PM": 1535,
-    "BRAND_ORDER": ["슬립퍼", "누어"],           # 브랜드 고정 순서
-    "HIER_PRI": ["매트리스", "프레임", "부자재"],  # 중분류 우선순위
-    "TOPK_PATH_OPTS": [7, 10, 15, 20],
-    "TOPK_CAT_OPTS": [5, 7, 10, 15, 20],
-    "PATH_DIM_OPTS": ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"],
-    "PATH_DIM_DEFAULT_IDX": 0,
+
+    "HIER_BRAND": ["슬립퍼", "누어"],                # Order Rule - 대분류 고정 순서
+    "HIER_CATE": ["매트리스", "프레임", "부자재"],    # Order Rule - 중분류 우선 순위
+
+    "OPTS_TOPK": [5, 10, 15, 20],
+    "OPTS_PERIOD": ["일별", "주별"],
+    "OPTS_PATH": ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"],
+
     "SIZE_LABEL" : ["MS","S","SS","Q","K","LK","EK","S/SS","D/Q","Q/K","D/Q/K"], # 추가
     "SIZE_LABEL_MATCH" : {"01":"MS","02":"S","03":"SS","04":"Q","05":"K","06":"LK","07":"EK","31":"S/SS","32":"D/Q","33":"Q/K","34":"D/Q/K"}, # 추가
+
+
     "CSS_BLOCK_CONTAINER": """
         <style>
             .block-container {
@@ -54,6 +59,151 @@ CFG = {
 
 
 # ──────────────────────────────────
+# HELPER
+# ──────────────────────────────────
+
+# 문자열 컬럼 안전 정리
+def _safe_str(df0: pd.DataFrame, col: str) -> pd.Series:
+    s = df0[col] if col in df0.columns else pd.Series([""] * len(df0), index=df0.index)
+    return s.astype(str).replace("nan", "").fillna("").str.strip()
+
+# value_counts 결과 캐시
+_OPT_CACHE: dict[tuple[int, str], list[str]] = {}
+
+def _select_opt(df0: pd.DataFrame, col: str, label: str, key: str):
+    ck = (id(df0), col)
+    if ck not in _OPT_CACHE:
+        s = _safe_str(df0, col)
+        _OPT_CACHE[ck] = ["전체"] + s[s != ""].value_counts(dropna=False).index.astype(str).tolist()
+    return st.selectbox(label, _OPT_CACHE[ck], index=0, key=key)
+
+# 누적막대 + 피벗 테이블 공통 렌더
+def _render_stack_and_table(agg: pd.DataFrame, mode: str, y: str, color: str, key: str, height: int = 360):
+    if agg is None or agg.empty:
+        st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+        st.markdown(" ")
+        return
+
+    ui.render_stack_graph(agg, x="_period_dt", y=y, color=color, height=height, opacity=0.6, show_value_in_hover=True, key=key)
+
+    # 표는 기존처럼 "기간" 라벨을 컬럼으로 사용 < ?? 
+    ui.render_table(
+        ui.build_pivot_table(agg, index_col=color, col_col="기간", val_col=y),
+        index_col=color,
+        decimals=0
+    )
+    st.markdown(" ")
+
+# 중분류 우선순위
+def _hier_rank(text: str) -> int:
+    t = (text or "").strip()
+    for i, kw in enumerate(CFG["HIER_CATE"]):
+        if kw in t:
+            return i
+    return 99
+
+# 중분류 옵션 정렬
+def _sort_b_opts(tb: pd.DataFrame) -> list[str]:
+    b = [x for x in _safe_str(tb, "product_cat_b").unique().tolist() if x]
+    return sorted(b, key=lambda x: (_hier_rank(x), x))
+
+# 소분류 옵션 정렬
+def _sort_c_opts(tb: pd.DataFrame) -> list[str]:
+    if "product_cat_c" not in tb.columns:
+        return []
+
+    b = _safe_str(tb, "product_cat_b")
+    c = _safe_str(tb, "product_cat_c")
+    ok = (c != "") & (c.str.lower() != "nan")
+    if not ok.any():
+        return []
+
+    tmp = pd.DataFrame({"b": b[ok], "c": c[ok]}).drop_duplicates()
+    tmp["_r"] = tmp["b"].map(_hier_rank)
+
+    rep = (
+        tmp.sort_values(["c", "_r", "b"])
+        .groupby("c", as_index=False)
+        .first()
+    )
+    rep["_k"] = rep.apply(lambda r: (_hier_rank(r["b"]), r["b"], r["c"]), axis=1)
+    return rep.sort_values("_k")["c"].tolist()
+
+# 브랜드 리스트 (고정 순서)
+def _brand_list(df0: pd.DataFrame) -> list[str]:
+    exist = _safe_str(df0, "product_cat_a").unique().tolist()
+    return [b for b in CFG["HIER_BRAND"] if b in exist]
+
+# 브랜드 계층 필터
+def _apply_brand_hier_filter(
+    df_in: pd.DataFrame,
+    brand: str,
+    view_level: str,
+    need_ab: bool,
+    need_c: bool,
+    sel_b_by_brand: dict,
+    sel_c_by_brand: dict,
+    sel_products: list | None
+) -> pd.DataFrame:
+    tb = df_in[df_in["product_cat_a"] == brand]
+    if tb.empty:
+        return tb
+
+    if view_level in ["중분류", "소분류", "제품"] and need_ab:
+        picked = sel_b_by_brand.get(brand)
+        if picked is not None:
+            if not picked:
+                return tb.iloc[0:0]
+            tb = tb[tb["product_cat_b"].isin(picked)]
+
+    if view_level in ["소분류", "제품"] and need_c:
+        picked = sel_c_by_brand.get(brand)
+        if picked is not None:
+            if not picked:
+                return tb.iloc[0:0]
+            tb = tb[tb["product_cat_c"].isin(picked)]
+
+    if view_level == "제품" and sel_products:
+        tb = tb[tb["product_name"].isin(sel_products)]
+
+    return tb
+
+def _get_src_dim(sel):
+    if sel == "소스 / 매체":
+        return "_sourceMedium", "소스/매체"
+    if sel == "소스":
+        return "_source", "소스"
+    if sel == "매체":
+        return "_medium", "매체"
+    if sel == "캠페인":
+        return "_campaign", "캠페인"
+    return "_content", "컨텐츠"
+
+# ✅ (신규 helper 1개) 집계만 담당: 기간/차원(topk->기타) + groupby(+_period_dt)
+def _agg_period_dim(tb: pd.DataFrame, mode: str, dim: pd.Series, dim_label: str, topk: int, metrics: dict[str, tuple[str, str]]) -> pd.DataFrame:
+    tmp = ui.add_period_columns(tb, "event_date", mode)
+
+    s = dim.reindex(tmp.index).astype(str).replace("nan", "").fillna("").str.strip()
+    s = s.replace("", "기타")
+
+    topv = set(ui.get_topk_values(s[s != "기타"], topk))
+    tmp.loc[:, "_dim2"] = s.where(s.isin(topv), "기타")
+
+    agg = (
+        tmp.groupby(["_period", "_dim2"], dropna=False)
+            .agg(
+                **metrics,
+                _period_dt=("_period_dt", "min"),
+            )
+            .reset_index()
+            .rename(columns={"_period": "기간", "_dim2": dim_label})
+            .sort_values("_period_dt")
+            .reset_index(drop=True)
+    )
+    return agg
+
+
+# ──────────────────────────────────
 # main
 # ──────────────────────────────────
 def main():
@@ -64,7 +214,7 @@ def main():
     st.markdown(CFG["CSS_TABS"], unsafe_allow_html=True)
 
     # ──────────────────────────────────
-    # B) Sidebar (기간)
+    # B) Sidebar / Filter
     # ──────────────────────────────────
     st.sidebar.header("Filter")
     today = datetime.now().date()
@@ -83,17 +233,17 @@ def main():
     # C) Data Load
     # ──────────────────────────────────
     @st.cache_data(ttl=CFG["CACHE_TTL"])
-    def load_data(cs: str, ce: str) -> tuple[pd.DataFrame, str | datetime]:
+    def load_data(cs: str, ce: str):
         bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
         df = bq.get_data("tb_sleeper_e_cart")
-        last_updated_time = df["event_date"].max()
         geo_map = bq.get_data("raw_geo_city_kr")
 
+        # 안전 장치
         df["event_date"] = pd.to_datetime(df["event_date"], format="%Y%m%d", errors="coerce")
         if "event_name" in df.columns:
             df = df[df["event_name"] == "add_to_cart"]
 
-        # ✅ 선택기간으로 강제 필터 (ce는 exclusive)
+        # 기간 필터
         df = df[(df["event_date"] >= pd.to_datetime(cs)) & (df["event_date"] < pd.to_datetime(ce))]
 
         def _safe_str_col(colname: str) -> pd.Series:
@@ -103,21 +253,40 @@ def main():
                 s = pd.Series([""] * len(df), index=df.index)
             return s.astype(str).replace("nan", "").fillna("").str.strip()
 
-        # 유입 경로 추가
+        # 파생 컬럼 (1) 유입 경로
         df["_source"] = _safe_str_col("collected_traffic_source__manual_source").replace("", "(not set)")
         df["_medium"] = _safe_str_col("collected_traffic_source__manual_medium").replace("", "(not set)")
         df["_campaign"] = _safe_str_col("collected_traffic_source__manual_campaign_name").replace("", "(not set)")
         df["_content"] = _safe_str_col("collected_traffic_source__manual_content").replace("", "(not set)")
         df["_sourceMedium"] = df["_source"] + " / " + df["_medium"]
 
-        # 접속권역 파생컬럼 - geo__city 기준 조인
-        df = df.merge(geo_map, on="geo__city", how="left", suffixes=("", "__geo"))
+        # 파생 컬럼 (2) 접속 권역
+        # (GEO - 1) geo 컬럼 안전 전처리
+        df["geo__city"]   = _safe_str_col("geo__city").replace("", "(not set)")
+        df["geo__region"] = _safe_str_col("geo__region").replace("", "(not set)")
+
+        # (GEO - 2) 1차: is_region=0 (city 단위)로 geo__city_kr 붙이기
+        geo_city = (
+            geo_map.loc[geo_map["is_region"].eq(0), ["geo__city", "geo__city_kr"]]
+            .drop_duplicates(subset=["geo__city"], keep="first")
+        )
+        df = df.merge(geo_city, on="geo__city", how="left")
         df["geo__city_kr"] = df["geo__city_kr"].fillna("기타")
 
-        return df, last_updated_time
+        # (GEO - 3) 2차: geo__city_kr == "기타" 인 것만, geo__region (is_region=1) 매핑으로 값이 있으면 교체
+        geo_region_map = (
+            geo_map.loc[geo_map["is_region"].eq(1), ["geo__city", "geo__city_kr"]]
+            .drop_duplicates(subset=["geo__city"], keep="first")
+            .set_index("geo__city")["geo__city_kr"]
+        )
+
+        m = df["geo__city_kr"].eq("기타")
+        df.loc[m, "geo__city_kr"] = df.loc[m, "geo__region"].map(geo_region_map).fillna("기타")
+
+        return df
 
     with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df, last_updated_time = load_data(cs, ce)
+        df = load_data(cs, ce)
 
     # ──────────────────────────────────
     # D) Header
@@ -145,30 +314,6 @@ def main():
         )
 
     with col2:
-        # if isinstance(last_updated_time, str):
-        #     latest_dt = datetime.strptime(last_updated_time, "%Y%m%d")
-        # else:
-        #     latest_dt = last_updated_time
-        # latest_date = latest_dt.date() if hasattr(latest_dt, "date") else datetime.now().date()
-
-        # now_kst = datetime.now(ZoneInfo(CFG["TZ"]))
-        # today_kst = now_kst.date()
-        # delta_days = (today_kst - latest_date).days
-        # hm_ref = now_kst.hour * 100 + now_kst.minute
-
-        # msg = "집계 예정 (AM 08:50 / PM 15:35)"
-        # sub_bg, sub_bd, sub_fg = "#f8fafc", "#e2e8f0", "#475569"
-
-        # if delta_days >= 2:
-        #     msg = "업데이트가 지연되고 있습니다"
-        #     sub_bg, sub_bd, sub_fg = "#fef2f2", "#fee2e2", "#b91c1c"
-        # elif delta_days == 1:
-        #     if hm_ref >= CFG["HEADER_UPDATE_PM"]:
-        #         msg = "2차 업데이트 완료 (PM 15:35)"
-        #         sub_bg, sub_bd, sub_fg = "#fff7ed", "#fdba74", "#c2410c"
-        #     elif hm_ref >= CFG["HEADER_UPDATE_AM"]:
-        #         msg = "1차 업데이트 완료 (AM 08:50)"
-
         st.markdown(
             f"""
             <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
@@ -189,152 +334,34 @@ def main():
     st.divider()
 
     # ──────────────────────────────────
-    # (공통) helpers
-    # ──────────────────────────────────
-    def _k(tag: str) -> str:
-        return f"pp__{tag}"
-
-    # ✅ (최적화) 동일 df/컬럼 value_counts 중복 방지용 로컬 캐시
-    _OPT_CACHE: dict[tuple[int, str], list[str]] = {}
-
-    def _select_opt(df0: pd.DataFrame, col: str, label: str, key: str):
-        ck = (id(df0), col)
-        if ck not in _OPT_CACHE:
-            s = df0.get(col, pd.Series(index=df0.index, dtype=str)).astype(str).replace("nan", "").fillna("").str.strip()
-            vc = s[s != ""].value_counts(dropna=False)
-            _OPT_CACHE[ck] = ["전체"] + vc.index.astype(str).tolist()
-        return st.selectbox(label, _OPT_CACHE[ck], index=0, key=key)
-
-    def _dt_map_from_period(tmp: pd.DataFrame) -> pd.DataFrame:
-        return tmp[["_period", "_period_dt"]].drop_duplicates().rename(columns={"_period": "기간"})
-
-    def _attach_period_dt(agg: pd.DataFrame, dt_map: pd.DataFrame) -> pd.DataFrame:
-        if "_period_dt" in agg.columns:
-            return agg
-        return agg.merge(dt_map, on="기간", how="left")
-
-    def _render_stack_and_table(
-        agg: pd.DataFrame,
-        mode: str,
-        y: str,
-        color: str,
-        key: str,
-        height: int = 360
-    ):
-        if agg is None or agg.empty:
-            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
-            st.markdown(" ")
-            return
-
-        x_col = "_period_dt" if mode == "일별" else "기간"
-        ui.render_stack_graph(
-            agg, x=x_col, y=y, color=color,
-            height=height, opacity=0.6, title=None, show_value_in_hover=True,
-            key=key
-        )
-        pv = ui.build_pivot_table(agg, index_col=color, col_col="기간", val_col=y)
-        ui.render_table(pv, index_col=color, decimals=0)
-        st.markdown(" ")
-
-    def _hier_rank(text: str) -> int:
-        t = (text or "").strip()
-        for i, kw in enumerate(CFG["HIER_PRI"]):
-            if kw in t:
-                return i
-        return 99
-
-    def _sort_b_opts(tb: pd.DataFrame) -> list[str]:
-        b = tb.get("product_cat_b", pd.Series(dtype=str)).dropna().astype(str).str.strip().replace("nan", "")
-        b = [x for x in b.unique().tolist() if x != ""]
-        return sorted(b, key=lambda x: (_hier_rank(x), x))
-
-    def _sort_c_opts(tb: pd.DataFrame) -> list[str]:
-        t = tb
-        if "product_cat_c" not in t.columns:
-            return []
-        b = t.get("product_cat_b", pd.Series(index=t.index, dtype=str)).astype(str).str.strip()
-        c = t.get("product_cat_c", pd.Series(index=t.index, dtype=str)).astype(str).str.strip()
-        ok = (c != "") & (c.str.lower() != "nan")
-        if not ok.any():
-            return []
-
-        tmp = (
-            pd.DataFrame({"product_cat_b": b[ok], "product_cat_c": c[ok]})
-            .groupby(["product_cat_c"], dropna=False)["product_cat_b"]
-            .apply(lambda s: sorted(list(dict.fromkeys([x for x in s.tolist() if x and x.lower() != "nan"]))))
-            .reset_index(name="_parents")
-        )
-
-        def _key(row):
-            cc = row["product_cat_c"]
-            parents = row["_parents"] or []
-            if parents:
-                p0 = sorted(parents, key=lambda x: (_hier_rank(x), x))[0]
-                return (_hier_rank(p0), p0, cc)
-            return (99, "", cc)
-
-        tmp["_k"] = tmp.apply(_key, axis=1)
-        tmp = tmp.sort_values("_k").reset_index(drop=True)
-        return tmp["product_cat_c"].tolist()
-
-    def _brand_list(df0: pd.DataFrame) -> list[str]:
-        exist = df0.get("product_cat_a", pd.Series(dtype=str)).dropna().astype(str).unique().tolist()
-        return [b for b in CFG["BRAND_ORDER"] if b in exist]
-
-    def _apply_brand_hier_filter(
-        df_in: pd.DataFrame,
-        brand: str,
-        view_level: str,
-        need_ab: bool,
-        need_c: bool,
-        sel_b_by_brand: dict,
-        sel_c_by_brand: dict,
-        sel_products: list | None
-    ) -> pd.DataFrame:
-        tb = df_in[df_in["product_cat_a"] == brand]
-        if tb is None or tb.empty:
-            return tb
-
-        if view_level in ["중분류", "소분류", "제품"] and need_ab:
-            picked_b = sel_b_by_brand.get(brand)
-            if picked_b is not None:
-                if len(picked_b) == 0:
-                    return tb.iloc[0:0]
-                tb = tb[tb["product_cat_b"].isin(picked_b)]
-
-        if view_level in ["소분류", "제품"] and need_c:
-            picked_c = sel_c_by_brand.get(brand)
-            if picked_c is not None:
-                if len(picked_c) == 0:
-                    return tb.iloc[0:0]
-                tb = tb[tb["product_cat_c"].isin(picked_c)]
-
-        if view_level == "제품" and sel_products:
-            tb = tb[tb["product_name"].isin(sel_products)]
-
-        return tb
-
-    # ──────────────────────────────────
     # 1) 장바구니 추이
     # ──────────────────────────────────
     st.markdown(" ")
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>장바구니 </span>추이</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ장바구니 담기의 증감 추이를 확인합니다.")
 
-    with st.popover("🤔 유저 VS 세션 VS 이벤트 차이점"):
+    with st.popover("🤔 유저 VS 세션 VS 이벤트"):
         st.markdown("""
-                    - **유저수** (user_pseudo_id) : 고유 사람수  
-                    - **세션수** (pseudo_session_id) : 방문 단위수  
-                    - **이벤트수** (add_to_cart) : 방문 안에서 발생한 이벤트 총 횟수  
-                    - 사람 A가 1월 1일 오전에 시그니처를 조회 후 이탈, 오후에 시그니처와 허쉬를 재조회했다면,  
-                      1월 1일의 **유저수**는 1, **세션수**는 2, **이벤트수**는 3 입니다.
-                    - 유저수 ≤ 세션수 ≤ 이벤트수 입니다.
-                    """)
+    - **유저수 (user_pseudo_id)**  
+    고유 사람 수 (중복 제거).
 
+    - **세션수 (pseudo_session_id)**  
+    방문 단위 수 (같은 사람도 방문이 나뉘면 세션이 늘어남).
+
+    - **이벤트수 (add_to_cart)**  
+    한 방문(세션) 안에서 발생한 행동의 총 횟수.
+
+    - **예시**  
+    사람 A가 1월 1일 오전에 시그니처를 조회 후 이탈, 오후에 시그니처와 허쉬를 재조회했다면  
+    1월 1일의 **유저수=1**, **세션수=2**, **이벤트수=3** 입니다.
+    """)
+
+
+    # 필터
     with st.expander("Filter", expanded=True):
         r0_1, r0_2 = st.columns([1, 2], vertical_alignment="bottom")
         with r0_1:
-            mode_all = st.radio("기간 단위", ["일별", "주별"], horizontal=True, key="mode_all")
+            mode_all = st.radio("기간 단위", CFG["OPTS_PERIOD"], horizontal=True, key="mode_all")
         with r0_2:
             metric_map = {"유저수": "add_to_cart_users", "세션수": "add_to_cart_sessions", "이벤트수": "add_to_cart_events"}
             sel_metrics = st.pills(
@@ -345,42 +372,45 @@ def main():
                 key="sel_metrics_all"
             ) or list(metric_map.keys())
 
+    # 기간 라벨/정렬용 컬럼(_period, _period_dt) 생성
     base = ui.add_period_columns(df, "event_date", mode_all)
 
-    users = base.groupby("_period", dropna=False)["user_pseudo_id"].nunique().reset_index(name="add_to_cart_users")
-    sessions = base.groupby("_period", dropna=False)["pseudo_session_id"].nunique().reset_index(name="add_to_cart_sessions")
-    events = base.groupby("_period", dropna=False).size().reset_index(name="add_to_cart_events")
-    period_dt = base.groupby("_period", dropna=False)["_period_dt"].min().reset_index(name="_period_dt")
-
+    # 기간별 유저/세션/이벤트를 1회 groupby로 집계
     df_all = (
-        users.merge(sessions, on="_period", how="outer")
-             .merge(events, on="_period", how="outer")
-             .merge(period_dt, on="_period", how="left")
-             .rename(columns={"_period": "날짜"})
-             .sort_values("_period_dt")
-             .reset_index(drop=True)
+        base.groupby("_period", dropna=False)
+            .agg(
+                add_to_cart_users=("user_pseudo_id", "nunique"),
+                add_to_cart_sessions=("pseudo_session_id", "nunique"),
+                add_to_cart_events=("user_pseudo_id", "size"),
+                _period_dt=("_period_dt", "min"),
+            )
+            .reset_index()
+            .rename(columns={"_period": "기간"})
+            .sort_values("_period_dt")
+            .reset_index(drop=True)
     )
 
-    # 파생지표
+    # 파생지표(SPU/EPS)
     df_all["sessions_per_user"] = (df_all["add_to_cart_sessions"] / df_all["add_to_cart_users"]).replace([np.inf, -np.inf], np.nan)
     df_all["events_per_session"] = (df_all["add_to_cart_events"] / df_all["add_to_cart_sessions"]).replace([np.inf, -np.inf], np.nan)
 
-    # ✅ 그래프 범례명 한글로 고정
-    plot_rename = {
+    # 그래프 범례 표기용 한글 컬럼 생성
+    df_plot = df_all.rename(columns={
         "add_to_cart_users": "유저수",
         "add_to_cart_sessions": "세션수",
         "add_to_cart_events": "이벤트수",
-    }
-    df_plot = df_all.rename(columns=plot_rename)
+    })
 
+    # 표시 지표 순서 고정 + 최소 1개 보장
     ORDER = ["유저수", "세션수", "이벤트수"]
     y_cols = [m for m in ORDER if m in (sel_metrics or [])]
     y_cols = y_cols or ["유저수"]
 
-    x_col = "_period_dt" if mode_all == "일별" else "날짜"
+    # ✅ (그래프) 장바구니 추이 라인차트
+    x_col = "_period_dt"
     ui.render_line_graph(df_plot, x=x_col, y=y_cols, height=360, title=None)
 
-    # ✅ (표) 이 부분은 “지표 고정 순서 + 표시 포맷”이라 공통화 대상 아님 → 그대로 유지
+    # 표 출력용 지표 정의(표시는 고정 순서)
     rows = [
         ("유저수", "add_to_cart_users", "int"),
         ("세션수", "add_to_cart_sessions", "int"),
@@ -389,13 +419,15 @@ def main():
         ("EPS (이벤트수/세션수)", "events_per_session", "float2"),
     ]
 
-    dates = df_all["날짜"].astype(str).tolist()
+    # 기간 컬럼을 가로축으로 하는 피벗형 테이블 구성
+    dates = df_all["기간"].astype(str).tolist()
     pv = pd.DataFrame({"지표": [r[0] for r in rows]})
     for dt in dates:
         pv[dt] = ""
 
-    m = df_all.set_index("날짜").to_dict(orient="index")
+    m = df_all.set_index("기간").to_dict(orient="index")
 
+    # 포맷 규칙(int / float2)
     def _fmt(v, kind: str) -> str:
         if v is None or (isinstance(v, float) and np.isnan(v)):
             return ""
@@ -409,13 +441,16 @@ def main():
         except Exception:
             return ""
 
+    # 셀 단위 값 채우기
     for i, (_, col, kind) in enumerate(rows):
         for dt in dates:
             pv.at[i, dt] = _fmt(m.get(dt, {}).get(col, np.nan), kind)
 
+    # 기간 라벨 정렬 적용(일별/주별 모두 대응)
     pv = pv[["지표", *ui.sort_period_labels(dates)]]
-    st.dataframe(pv, row_height=30, hide_index=True, use_container_width=True)
 
+    # ✅ (표) 장바구니 지표 요약 테이블
+    st.dataframe(pv, row_height=30, hide_index=True, use_container_width=True)
 
     # ──────────────────────────────────
     # 2) 장바구니 현황
@@ -424,166 +459,201 @@ def main():
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>장바구니 </span>현황</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ장바구니 담기가 발생한 지역 또는 유입한 매체별 비중을 확인합니다.")
 
-    def _get_src_dim(sel):
-        if sel == "소스 / 매체": return "_sourceMedium", "소스/매체"
-        if sel == "소스": return "_source", "소스"
-        if sel == "매체": return "_medium", "매체"
-        if sel == "캠페인": return "_campaign", "캠페인"
-        return "_content", "컨텐츠"
-
-    def render_dim_trend(
-        df_in: pd.DataFrame,
-        mode: str,
-        unit: str,
-        dim_col: str,
-        dim_label: str,
-        topk: int | None,
-        extra_filter: dict[str, str] | None = None,
-        key_tag: str = ""
-    ):
-        df_f = df_in
-        if extra_filter:
-            for c, v in extra_filter.items():
-                if v != "전체" and c in df_f.columns:
-                    df_f = df_f[df_f[c] == v]
-
-        if df_f is None or df_f.empty:
-            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
-            return
-
-        tmp = ui.add_period_columns(df_f, "event_date", mode)
-
-        s = tmp.get(dim_col, pd.Series(index=tmp.index, dtype=str)).astype(str).replace("nan", "").fillna("").str.strip()
-        s = s.replace("", "기타")
-
-        if topk is None:
-            tmp["_dim2"] = s
-        else:
-            topk_vals = set(ui.get_topk_values(s[s != "기타"], topk))
-            tmp["_dim2"] = s.where(s.isin(topk_vals), "기타")
-
-        # ✅ (최적화) dt_map merge 제거: groupby에서 _period_dt를 같이 집계
-        grp = (
-            tmp.groupby(["_period", "_dim2"], dropna=False)
-               .agg(
-                   세션수=("pseudo_session_id", "nunique"),
-                   유저수=("user_pseudo_id", "nunique"),
-                   _period_dt=("_period_dt", "min"),
-               )
-               .reset_index()
-               .rename(columns={"_period": "기간", "_dim2": dim_label})
-               .sort_values("_period_dt")
-               .reset_index(drop=True)
-        )
-
-        chart_key = f"pdp_stack::{key_tag}::{dim_label}::{dim_col}::{mode}::{unit}::{topk}"
-        if extra_filter:
-            chart_key += "::" + "::".join([f"{k}={v}" for k, v in sorted(extra_filter.items())])
-
-        x_col = "_period_dt" if mode == "일별" else "기간"
-        ui.render_stack_graph(grp, x=x_col, y=unit, color=dim_label, key=chart_key, show_value_in_hover=True)
-
-        long = grp[["기간", dim_label, unit]].rename(columns={unit: "값"})
-        pv2 = ui.build_pivot_table(long, index_col=dim_label, col_col="기간", val_col="값")
-        ui.render_table(pv2, index_col=dim_label, decimals=0)
-
-
-    # ✅ 대표 필터: 탭 위 공통 (모든 탭 동일 적용)
+    # 필터
     with st.expander("Filter", expanded=False):
         c1, c2, c3 = st.columns([1, 1, 1], vertical_alignment="bottom")
         with c1:
-            mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="pdp_comm_m")
+            mode = st.radio("기간 단위", CFG["OPTS_PERIOD"], index=0, horizontal=True, key="atc_comm_m")
         with c2:
-            unit = st.radio("집계 단위", ["유저수", "세션수"], index=1, horizontal=True, key="pdp_comm_u")
+            unit = st.radio("집계 단위", ["유저수", "세션수"], index=1, horizontal=True, key="atc_comm_u")
         with c3:
-            topk = st.selectbox("표시 Top K", CFG["TOPK_PATH_OPTS"], index=1, key="pdp_comm_k")
+            topk = st.selectbox("표시 Top K", CFG["OPTS_TOPK"], index=1, key="atc_comm_k")
 
     tab_src, tab_geo_kr, tab_geo, tab_mix = st.tabs(["유입매체", "접속권역", "접속지역", "매체X권역"])
 
-    # ── 유입매체
     with tab_src:
         with st.expander("Filter", expanded=True):
             c1, c2, _p = st.columns([1, 1, 2], vertical_alignment="bottom")
             with c1:
-                sel_dim = st.selectbox("유입 단위", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"], index=0, key="pdp_s_d")
+                sel_dim = st.selectbox("유입 단위", CFG["OPTS_PATH"], index=0, key="atc_s_d")
             with c2:
                 dim_col, dim_label = _get_src_dim(sel_dim)
-                sel = _select_opt(df, dim_col, "유입 선택", "pdp_s_v")
+                sel = _select_opt(df, dim_col, "유입 선택", "atc_s_v")
             with _p:
                 pass
 
-        extra = {} if sel == "전체" else {dim_col: sel}
-        render_dim_trend(df, mode, unit, dim_col, dim_label, topk, extra_filter=extra, key_tag="tab=src")
+        df_f = df
+        if sel != "전체" and dim_col in df_f.columns:
+            df_f = df_f[df_f[dim_col] == sel]
 
+        if df_f is None or df_f.empty:
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+        else:
+            grp = _agg_period_dim(
+                tb=df_f,
+                mode=mode,
+                dim=_safe_str(df_f, dim_col),
+                dim_label=dim_label,
+                topk=topk,
+                metrics={
+                    "세션수": ("pseudo_session_id", "nunique"),
+                    "유저수": ("user_pseudo_id", "nunique"),
+                }
+            )
 
-    # ── 접속권역
+            chart_key = f"atc_stack::tab=src::{dim_label}::{dim_col}::{mode}::{unit}::{topk}"
+            if sel != "전체":
+                chart_key += f"::{dim_col}={sel}"
+
+            _render_stack_and_table(
+                agg=grp,
+                mode=mode,
+                y=unit,
+                color=dim_label,
+                key=chart_key
+            )
+
     with tab_geo_kr:
         with st.expander("Filter", expanded=True):
             c1, _p = st.columns([1, 3], vertical_alignment="bottom")
             with c1:
-                sel = _select_opt(df, "geo__city_kr", "권역 선택", "pdp_gk_s")
+                sel = _select_opt(df, "geo__city_kr", "권역 선택", "atc_gk_s")
             with _p:
                 pass
 
-        render_dim_trend(
-            df, mode, unit,
-            "geo__city_kr", "접속권역",
-            topk,
-            extra_filter={"geo__city_kr": sel},
-            key_tag="tab=gk"
-        )
+        df_f = df
+        if sel != "전체" and "geo__city_kr" in df_f.columns:
+            df_f = df_f[df_f["geo__city_kr"] == sel]
 
+        if df_f is None or df_f.empty:
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+        else:
+            dim_col = "geo__city_kr"
+            dim_label = "접속권역"
 
-    # ── 접속지역
+            grp = _agg_period_dim(
+                tb=df_f,
+                mode=mode,
+                dim=_safe_str(df_f, dim_col),
+                dim_label=dim_label,
+                topk=topk,
+                metrics={
+                    "세션수": ("pseudo_session_id", "nunique"),
+                    "유저수": ("user_pseudo_id", "nunique"),
+                }
+            )
+
+            chart_key = f"atc_stack::tab=gk::{dim_label}::{dim_col}::{mode}::{unit}::{topk}"
+            if sel != "전체":
+                chart_key += f"::{dim_col}={sel}"
+
+            _render_stack_and_table(
+                agg=grp,
+                mode=mode,
+                y=unit,
+                color=dim_label,
+                key=chart_key
+            )
+
     with tab_geo:
         with st.expander("Filter", expanded=True):
             c1, c2, _p = st.columns([1, 1, 2], vertical_alignment="bottom")
             with c1:
-                sel_kr = _select_opt(df, "geo__city_kr", "권역 선택", "pdp_g_kr")
+                sel_kr = _select_opt(df, "geo__city_kr", "권역 선택", "atc_g_kr")
             with c2:
-                sel = _select_opt(df, "geo__city", "지역 선택", "pdp_g_c")
+                sel = _select_opt(df, "geo__city", "지역 선택", "atc_g_c")
             with _p:
                 pass
 
-        render_dim_trend(
-            df, mode, unit,
-            "geo__city", "접속지역",
-            topk,
-            extra_filter={"geo__city_kr": sel_kr, "geo__city": sel},
-            key_tag="tab=g"
-        )
+        df_f = df
+        if sel_kr != "전체" and "geo__city_kr" in df_f.columns:
+            df_f = df_f[df_f["geo__city_kr"] == sel_kr]
+        if sel != "전체" and "geo__city" in df_f.columns:
+            df_f = df_f[df_f["geo__city"] == sel]
 
+        if df_f is None or df_f.empty:
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+        else:
+            dim_col = "geo__city"
+            dim_label = "접속지역"
 
-    # ── 매체X권역 (요구사항: 유입 단위 + 유입 선택 + 권역 선택 + 지역 선택 모두 배치)
+            grp = _agg_period_dim(
+                tb=df_f,
+                mode=mode,
+                dim=_safe_str(df_f, dim_col),
+                dim_label=dim_label,
+                topk=topk,
+                metrics={
+                    "세션수": ("pseudo_session_id", "nunique"),
+                    "유저수": ("user_pseudo_id", "nunique"),
+                }
+            )
+
+            chart_key = f"atc_stack::tab=g::{dim_label}::{dim_col}::{mode}::{unit}::{topk}"
+            if sel_kr != "전체":
+                chart_key += f"::geo__city_kr={sel_kr}"
+            if sel != "전체":
+                chart_key += f"::geo__city={sel}"
+
+            _render_stack_and_table(
+                agg=grp,
+                mode=mode,
+                y=unit,
+                color=dim_label,
+                key=chart_key
+            )
+
     with tab_mix:
         with st.expander("Filter", expanded=True):
             c1, c2, c3, c4 = st.columns([1, 1, 1, 1], vertical_alignment="bottom")
             with c1:
-                sel_dim = st.selectbox("유입 단위", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"], index=0, key="pdp_m_d")
+                sel_dim = st.selectbox("유입 단위", CFG["OPTS_PATH"], index=0, key="atc_m_d")
             with c2:
                 dim_col, dim_label = _get_src_dim(sel_dim)
-                sel_src = _select_opt(df, dim_col, "유입 선택", "pdp_m_s")
+                sel_src = _select_opt(df, dim_col, "유입 선택", "atc_m_s")
             with c3:
-                sel_kr = _select_opt(df, "geo__city_kr", "권역 선택", "pdp_m_kr")
+                sel_kr = _select_opt(df, "geo__city_kr", "권역 선택", "atc_m_kr")
             with c4:
-                sel_city = _select_opt(df, "geo__city", "지역 선택", "pdp_m_c")
+                sel_city = _select_opt(df, "geo__city", "지역 선택", "atc_m_c")
 
-        extra = {}
-        if sel_src != "전체":
-            extra[dim_col] = sel_src
-        if sel_kr != "전체":
-            extra["geo__city_kr"] = sel_kr
-        if sel_city != "전체":
-            extra["geo__city"] = sel_city
+        df_f = df
+        if sel_src != "전체" and dim_col in df_f.columns:
+            df_f = df_f[df_f[dim_col] == sel_src]
+        if sel_kr != "전체" and "geo__city_kr" in df_f.columns:
+            df_f = df_f[df_f["geo__city_kr"] == sel_kr]
+        if sel_city != "전체" and "geo__city" in df_f.columns:
+            df_f = df_f[df_f["geo__city"] == sel_city]
 
-        render_dim_trend(
-            df, mode, unit,
-            dim_col, dim_label,
-            topk,
-            extra_filter=extra,
-            key_tag="tab=mix"
-        )
+        if df_f is None or df_f.empty:
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+        else:
+            grp = _agg_period_dim(
+                tb=df_f,
+                mode=mode,
+                dim=_safe_str(df_f, dim_col),
+                dim_label=dim_label,
+                topk=topk,
+                metrics={
+                    "세션수": ("pseudo_session_id", "nunique"),
+                    "유저수": ("user_pseudo_id", "nunique"),
+                }
+            )
 
+            chart_key = f"atc_stack::tab=mix::{dim_label}::{dim_col}::{mode}::{unit}::{topk}"
+            if sel_src != "전체":
+                chart_key += f"::{dim_col}={sel_src}"
+            if sel_kr != "전체":
+                chart_key += f"::geo__city_kr={sel_kr}"
+            if sel_city != "전체":
+                chart_key += f"::geo__city={sel_city}"
+
+            _render_stack_and_table(
+                agg=grp,
+                mode=mode,
+                y=unit,
+                color=dim_label,
+                key=chart_key
+            )
 
     # ──────────────────────────────────
     # 3) 품목별 추이
@@ -601,24 +671,27 @@ def main():
                         - 슬립퍼 **프레임** : 원목 or 패브릭 or 호텔침대  
                         - 누어 **프레임** : 룬드 or 수입파운 or 원목  
                         - 슬립퍼 **부자재** : 경추베개 외 기타  
-                        - 누어 **부자재** : 룬드 라이브러리 외 기타  
-                    - 소분류 중 부자재의 '기타' 외 세부 구성은 변경될 수 있으며, 필요 시 별도 문의 바랍니다.  
+                        - 누어 **부자재** : 룬드 라이브러리 외 기타   
+                    - **참고**   
+                    소분류 중 부자재의 '기타' 외 세부 구성은 변경될 수 있으며, 필요 시 별도 문의 바랍니다.  
                     """)
 
-    tab1, tab2 = st.tabs(["커스텀", "[고정뷰 예시] 슬립퍼 프레임별"])
 
+    tab1, tab2 = st.tabs(["커스텀", "PASS"])
+
+    # tab1
     with tab1:
         with st.expander("Filter", expanded=True):
             c1, c2, c3 = st.columns([1.8, 2.6, 2.0], vertical_alignment="bottom")
             with c1:
-                mode_cat = st.radio("기간 단위", ["일별", "주별"], horizontal=True, key="mode_cat_tab1")
+                mode_cat = st.radio("기간 단위", CFG["OPTS_PERIOD"], horizontal=True, key="mode_cat_tab1")
             with c2:
                 view_level = st.radio("품목 뎁스", ["브랜드", "중분류", "소분류", "제품"], index=2, horizontal=True, key="view_level_tab1")
             with c3:
-                topk_cat = st.selectbox("표시 Top K", CFG["TOPK_CAT_OPTS"], index=2, key="topk_cat_tab1")
+                topk_cat = st.selectbox("표시 Top K", CFG["OPTS_TOPK"], index=1, key="topk_cat_tab1")
 
             base2 = df
-            brand_order = CFG["BRAND_ORDER"]
+            brand_order = CFG["HIER_BRAND"]
             brands_exist = [b for b in brand_order if b in base2.get("product_cat_a", pd.Series(dtype=str)).dropna().astype(str).unique().tolist()]
             sel_a = brands_exist[:]
 
@@ -701,8 +774,15 @@ def main():
                     key="sel_products_tab1"
                 )
 
-        baseP = ui.add_period_columns(df, "event_date", mode_cat)
-        baseP = baseP[baseP["product_cat_a"].isin(sel_a)]
+        baseP = df[df["product_cat_a"].isin(sel_a)]
+
+        dim_map = {
+            "브랜드": "product_cat_a",
+            "중분류": "product_cat_b",
+            "소분류": "product_cat_c",
+            "제품": "product_name",
+        }
+        dim = dim_map[view_level]
 
         for brand in sel_a:
             st.markdown(f"###### {brand}")
@@ -716,84 +796,32 @@ def main():
                 st.markdown(" ")
                 continue
 
-            if view_level == "브랜드":
-                dim = "product_cat_a"
-            elif view_level == "중분류":
-                dim = "product_cat_b"
-            elif view_level == "소분류":
-                dim = "product_cat_c"
-            else:
-                dim = "product_name"
+            # # (표시 TopK) 제품 선택을 직접 했으면 치환하지 않음
+            # if view_level in ["중분류", "소분류", "제품"] and not (view_level == "제품" and sel_products):
+            #     if dim in tb.columns:
+            #         top_vals = ui.get_topk_values(tb[dim], topk_cat)
+            #         tb.loc[:, dim] = tb[dim].where(tb[dim].isin(top_vals), "기타")
 
-            if view_level in ["중분류", "소분류", "제품"]:
-                if not (view_level == "제품" and sel_products):
-                    top_vals = ui.get_topk_values(tb[dim], topk_cat)
-                    tb.loc[:, dim] = tb[dim].where(tb[dim].isin(top_vals), "기타")
-
-            agg = (
-                tb.groupby(["_period", dim], dropna=False)
-                  .agg(
-                      sessions=("pseudo_session_id", "nunique"),
-                      _period_dt=("_period_dt", "min"),
-                  )
-                  .reset_index()
-                  .rename(columns={"_period": "기간", dim: "구분"})
-            )
-            if agg is None or agg.empty:
-                st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
-                st.markdown(" ")
-                continue
-
-            x_col_cat = "_period_dt" if mode_cat == "일별" else "기간"
-            ui.render_stack_graph(
-                agg, x=x_col_cat, y="sessions", color="구분",
-                height=340, opacity=0.6, title=None, show_value_in_hover=True,
-                key=f"cat_stack__{brand}"
+            agg = _agg_period_dim(
+                tb=tb,
+                mode=mode_cat,
+                dim=_safe_str(tb, dim),
+                dim_label="구분",
+                topk=topk_cat,
+                metrics={"sessions": ("pseudo_session_id", "nunique")}
             )
 
-            pv3 = ui.build_pivot_table(agg, index_col="구분", col_col="기간", val_col="sessions")
-            ui.render_table(pv3, index_col="구분", decimals=0)
-            st.markdown(" ")
+            _render_stack_and_table(
+                agg=agg,
+                mode=mode_cat,
+                y="sessions",
+                color="구분",
+                key=f"cat_stack__{brand}__{view_level}__{mode_cat}__{topk_cat}",
+                height=340
+            )
 
     with tab2:
-        with st.expander("Filter", expanded=True):
-            mode_cat3 = st.radio("기간 단위", ["일별", "주별"], horizontal=True, key="mode_cat_tab3")
-            topk_cat3 = st.selectbox("표시 Top K", CFG["TOPK_CAT_OPTS"], index=2, key="topk_cat_tab3")
-
-        baseX = ui.add_period_columns(df, "event_date", mode_cat3)
-        tb = baseX[
-            (baseX["product_cat_a"] == "슬립퍼") &
-            (baseX["product_cat_b"].astype(str) == "프레임") &
-            (baseX["product_cat_c"].isin(["원목", "패브릭", "호텔침대"]))
-        ]
-
-        st.markdown("###### 슬립퍼")
-        if tb is None or tb.empty:
-            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
-        else:
-            dim = "product_cat_c"
-            top_vals = ui.get_topk_values(tb[dim], topk_cat3)
-            tb.loc[:, dim] = tb[dim].where(tb[dim].isin(top_vals), "기타")
-
-            agg = (
-                tb.groupby(["_period", dim], dropna=False)
-                  .agg(
-                      sessions=("pseudo_session_id", "nunique"),
-                      _period_dt=("_period_dt", "min"),
-                  )
-                  .reset_index()
-                  .rename(columns={"_period": "기간", dim: "구분"})
-            )
-
-            x_col_cat2 = "_period_dt" if mode_cat3 == "일별" else "기간"
-            ui.render_stack_graph(
-                agg, x=x_col_cat2, y="sessions", color="구분",
-                height=340, opacity=0.6, title=None, show_value_in_hover=True,
-                key="cat_tab2_stack"
-            )
-
-            pv3b = ui.build_pivot_table(agg, index_col="구분", col_col="기간", val_col="sessions")
-            ui.render_table(pv3b, index_col="구분", decimals=0)
+        pass
 
     # ──────────────────────────────────
     # 4) 품목별 현황
@@ -809,11 +837,11 @@ def main():
     with st.expander("Filter", expanded=True):
         c1, c2, c3 = st.columns([1.8, 2.6, 2.0], vertical_alignment="bottom")
         with c1:
-            mode_pp4 = st.radio("기간 단위", ["일별", "주별"], horizontal=True, key=_k4("mode"))
+            mode_pp4 = st.radio("기간 단위", CFG["OPTS_PERIOD"], horizontal=True, key=_k4("mode"))
         with c2:
             view_pp4 = st.radio("품목 뎁스", ["브랜드", "중분류", "소분류", "제품"], index=3, horizontal=True, key=_k4("view"))
         with c3:
-            topk_pp4 = st.selectbox("표시 Top K", CFG["TOPK_PATH_OPTS"], index=1, key=_k4("topk"))
+            topk_pp4 = st.selectbox("표시 Top K", CFG["OPTS_TOPK"], index=1, key=_k4("topk"))
 
         brands = _brand_list(df)
         need_ab = view_pp4 in ["중분류", "소분류", "제품"]
@@ -857,6 +885,7 @@ def main():
         if view_pp4 == "제품":
             tmpP = df[df["product_cat_a"].isin(brands)]
             mask = pd.Series(False, index=tmpP.index)
+
             for b in brands:
                 tb0 = tmpP[tmpP["product_cat_a"] == b]
                 if tb0 is None or tb0.empty:
@@ -876,59 +905,16 @@ def main():
                 options=cand, default=[], placeholder="전체", key=_k4("prod")
             )
 
-    # 공통 필터 결과 없으면 종료
     if not brands:
         st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
     else:
-        tab_src, tab_gk, tab_g, tab_mix = st.tabs(["유입매체", "접속권역", "접속지역", "매체X지역"])
+        tab_src, tab_gk, tab_g, tab_mix = st.tabs(["유입매체", "접속권역", "접속지역", "매체X권역"])
 
-        def _apply_prod_filter(df_in: pd.DataFrame, brand: str) -> pd.DataFrame:
-            return _apply_brand_hier_filter(
-                df_in, brand, view_pp4, need_ab, need_c,
-                sel_b, sel_c, sel_p
-            )
-
-        def _render_dim(tb: pd.DataFrame, dim_col: str, dim_label: str, tab: str, brand: str):
-            tb = ui.add_period_columns(tb, "event_date", mode_pp4)
-            s = tb.get(dim_col, pd.Series(index=tb.index, dtype=str)).astype(str).replace("nan", "").fillna("").str.strip()
-            s = s.replace("", "기타")
-            topv = set(ui.get_topk_values(s[s != "기타"], topk_pp4))
-            tb.loc[:, "_d2"] = s.where(s.isin(topv), "기타")
-
-            # ✅ (최적화) dt_map/merge 제거: groupby에서 _period_dt를 같이 집계
-            agg = (
-                tb.groupby(["_period", "_d2"], dropna=False)
-                  .agg(
-                      sessions=("pseudo_session_id", "nunique"),
-                      _period_dt=("_period_dt", "min"),
-                  )
-                  .reset_index()
-                  .rename(columns={"_period": "기간", "_d2": dim_label})
-                  .sort_values("_period_dt")
-                  .reset_index(drop=True)
-            )
-
-            _render_stack_and_table(
-                agg=agg,
-                mode=mode_pp4,
-                y="sessions",
-                color=dim_label,
-                key=_k4(f"chart__{tab}__{brand}__{dim_col}__{mode_pp4}__{topk_pp4}")
-            )
-
-        # ──────────────────────────────────
-        # 탭 1) 유입매체
-        # ──────────────────────────────────
         with tab_src:
             with st.expander("Filter", expanded=True):
                 c1, c2, _p = st.columns([1, 1, 2], vertical_alignment="bottom")
                 with c1:
-                    sel_dim = st.selectbox(
-                        "유입 단위",
-                        ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"],
-                        index=0,
-                        key=_k4("src__d")
-                    )
+                    sel_dim = st.selectbox("유입 단위", CFG["OPTS_PATH"], index=0, key=_k4("src__d"))
                 with c2:
                     dim_col, dim_label = _get_src_dim(sel_dim)
                     sel_dim_val = _select_opt(df, dim_col, "유입 선택", key=_k4("src__v"))
@@ -937,7 +923,12 @@ def main():
 
             for b in brands:
                 st.markdown(f"###### {b}")
-                tb = _apply_prod_filter(df, b)
+
+                tb = _apply_brand_hier_filter(df, b, view_pp4, need_ab, need_c, sel_b, sel_c, sel_p)
+                if tb is None or tb.empty:
+                    st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+                    st.markdown(" ")
+                    continue
 
                 if sel_dim_val != "전체" and dim_col in tb.columns:
                     tb = tb[tb[dim_col] == sel_dim_val]
@@ -947,29 +938,23 @@ def main():
                     st.markdown(" ")
                     continue
 
-                tb = ui.add_period_columns(tb, "event_date", mode_pp4)
-
+                # 유입경로는 사용자 선택(소스/매체/캠페인/컨텐츠) 기반으로 만든 "_path"
                 PATH_MAP = {
-                    "소스 / 매체": tb["_sourceMedium"],
-                    "소스": tb["_source"],
-                    "매체": tb["_medium"],
-                    "캠페인": tb["_campaign"],
-                    "컨텐츠": tb["_content"],
+                    "소스 / 매체": _safe_str(tb, "_sourceMedium").replace("", "(not set)"),
+                    "소스": _safe_str(tb, "_source").replace("", "(not set)"),
+                    "매체": _safe_str(tb, "_medium").replace("", "(not set)"),
+                    "캠페인": _safe_str(tb, "_campaign").replace("", "(not set)"),
+                    "컨텐츠": _safe_str(tb, "_content").replace("", "(not set)"),
                 }
-                tb.loc[:, "_path"] = PATH_MAP[sel_dim].replace("", "(not set)")
-                top_paths = tb["_path"].value_counts().head(topk_pp4).index.tolist()
-                tb.loc[:, "_path2"] = tb["_path"].where(tb["_path"].isin(top_paths), "기타")
+                s_path = PATH_MAP[sel_dim]
 
-                agg = (
-                    tb.groupby(["_period", "_path2"], dropna=False)
-                      .agg(
-                          sessions=("pseudo_session_id", "nunique"),
-                          _period_dt=("_period_dt", "min"),
-                      )
-                      .reset_index()
-                      .rename(columns={"_period": "기간", "_path2": "유입경로"})
-                      .sort_values("_period_dt")
-                      .reset_index(drop=True)
+                agg = _agg_period_dim(
+                    tb=tb,
+                    mode=mode_pp4,
+                    dim=s_path,
+                    dim_label="유입경로",
+                    topk=topk_pp4,
+                    metrics={"sessions": ("pseudo_session_id", "nunique")}
                 )
 
                 _render_stack_and_table(
@@ -980,9 +965,6 @@ def main():
                     key=_k4(f"chart__src__{b}__{sel_dim}__{sel_dim_val}__{mode_pp4}__{topk_pp4}")
                 )
 
-        # ──────────────────────────────────
-        # 탭 2) 접속권역
-        # ──────────────────────────────────
         with tab_gk:
             with st.expander("Filter", expanded=True):
                 c1, _p = st.columns([1, 3], vertical_alignment="bottom")
@@ -993,7 +975,12 @@ def main():
 
             for b in brands:
                 st.markdown(f"###### {b}")
-                tb = _apply_prod_filter(df, b)
+
+                tb = _apply_brand_hier_filter(df, b, view_pp4, need_ab, need_c, sel_b, sel_c, sel_p)
+                if tb is None or tb.empty:
+                    st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+                    st.markdown(" ")
+                    continue
 
                 if sel_kr != "전체" and "geo__city_kr" in tb.columns:
                     tb = tb[tb["geo__city_kr"] == sel_kr]
@@ -1003,11 +990,23 @@ def main():
                     st.markdown(" ")
                     continue
 
-                _render_dim(tb, "geo__city_kr", "접속권역", "gk", b)
+                agg = _agg_period_dim(
+                    tb=tb,
+                    mode=mode_pp4,
+                    dim=_safe_str(tb, "geo__city_kr"),
+                    dim_label="접속권역",
+                    topk=topk_pp4,
+                    metrics={"sessions": ("pseudo_session_id", "nunique")}
+                )
 
-        # ──────────────────────────────────
-        # 탭 3) 접속지역 (권역 + 지역)
-        # ──────────────────────────────────
+                _render_stack_and_table(
+                    agg=agg,
+                    mode=mode_pp4,
+                    y="sessions",
+                    color="접속권역",
+                    key=_k4(f"chart__gk__{b}__{mode_pp4}__{topk_pp4}__{sel_kr}")
+                )
+
         with tab_g:
             with st.expander("Filter", expanded=True):
                 c1, c2, _p = st.columns([1, 1, 2], vertical_alignment="bottom")
@@ -1020,7 +1019,12 @@ def main():
 
             for b in brands:
                 st.markdown(f"###### {b}")
-                tb = _apply_prod_filter(df, b)
+
+                tb = _apply_brand_hier_filter(df, b, view_pp4, need_ab, need_c, sel_b, sel_c, sel_p)
+                if tb is None or tb.empty:
+                    st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+                    st.markdown(" ")
+                    continue
 
                 if sel_kr != "전체" and "geo__city_kr" in tb.columns:
                     tb = tb[tb["geo__city_kr"] == sel_kr]
@@ -1032,21 +1036,28 @@ def main():
                     st.markdown(" ")
                     continue
 
-                _render_dim(tb, "geo__city", "접속지역", "g", b)
+                agg = _agg_period_dim(
+                    tb=tb,
+                    mode=mode_pp4,
+                    dim=_safe_str(tb, "geo__city"),
+                    dim_label="접속지역",
+                    topk=topk_pp4,
+                    metrics={"sessions": ("pseudo_session_id", "nunique")}
+                )
 
-        # ──────────────────────────────────
-        # 탭 4) 매체X권역 (유입 단위 + 유입 선택 + 권역 선택 + 지역 선택)
-        # ──────────────────────────────────
+                _render_stack_and_table(
+                    agg=agg,
+                    mode=mode_pp4,
+                    y="sessions",
+                    color="접속지역",
+                    key=_k4(f"chart__g__{b}__{mode_pp4}__{topk_pp4}__{sel_kr}__{sel_g}")
+                )
+
         with tab_mix:
             with st.expander("Filter", expanded=True):
                 c1, c2, c3, c4 = st.columns([1, 1, 1, 1], vertical_alignment="bottom")
                 with c1:
-                    sel_dim = st.selectbox(
-                        "유입 단위",
-                        ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"],
-                        index=0,
-                        key=_k4("mix__d")
-                    )
+                    sel_dim = st.selectbox("유입 단위", CFG["OPTS_PATH"], index=0, key=_k4("mix__d"))
                 with c2:
                     dim_col, dim_label = _get_src_dim(sel_dim)
                     sel_src = _select_opt(df, dim_col, "유입 선택", key=_k4("mix__s"))
@@ -1057,7 +1068,12 @@ def main():
 
             for b in brands:
                 st.markdown(f"###### {b}")
-                tb = _apply_prod_filter(df, b)
+
+                tb = _apply_brand_hier_filter(df, b, view_pp4, need_ab, need_c, sel_b, sel_c, sel_p)
+                if tb is None or tb.empty:
+                    st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+                    st.markdown(" ")
+                    continue
 
                 if sel_src != "전체" and dim_col in tb.columns:
                     tb = tb[tb[dim_col] == sel_src]
@@ -1071,9 +1087,22 @@ def main():
                     st.markdown(" ")
                     continue
 
-                # ✅ 매체X권역은 "지역 기준"으로 보여주되, 유입 단위 필터가 같이 걸린 상태
-                _render_dim(tb, "geo__city", "접속지역", "mix", b)
+                agg = _agg_period_dim(
+                    tb=tb,
+                    mode=mode_pp4,
+                    dim=_safe_str(tb, dim_col),
+                    dim_label=dim_label,
+                    topk=topk_pp4,
+                    metrics={"sessions": ("pseudo_session_id", "nunique")}
+                )
 
+                _render_stack_and_table(
+                    agg=agg,
+                    mode=mode_pp4,
+                    y="sessions",
+                    color=dim_label,
+                    key=_k4(f"chart__mix__{b}__{sel_dim}__{sel_src}__{sel_kr}__{sel_g}__{mode_pp4}__{topk_pp4}")
+                )
 
     # ──────────────────────────────────
     # 5) 장바구니 구성 분포
@@ -1082,7 +1111,7 @@ def main():
     st.markdown("<h5 style='margin:0'>장바구니 옵션 분석 </h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ옵션 포함 기준의 담김 금액(가격대)·사이즈·옵션 조합의 비중을 확인합니다.", unsafe_allow_html=True)
 
-    # 해당 영역 전용 일회용 함수 
+    # 해당 영역 전용 일회용 함수
     def make_price_bucket(s: pd.Series, step: int = 500_000) -> tuple[list[int], list[str]]:
         v_max  = float(s.max() if not s.empty else 0)
         v_edge = max(step, (int(v_max // step) + 1) * step)
@@ -1120,25 +1149,57 @@ def main():
                 return m, "OR"
 
         return s.str.contains(q, regex=False, na=False), "부분일치"
-    
-    # 컬럼 전처리 
+
+    # (리팩토링) 5-1/5-2 공통 레이아웃(차트+표) 렌더
+    def _render_bar_and_table(
+        df_chart: pd.DataFrame,
+        df_tbl: pd.DataFrame,
+        x: str,
+        y: str,
+        hover_pct_col: str,
+        table_cols: list[str],
+        table_height: int = 320,
+        x_order: list[str] | None = None,
+        key: str | None = None
+    ):
+        cL, _p, cR = st.columns([6, 0.2, 4], vertical_alignment="top")
+        with cL:
+            fig = px.bar(df_chart, x=x, y=y, hover_data={hover_pct_col: ":.1%"})
+            fig.update_traces(opacity=0.60)
+            if x_order:
+                fig.update_xaxes(
+                    type="category",
+                    categoryorder="array",
+                    categoryarray=x_order,
+                    tickmode="array",
+                    tickvals=x_order
+                )
+            fig.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=40))
+            st.plotly_chart(fig, use_container_width=True, key=key)
+        with _p:
+            pass
+        with cR:
+            df_tbl = df_tbl.copy()
+            df_tbl["비중"] = (pd.to_numeric(df_tbl["비중"], errors="coerce").fillna(0) * 100).round(1).astype(str) + "%"
+            st.dataframe(df_tbl[table_cols], hide_index=True, row_height=30, use_container_width=True, height=table_height)
+
+    # 컬럼 전처리
     df["item_value_total"]    = pd.to_numeric(df.get("item_value_total"), errors="coerce").fillna(0)                                           # 숫자형 변환(결측=0)
     df["items__item_variant"] = df.get("items__item_variant", "").astype(str).replace("nan","").fillna("").str.strip().replace("", "정보없음")  # 문자열 정리(빈값→정보없음)
     df["variant_size_code"]   = df.get("variant_size_code", None)                                                                              # 코드 컬럼 유지(없으면 NaN)
     v_bins, v_lbl = make_price_bucket(df["item_value_total"])
     df["price_bucket"] = pd.cut(df["item_value_total"], bins=v_bins, labels=v_lbl, right=False, include_lowest=True).astype(str).replace("nan", v_lbl[0])
 
-    # 전체 필터 
-    with st.expander("Filter", expanded=True):      
+    # 전체 필터
+    with st.expander("Filter", expanded=True):
         prod_opts = ["전체"] + sorted(df["product_name"].dropna().astype(str).unique().tolist())
         sel_prod = st.selectbox("제품 선택", prod_opts, index=0, key="dist__product")
 
     df_f = df if sel_prod == "전체" else df[df["product_name"] == sel_prod]
 
-
     if df_f.empty:
         st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
-    
+
     else:
         # ──────────────────────────────────
         # 5-1) 가격대 분포도
@@ -1146,17 +1207,15 @@ def main():
         st.markdown(" ")
         st.markdown("<h6 style='margin:0'>가격대 분포도</h6>", unsafe_allow_html=True)
 
-        # 데이터프레임 생성 (차트)
         df_bucket = (
             df_f.groupby("price_bucket", dropna=False).size()
-                .reindex(v_lbl, fill_value=0)  # 라벨 순서 고정
+                .reindex(v_lbl, fill_value=0)
                 .reset_index(name="이벤트수")
                 .rename(columns={"price_bucket": "가격대"})
         )
         total_cnt = int(df_bucket["이벤트수"].sum())
         df_bucket["비중"] = (df_bucket["이벤트수"] / max(1, total_cnt)).fillna(0)
 
-        # 데이터프레임 생성 (표)
         rep_prod = (
             df_f.groupby(["price_bucket", "product_name"], dropna=False).size()
                 .reset_index(name="이벤트수")
@@ -1170,19 +1229,18 @@ def main():
 
         df_bucket_tbl = df_bucket.merge(rep_prod, on="가격대", how="left")
         df_bucket_tbl["대표 제품"] = df_bucket_tbl["대표 제품"].fillna("정보없음")
-        
-        cL, _p, cR = st.columns([6, 0.2, 4], vertical_alignment="top")
-        with cL:
-            fig_price = px.bar(df_bucket, x="가격대", y="이벤트수", hover_data={"비중": ":.1%"} )
-            fig_price.update_traces(opacity=0.60)
-            fig_price.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=40))
-            st.plotly_chart(fig_price, use_container_width=True)
-        with _p:
-            pass
-        with cR:
-            df_bucket_tbl["비중"] = (df_bucket_tbl["비중"] * 100).round(1).astype(str) + "%"
-            st.dataframe(df_bucket_tbl[["가격대", "이벤트수", "비중", "대표 제품"]], hide_index=True, row_height=30, use_container_width=True, height=320)
 
+        _render_bar_and_table(
+            df_chart=df_bucket,
+            df_tbl=df_bucket_tbl,
+            x="가격대",
+            y="이벤트수",
+            hover_pct_col="비중",
+            table_cols=["가격대", "이벤트수", "비중", "대표 제품"],
+            table_height=320,
+            x_order=v_lbl,
+            key="dist__price"
+        )
 
         # ──────────────────────────────────
         # 5-2) 사이즈 분포도
@@ -1190,7 +1248,14 @@ def main():
         st.markdown(" ")
         st.markdown("<h6 style='margin:0'>사이즈 분포도</h6>", unsafe_allow_html=True)
 
-        df_sz = df_f.assign(_vs=df_f["variant_size_code"].astype(str).str.strip().str.zfill(2).map(CFG["SIZE_LABEL_MATCH"])).loc[lambda x: x["_vs"].isin(CFG["SIZE_LABEL"])]
+        df_sz = (
+            df_f.assign(
+                _vs=df_f["variant_size_code"]
+                    .astype(str).str.strip().str.zfill(2)
+                    .map(CFG["SIZE_LABEL_MATCH"])
+            )
+            .loc[lambda x: x["_vs"].isin(CFG["SIZE_LABEL"])]
+        )
 
         df_size = (
             df_sz.groupby("_vs", dropna=False).size()
@@ -1211,20 +1276,18 @@ def main():
 
         df_size_tbl = df_size.merge(rep_size, on="사이즈", how="left")
         df_size_tbl["대표 제품"] = df_size_tbl["대표 제품"].fillna("정보없음")
-        
-        cL, _p, cR = st.columns([6, 0.2, 4], vertical_alignment="top")
-        with cL:
-            fig_size = px.bar(df_size, x="사이즈", y="이벤트수", hover_data={"비중": ":.1%"} )
-            fig_size.update_traces(opacity=0.60)
-            fig_size.update_xaxes(type="category", categoryorder="array", categoryarray=CFG["SIZE_LABEL"], tickmode="array", tickvals=CFG["SIZE_LABEL"])
-            fig_size.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=40))
-            st.plotly_chart(fig_size, use_container_width=True)
-        with _p:
-            pass
-        with cR:
-            df_size_tbl["비중"] = (df_size_tbl["비중"] * 100).round(1).astype(str) + "%"
-            st.dataframe(df_size_tbl[["사이즈", "이벤트수", "비중", "대표 제품"]], hide_index=True, row_height=30, use_container_width=True, height=320)
 
+        _render_bar_and_table(
+            df_chart=df_size,
+            df_tbl=df_size_tbl,
+            x="사이즈",
+            y="이벤트수",
+            hover_pct_col="비중",
+            table_cols=["사이즈", "이벤트수", "비중", "대표 제품"],
+            table_height=320,
+            x_order=CFG["SIZE_LABEL"],
+            key="dist__size"
+        )
 
         # ──────────────────────────────────
         # 5-3) 옵션조합 분포도 (동적 비교)
@@ -1235,8 +1298,7 @@ def main():
         if "var_blocks" not in st.session_state: st.session_state["var_blocks"] = 1
         if "var_limit_hit" not in st.session_state: st.session_state["var_limit_hit"] = False
 
-
-        hL, hR = st.columns([6,0.4], vertical_alignment="center")
+        hL, hR = st.columns([6, 0.4], vertical_alignment="center")
 
         with hL:
             with st.popover("🤔 옵션조합 검색 방법"):
@@ -1255,7 +1317,7 @@ def main():
             """)
 
         with hR:
-            cA, cR= st.columns([1,1], gap="small")
+            cA, cR = st.columns([1, 1], gap="small")
             with cA:
                 if st.button("＋", key="var_add"):
                     if st.session_state["var_blocks"] < 4: st.session_state["var_blocks"] += 1
@@ -1265,36 +1327,36 @@ def main():
                     st.session_state["var_blocks"] = 1
                     st.session_state["var_limit_hit"] = False
 
-
         HOLE, RED, GRAY = 0.58, "#FF4B4B", "#E5E7EB"
-        s_all = df_f["items__item_variant"].astype(str)
+        s_all = df_f["items__item_variant"]
         n_all = int(len(df_f))
 
-        def _build_match_mask(s: pd.Series, q: str):
-            q = (q or "").strip()
-            if not q: return pd.Series(False, index=s.index), "미입력"
-            if "&" in q:
-                parts = [p.strip() for p in q.split("&") if p.strip()]
-                m = pd.Series(True, index=s.index)
-                for p in parts: m &= s.str.contains(p, regex=False, na=False)
-                return m, "AND"
-            if "|" in q:
-                try: return s.str.contains(q, regex=True, na=False), "OR"
-                except Exception:
-                    parts = [p.strip() for p in q.split("|") if p.strip()]
-                    m = pd.Series(False, index=s.index)
-                    for p in parts: m |= s.str.contains(p, regex=False, na=False)
-                    return m, "OR"
-            return s.str.contains(q, regex=False, na=False), "부분일치"
-
         for i in range(1, st.session_state["var_blocks"] + 1):
-            q = st.text_input(f"검색 {i}", value="", placeholder="[🤔 옵션조합 검색 방법] 을 참고하여, 텍스트나 조건식을 입력하세요.", key=f"var_q_{i}").strip()
-            m, _mode = _build_match_mask(s_all, q)
+            q = st.text_input(
+                f"검색 {i}",
+                value="",
+                placeholder="[🤔 옵션조합 검색 방법] 을 참고하여, 텍스트나 조건식을 입력하세요.",
+                key=f"var_q_{i}"
+            ).strip()
+
+            m, _mode = build_match_mask(s_all, q)
             n_match, n_other = int(m.sum()), int(n_all - int(m.sum()))
-            df_pie = pd.DataFrame({"구분": ["검색어 매칭", "비매칭"], "이벤트수": [n_match, n_other]}) if q else pd.DataFrame({"구분": ["검색어 미입력"], "이벤트수": [1]})
+
+            df_pie = (
+                pd.DataFrame({"구분": ["검색어 매칭", "비매칭"], "이벤트수": [n_match, n_other]})
+                if q else
+                pd.DataFrame({"구분": ["검색어 미입력"], "이벤트수": [1]})
+            )
 
             fig_pie = px.pie(df_pie, names="구분", values="이벤트수", hole=HOLE)
-            fig_pie.update_traces(sort=False, direction="clockwise", rotation=0, marker=dict(colors=([RED, GRAY] if q else [GRAY])), hovertemplate="%{label}<br>%{value:,} (%{percent:.1%})<extra></extra>", textinfo=("none" if not q else "percent"))
+            fig_pie.update_traces(
+                sort=False,
+                direction="clockwise",
+                rotation=0,
+                marker=dict(colors=([RED, GRAY] if q else [GRAY])),
+                hovertemplate="%{label}<br>%{value:,} (%{percent:.1%})<extra></extra>",
+                textinfo=("none" if not q else "percent")
+            )
             fig_pie.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
 
             cL, cR = st.columns([3, 7], vertical_alignment="top")
@@ -1302,20 +1364,32 @@ def main():
                 st.plotly_chart(fig_pie, use_container_width=True, key=f"var_pie_{i}")
             with cR:
                 if q:
-                    df_tbl = (df_f.loc[m].groupby("items__item_variant", dropna=False).size().reset_index(name="이벤트수").rename(columns={"items__item_variant": "옵션조합"}).sort_values(["이벤트수", "옵션조합"], ascending=[False, True]).reset_index(drop=True))
+                    df_tbl = (
+                        df_f.loc[m]
+                            .groupby("items__item_variant", dropna=False).size()
+                            .reset_index(name="이벤트수")
+                            .rename(columns={"items__item_variant": "옵션조합"})
+                            .sort_values(["이벤트수", "옵션조합"], ascending=[False, True])
+                            .reset_index(drop=True)
+                    )
                     tot = int(df_tbl["이벤트수"].sum())
                     df_tbl["비중 (검색결과내)"] = (df_tbl["이벤트수"] / max(1, tot) * 100).round(1).astype(str) + "%"
                     st.dataframe(df_tbl[["옵션조합", "이벤트수", "비중 (검색결과내)"]], hide_index=True, row_height=30, use_container_width=True, height=320)
                 else:
-                    df_tbl = (df_f.groupby("items__item_variant", dropna=False).size().reset_index(name="이벤트수").rename(columns={"items__item_variant": "옵션조합"}).sort_values(["이벤트수", "옵션조합"], ascending=[False, True]).reset_index(drop=True))
+                    df_tbl = (
+                        df_f.groupby("items__item_variant", dropna=False).size()
+                            .reset_index(name="이벤트수")
+                            .rename(columns={"items__item_variant": "옵션조합"})
+                            .sort_values(["이벤트수", "옵션조합"], ascending=[False, True])
+                            .reset_index(drop=True)
+                    )
                     tot = int(df_tbl["이벤트수"].sum())
                     df_tbl["비중"] = (df_tbl["이벤트수"] / max(1, tot) * 100).round(1).astype(str) + "%"
                     st.dataframe(df_tbl[["옵션조합", "이벤트수", "비중"]], hide_index=True, row_height=30, use_container_width=True, height=320)
-            
+
             st.markdown(" ")
             if i == 4 and st.session_state.get("var_limit_hit"):
                 st.warning("옵션조합 비교는 최대 4개까지 가능합니다."); st.session_state["var_limit_hit"] = False
-
 
 if __name__ == "__main__":
     main()
