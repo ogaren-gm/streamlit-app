@@ -120,6 +120,7 @@ def style_cmap(df_or_styler,
                 cmap=cmap,
                 vmin=vmin_c, vmax=vmax_c,
                 low=low, high=high,
+                text_color_threshold=0
             )
 
     # (추가) 합계/평균 행 row 단위 컬러링

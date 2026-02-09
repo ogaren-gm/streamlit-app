@@ -82,11 +82,7 @@ def _render_stack_and_table(agg: pd.DataFrame, mode: str, y: str, color: str, ke
     ui.render_stack_graph(agg, x="_period_dt", y=y, color=color, height=height, opacity=0.6, show_value_in_hover=True, key=key)
 
     # 표는 기존처럼 "기간" 라벨을 컬럼으로 사용 < ?? 
-    ui.render_table(
-        ui.build_pivot_table(agg, index_col=color, col_col="기간", val_col=y),
-        index_col=color,
-        decimals=0
-    )
+    ui.render_table(ui.build_pivot_table(agg, index_col=color, col_col="기간", val_col=y), index_col=color, decimals=0)
     st.markdown(" ")
 
 # 중분류 우선순위
