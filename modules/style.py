@@ -122,6 +122,12 @@ def style_cmap(df_or_styler,
                 low=low, high=high,
                 text_color_threshold=0
             )
+            
+            # ✅ 0은 색칠 제외(흰색)
+            styler = styler.apply(
+                lambda col_: ["background-color: #ffffff" if pd.to_numeric(v, errors="coerce") == 0 else "" for v in col_],
+                subset=idx[rows, [c]],
+            )
 
     # (추가) 합계/평균 행 row 단위 컬러링
     def highlight_summary(row):
