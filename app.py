@@ -26,7 +26,7 @@ VIEWS = {
     "키워드 대시보드"   : ("views.view21", "main"),
     "언드·PPL 대시보드" : ("views.view22", "main"),
     "매출 종합 대시보드" : ("views.view31", "main"),
-    "퍼포먼스 대시보드"  : ("views.view32", "main"),
+    "📊 퍼포먼스 대시보드"  : ("views.view32", "main"),
 }
 
 
@@ -78,7 +78,7 @@ with st.sidebar:
         styles={
             "container": {"padding": "0!important", "background-color": "transparent", "border": "none"},
             "icon": {"display": "none", "width": "0px", "margin": "0px", "padding": "0px", "opacity": "0"},
-            "nav-link": {"font-size": "16px", "text-align": "left", "margin": "2px"},
+            "nav-link": {"font-size": "16px", "text-align": "left", "margin": "1px"},
             "nav-link-selected": {"font-weight": "normal"},
         }
     )
