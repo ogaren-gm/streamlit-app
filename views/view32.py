@@ -482,8 +482,8 @@ def main():
         st.markdown(
             """
             <div style="font-size:14px;line-height:1.5;">
-            광고 매체 데이터와 GA 행동 데이터를 매칭하여, <b>캠페인·브랜드·품목 등</b>의 기준으로
-            <b>퍼포먼스 마케팅 성과</b>를 통합 분석할 수 있는 대시보드입니다.<br>
+            <b>광고 매체 데이터</b>와 <b>GA 행동 데이터</b>를 통합하여,
+            <b>퍼포먼스 마케팅 성과</b>를 분석 가능한 대시보드입니다.<br>
             </div>
             <div style="color:#6c757d;font-size:14px;line-height:2.0;">
             ※ 매체-GA 통합 D-1 데이터는 매일 15시 ~ 16시 사이에 업데이트됩니다.
@@ -513,15 +513,217 @@ def main():
 
     st.divider()
 
+
     # ──────────────────────────────────
-    # 1) 커스텀 리포트
+    # 1) QUICK INSIGHT
     # ──────────────────────────────────
     st.markdown(" ")
-    st.markdown("<h5 style='margin:0'>매체-GA 통합 리포트</h5>", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>QUICK INSIGHT</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ기간 전체 성과를 요약하고, CPA 기준의 효율/비효율 캠페인을 빠르게 확인합니다.", unsafe_allow_html=True)
+
     st.markdown(
-        ":gray-badge[:material/Info: Info]ㅤ**행 필드**는 데이터를 어떤 기준으로 구분해 볼지 정하는 기능이며, **필터**로 원하는 조건만 선택해 결과를 확인할 수 있습니다.",    
+        """
+        <style>
+        .kpi-card{
+            background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;
+        }
+        .kpi-title{font-size:15px;color:#64748b;margin:0 0 8px}
+        .kpi-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+        .kpi-value{font-size:25px;font-weight:500;line-height:1.05;margin:0;white-space:nowrap}
+        .kpi-delta{font-size:12px;margin:0;white-space:nowrap}
+
+        /* selectbox 간격(전역) */
+        div[data-testid="stSelectbox"]>div{margin-top:-10px}
+
+        /* QUICK INSIGHT 이벤트 카드 컨테이너(카드 테두리/배경) */
+        .st-key-ins_kpi_card_evt{
+            background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;
+        }
+        .st-key-ins_kpi_card_evt div[data-testid="stSelectbox"]{margin-bottom:-10px}
+        .st-key-ins_kpi_card_evt div[data-testid="stSelectbox"]>div{margin-top:-6px}
+        .st-key-ins_kpi_card_evt .kpi-value{margin-bottom:10px}
+        </style>
+        """,
         unsafe_allow_html=True,
     )
+
+    evt_opts__ins = [
+        ("PDP조회", "view_item"),
+        ("PDPscr50", "product_page_scroll_50"),
+        ("가격표시", "product_option_price"),
+        ("쇼룸찾기", "find_nearby_showroom"),
+        ("장바구니", "add_to_cart"),
+        ("쇼룸10초", "showroom_10s"),
+        ("쇼룸예약", "showroom_leads"),
+        ("구매완료", "purchase"),
+    ]
+    evt_map__ins = dict(evt_opts__ins)
+    evt_labels__ins = [x[0] for x in evt_opts__ins]
+
+    def _safe_div(a, b):
+        return 0.0 if b == 0 else (a / b)
+
+    def _summary(df_in: pd.DataFrame, evt_raw: str) -> dict:
+        cost_g = float(df_in["cost_gross"].sum())
+        imp = float(df_in["impressions"].sum()) if "impressions" in df_in.columns else 0.0
+        clk = float(df_in["clicks"].sum()) if "clicks" in df_in.columns else 0.0
+        ses = float(df_in["session_start"].sum())
+        evt = float(df_in[evt_raw].sum()) if evt_raw in df_in.columns else 0.0
+        return dict(
+            cost_g=cost_g,
+            clk=clk,
+            ses=ses,
+            ctr=_safe_div(clk, imp) * 100,
+            cpc=_safe_div(cost_g, clk),
+            evt=evt,
+            cpa=_safe_div(cost_g, evt),
+        )
+
+    def _fmt_delta2(cur, prev, good_if_down=False, decimals=1):
+        if prev == 0:
+            return "", "#64748b"
+        d = (cur - prev) / prev * 100
+        col = "#16a34a" if ((d <= 0) if good_if_down else (d >= 0)) else "#ef4444"
+        return f"{d:+.{decimals}f}%", col
+
+    # ✅ 이벤트 선택값(카드 내부 selectbox) 초기값
+    sel_evt_label__ins = st.session_state.get("ins_evt_in_card", evt_labels__ins[0])
+    if sel_evt_label__ins not in evt_map__ins:
+        sel_evt_label__ins = evt_labels__ins[0]
+    sel_evt_raw__ins = evt_map__ins[sel_evt_label__ins]
+
+    cur = _summary(df_filtered, sel_evt_raw__ins)
+    prev = _summary(df_filtered_cmp, sel_evt_raw__ins) if (use_compare and df_filtered_cmp is not None) else None
+
+    # 0-1) KPI 6개
+    q1, q2, q3, q4, q5, q6 = st.columns(6, vertical_alignment="top")
+
+    with q1:
+        t, c = _fmt_delta2(cur["cost_g"], prev["cost_g"], False, 1) if prev else ("", "#64748b")
+        st.markdown(f"""
+            <div class="kpi-card">
+            <div class="kpi-title">광고비(G)</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{cur["cost_g"]:,.0f}</div>
+                <div class="kpi-delta" style="color:{c};">{t}</div>
+            </div></div>
+        """, unsafe_allow_html=True)
+
+    with q2:
+        t, c = _fmt_delta2(cur["ses"], prev["ses"], False, 1) if prev else ("", "#64748b")
+        st.markdown(f"""
+            <div class="kpi-card">
+            <div class="kpi-title">세션</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{cur["ses"]:,.0f}</div>
+                <div class="kpi-delta" style="color:{c};">{t}</div>
+            </div></div>
+        """, unsafe_allow_html=True)
+
+    with q3:
+        t, c = _fmt_delta2(cur["clk"], prev["clk"], False, 1) if prev else ("", "#64748b")
+        st.markdown(f"""
+            <div class="kpi-card">
+            <div class="kpi-title">클릭수</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{cur["clk"]:,.0f}</div>
+                <div class="kpi-delta" style="color:{c};">{t}</div>
+            </div></div>
+        """, unsafe_allow_html=True)
+
+    with q4:
+        t, c = _fmt_delta2(cur["ctr"], prev["ctr"], False, 2) if prev else ("", "#64748b")
+        st.markdown(f"""
+            <div class="kpi-card">
+            <div class="kpi-title">CTR</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{cur["ctr"]:,.2f}%</div>
+                <div class="kpi-delta" style="color:{c};">{t}</div>
+            </div></div>
+        """, unsafe_allow_html=True)
+
+    # ✅ 5) 이벤트 카드: "컨테이너(카드) + 내부 selectbox" (딥 인사이트 3번째 카드와 동일 구조)
+    with q5:
+        with st.container(key="ins_kpi_card_evt"):
+            sel_evt_label__ins = st.selectbox(
+                "",
+                evt_labels__ins,
+                index=evt_labels__ins.index(sel_evt_label__ins),
+                key="ins_evt_in_card",
+                label_visibility="collapsed",
+            )
+            sel_evt_raw__ins = evt_map__ins[sel_evt_label__ins]
+            cur = _summary(df_filtered, sel_evt_raw__ins)
+            prev = _summary(df_filtered_cmp, sel_evt_raw__ins) if (use_compare and df_filtered_cmp is not None) else None
+            t, c = _fmt_delta2(cur["evt"], prev["evt"], False, 1) if prev else ("", "#64748b")
+
+            st.markdown(
+                f"""
+                <div class="kpi-row" style="margin-top:-2px;">
+                    <div class="kpi-value">{cur["evt"]:,.0f}</div>
+                    <div class="kpi-delta" style="color:{c};">{t}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    with q6:
+        t, c = _fmt_delta2(cur["cpa"], prev["cpa"], True, 1) if prev else ("", "#64748b")
+        st.markdown(f"""
+            <div class="kpi-card">
+            <div class="kpi-title">CPA</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{cur["cpa"]:,.0f}</div>
+                <div class="kpi-delta" style="color:{c};">{t}</div>
+            </div></div>
+        """, unsafe_allow_html=True)
+
+    st.markdown(" ")
+
+    # (Quick Insight - TOP/비효율 TOP) ✅ 광고비(G) 1원 이상만 대상으로 소팅
+    topk = 10
+    need_cols = ["media_name", "campaign_name", "cost_gross", sel_evt_raw__ins]
+    if all(c in df_filtered.columns for c in need_cols):
+        g = (
+            df_filtered
+            .groupby(["media_name", "campaign_name"], dropna=False, as_index=False)
+            .agg(cost_gross_sum=("cost_gross", "sum"), evt_sum=(sel_evt_raw__ins, "sum"))
+        )
+
+        # ✅ 광고비 1원 이상 + 이벤트 1 이상만 남기고 소팅
+        g = g[(g["cost_gross_sum"] >= 1) & (g["evt_sum"] > 0)]
+
+        g["CPA"] = (g["cost_gross_sum"] / g["evt_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(0)
+
+        def _top(df_in: pd.DataFrame, asc: bool) -> pd.DataFrame:
+            return (
+                df_in
+                .sort_values(["CPA", "evt_sum", "cost_gross_sum"], ascending=[asc, False, False])
+                .head(topk)
+                .rename(columns={
+                    "media_name": "매체",
+                    "campaign_name": "캠페인",
+                    "cost_gross_sum": "광고비(G)",
+                    "evt_sum": sel_evt_label__ins,
+                    "CPA": "CPA",
+                })
+            )
+
+        a, b = st.columns(2, vertical_alignment="top")
+        with a:
+            st.markdown(f"###### 🙂 Low CPA Top {topk}")
+            st.dataframe(style_format(_top(g, True), decimals_map={"광고비(G)":0, sel_evt_label__ins:0, "CPA":0}), use_container_width=True, height=250, hide_index=True)
+        with b:
+            st.markdown(f"###### 🙁 High CPA Top {topk}")
+            st.dataframe(style_format(_top(g, False), decimals_map={"광고비(G)":0, sel_evt_label__ins:0, "CPA":0}), use_container_width=True, height=250, hide_index=True)
+
+
+    # ──────────────────────────────────
+    # 2) DEEP INSIGHT
+    # ──────────────────────────────────
+    st.header(" ")
+    st.markdown("<h5 style='margin:0'>DEEP INSIGHT</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ캠페인·브랜드·품목별로 상세 데이터를 확인합니다. **행 필드**는 피벗 기준, **기본/고급 필터**는 조회 조건을 설정합니다.", unsafe_allow_html=True)
         
     with st.popover("🤔 고급필터 정규식 사용 방법"):
         st.markdown("""
@@ -554,7 +756,7 @@ def main():
     st.markdown(" ")
 
     pivot_cols = st.multiselect(
-        "행 필드 선택",
+        "행 필드 선택 ㅤ(*기간별 합계 보기 선택시, 날짜는 자동으로 제외됩니다.)",
         options=list(HEADER_MAP.keys()),
         default=["event_date"],
         format_func=lambda x: HEADER_MAP.get(x, x),
@@ -563,7 +765,6 @@ def main():
     # 기간별 합계 보기 모드라면 event_date 는 무시
     if show_totals and "event_date" in pivot_cols:
         pivot_cols.remove("event_date")
-        st.caption("기간별 합계 보기 선택시, 날짜는 자동으로 제외됩니다.")
 
     # 필터
     with st.expander("기본 필터", expanded=False):
@@ -614,8 +815,175 @@ def main():
 
 
     # ------------------------------
-    # 표 (pivot)
+    # ★ 영역
     # ------------------------------
+    # 카드보드 (써머리)
+    st.markdown(
+        """
+        <style>
+        /* 카드 */
+        .kpi-card, .st-key-kpi_card_evt{
+            background:#f8fafc;
+            border:1px solid #e2e8f0;
+            border-radius:14px;
+            padding:14px 16px;
+        }
+
+        /* 텍스트 */
+        .kpi-title{font-size:15px;color:#64748b;margin:0 0 8px}
+        .kpi-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+        .kpi-value{font-size:25px;font-weight:500;line-height:1.05;margin:0;white-space:nowrap}
+        .kpi-delta{font-size:12px;margin:0;white-space:nowrap}
+
+        /* selectbox 간격 */
+        div[data-testid="stSelectbox"]>div{margin-top:-10px}
+        .st-key-kpi_card_evt div[data-testid="stSelectbox"]{margin-bottom:-10px}
+        .st-key-kpi_card_evt div[data-testid="stSelectbox"]>div{margin-top:-6px}
+
+        /* 3번째 카드 숫자 아래 */
+        .st-key-kpi_card_evt .kpi-value{margin-bottom:10px}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+    # 기준 이벤트(원본 df 컬럼)
+    evt_opts = [
+        ("PDP조회", "view_item"),
+        ("PDPscr50", "product_page_scroll_50"),
+        ("가격표시", "product_option_price"),
+        ("쇼룸찾기", "find_nearby_showroom"),
+        ("장바구니", "add_to_cart"),
+        ("쇼룸10초", "showroom_10s"),
+        ("쇼룸예약", "showroom_leads"),
+        ("구매완료", "purchase"),
+    ]
+    evt_label_to_raw = dict(evt_opts)
+
+    def _calc_kpi(df, evt_raw: str):
+        cost = float(df["cost_gross"].sum())
+        sessions = float(df["session_start"].sum())
+        evt = float(df[evt_raw].sum()) if evt_raw in df.columns else 0.0
+        cpa = (cost / evt) if evt > 0 else 0.0
+        return cost, sessions, evt, cpa
+
+    def _delta(cur, prev):
+        return None if prev == 0 else (cur - prev) / prev * 100
+
+    def _fmt_delta(d, good_if_down: bool = False):
+        if d is None or (isinstance(d, float) and np.isnan(d)):
+            return "", "#64748b"
+        col = "#16a34a" if ((d <= 0) if good_if_down else (d >= 0)) else "#ef4444"
+        return f"{d:+.1f}%", col
+
+    # 현재 선택값 유지
+    sel_evt_label = st.session_state.get("kpi_evt_in_card", evt_opts[0][0])
+    if sel_evt_label not in evt_label_to_raw:
+        sel_evt_label = evt_opts[0][0]
+
+    # 4개 카드 레이아웃
+    st.markdown("###### 제목 ")
+    c1, c2, c3, c4 = st.columns(4, vertical_alignment="top")
+
+    # 공통: 광고비/세션 (selectbox와 무관)
+    cost, sessions, evt, cpa = _calc_kpi(df_filtered, evt_label_to_raw[sel_evt_label])
+
+    if use_compare and df_filtered_cmp is not None:
+        cost_c, sessions_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, evt_label_to_raw[sel_evt_label])
+        t_cost, col_cost = _fmt_delta(_delta(cost, cost_c), good_if_down=False)
+        t_ses,  col_ses  = _fmt_delta(_delta(sessions, sessions_c), good_if_down=False)
+    else:
+        t_cost, col_cost = "", "#64748b"
+        t_ses,  col_ses  = "", "#64748b"
+
+    # 1) 광고비
+    with c1:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">광고비(G)</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{cost:,.0f}</div>
+                <div class="kpi-delta" style="color:{col_cost};">{t_cost}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # 2) 세션
+    with c2:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">세션</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{sessions:,.0f}</div>
+                <div class="kpi-delta" style="color:{col_ses};">{t_ses}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # 3) 이벤트(selectbox + 값/증감)
+    with c3:
+        with st.container(key="kpi_card_evt"):
+            sel_evt_label = st.selectbox(
+                "",
+                [x[0] for x in evt_opts],
+                index=[x[0] for x in evt_opts].index(sel_evt_label),
+                key="kpi_evt_in_card",
+                label_visibility="collapsed",
+            )
+            sel_evt_raw = evt_label_to_raw[sel_evt_label]
+
+            cost, sessions, evt, cpa = _calc_kpi(df_filtered, sel_evt_raw)
+
+            if use_compare and df_filtered_cmp is not None:
+                cost_c, sessions_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, sel_evt_raw)
+                t_evt, col_evt = _fmt_delta(_delta(evt, evt_c), good_if_down=False)
+            else:
+                t_evt, col_evt = "", "#64748b"
+
+            st.markdown(
+                f"""
+                <div class="kpi-row" style="margin-top:-2px;">
+                <div class="kpi-value">{evt:,.0f}</div>
+                <div class="kpi-delta" style="color:{col_evt};">{t_evt}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+    # 4) CPA (선택 이벤트 기준)
+    with c4:
+        sel_evt_raw = evt_label_to_raw[sel_evt_label]
+        cost, sessions, evt, cpa = _calc_kpi(df_filtered, sel_evt_raw)
+
+        if use_compare and df_filtered_cmp is not None:
+            cost_c, sessions_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, sel_evt_raw)
+            t_cpa, col_cpa = _fmt_delta(_delta(cpa, cpa_c), good_if_down=True)
+        else:
+            t_cpa, col_cpa = "", "#64748b"
+
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">CPA</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{cpa:,.0f}</div>
+                <div class="kpi-delta" style="color:{col_cpa};">{t_cpa}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # 표 (데이터프레임)
+    # st.markdown("###### Report")
     if pivot_cols or show_totals:
         if show_totals:
             df_sel = df_filtered.assign(period=f"{start_date_str} ~ {end_date_str}")
@@ -645,7 +1013,6 @@ def main():
 
     else:
         st.warning("피벗할 행 필드를 하나 이상 선택해 주세요.")
-
 
 
 if __name__ == "__main__":
