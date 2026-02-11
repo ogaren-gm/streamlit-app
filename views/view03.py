@@ -86,12 +86,11 @@ def _render_stack_and_table(agg: pd.DataFrame, mode: str, y: str, color: str, ke
 
     ui.render_stack_graph(agg, x="_period_dt", y=y, color=color, height=height, opacity=0.6, show_value_in_hover=True, key=key)
 
-    # 표는 기존처럼 "기간" 라벨을 컬럼으로 사용 < ?? 
-    ui.render_table(
-        ui.build_pivot_table(agg, index_col=color, col_col="기간", val_col=y),
-        index_col=color,
-        decimals=0
-    )
+    # 표는 기존처럼 "기간" 라벨을 컬럼으로 사용 < ??     
+    pv = ui.build_pivot_table(agg, index_col=color, col_col="기간", val_col=y)
+    styled = ui.style_format(pv, decimals_map={c: 0 for c in pv.columns if c != color})
+    st.dataframe(styled, row_height=30, hide_index=True)
+    
     st.markdown(" ")
 
 # 중분류 우선순위
@@ -410,47 +409,43 @@ def main():
     x_col = "_period_dt"
     ui.render_line_graph(df_plot, x=x_col, y=y_cols, height=360, title=None)
 
-    # 표 출력용 지표 정의(표시는 고정 순서)
-    rows = [
-        ("유저수", "add_to_cart_users", "int"),
-        ("세션수", "add_to_cart_sessions", "int"),
-        ("이벤트수", "add_to_cart_events", "int"),
-        ("SPU (세션수/유저수)", "sessions_per_user", "float2"),
-        ("EPS (이벤트수/세션수)", "events_per_session", "float2"),
-    ]
+    # ✅ 표 (pivot)
+    # 파생지표
+    den_s = pd.to_numeric(df_plot["세션수"], errors="coerce").replace(0, np.nan)
+    den_u = pd.to_numeric(df_plot["유저수"], errors="coerce").replace(0, np.nan)
+    
+    df_plot["SPU (세션수/유저수)"] = (pd.to_numeric(df_plot["세션수"], errors="coerce") / den_u).replace([np.inf, -np.inf], np.nan).fillna(0)
+    df_plot["EPS (이벤트수/세션수)"] = (pd.to_numeric(df_plot["이벤트수"], errors="coerce") / den_s).replace([np.inf, -np.inf], np.nan).fillna(0)
 
-    # 기간 컬럼을 가로축으로 하는 피벗형 테이블 구성
-    dates = df_all["기간"].astype(str).tolist()
-    pv = pd.DataFrame({"지표": [r[0] for r in rows]})
-    for dt in dates:
-        pv[dt] = ""
+    show_metrics = ["유저수", "세션수", "이벤트수", "SPU (세션수/유저수)", "EPS (이벤트수/세션수)"]
 
-    m = df_all.set_index("기간").to_dict(orient="index")
+    long = (
+        df_plot[["기간"] + show_metrics]
+        .melt(id_vars=["기간"], var_name="지표", value_name="값")
+    )
 
-    # 포맷 규칙(int / float2)
-    def _fmt(v, kind: str) -> str:
-        if v is None or (isinstance(v, float) and np.isnan(v)):
-            return ""
-        if kind == "int":
-            try:
-                return f"{int(round(float(v))):,}"
-            except Exception:
-                return ""
-        try:
-            return f"{float(v):.2f}"
-        except Exception:
-            return ""
+    long["지표"] = pd.Categorical(long["지표"], categories=show_metrics, ordered=True)
+    long["값"] = pd.to_numeric(long["값"], errors="coerce").fillna(0)
 
-    # 셀 단위 값 채우기
-    for i, (_, col, kind) in enumerate(rows):
-        for dt in dates:
-            pv.at[i, dt] = _fmt(m.get(dt, {}).get(col, np.nan), kind)
+    pv = (
+        long
+        .pivot_table(index="지표", columns="기간", values="값", aggfunc="sum", fill_value=0)
+        .reset_index()
+    )
 
-    # 기간 라벨 정렬 적용(일별/주별 모두 대응)
-    pv = pv[["지표", *ui.sort_period_labels(dates)]]
+    val_cols = pv.columns[1:]
+    pv[val_cols] = pv[val_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
-    # ✅ (표) 장바구니 지표 요약 테이블
-    st.dataframe(pv, row_height=30, hide_index=True, use_container_width=True)
+    styled = pv.style.format("{:,.0f}", subset=val_cols)
+
+    ratio_rows = ["SPU (세션수/유저수)", "EPS (이벤트수/세션수)"]
+    mask = pv["지표"].isin(ratio_rows)
+    if mask.any():
+        idx = pv.index[mask]
+        styled = styled.format("{:,.2f}", subset=pd.IndexSlice[idx, val_cols])
+
+    st.dataframe(styled, row_height=30, hide_index=True, use_container_width=True)
+
 
     # ──────────────────────────────────
     # 2) 장바구니 현황

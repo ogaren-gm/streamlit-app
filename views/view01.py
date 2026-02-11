@@ -568,7 +568,10 @@ def main():
 
         long = grp[["기간", dim_label, unit]].rename(columns={unit: "값"})
         pv = ui.build_pivot_table(long, index_col=dim_label, col_col="기간", val_col="값")
-        ui.render_table(pv, index_col=dim_label, decimals=0)
+                
+        styled = ui.style_format(pv, decimals_map={c: 0 for c in pv.columns if c != dim_label})
+        st.dataframe(styled, row_height=30, hide_index=True)
+
 
     tab_geo_kr, tab_geo, tab_src, tab_mix, tab_dev = st.tabs(["접속권역", "접속지역", "유입매체", "매체X지역", "디바이스"])
 
@@ -724,7 +727,9 @@ def main():
     long3 = metrics.drop(columns=["_period_dt"], errors="ignore").melt(id_vars=["기간"], var_name="지표", value_name="값")
 
     pv3 = ui.build_pivot_table(long3, index_col="지표", col_col="기간", val_col="값")
-    ui.render_table(pv3, index_col="지표", decimals=0)
+    
+    styled = ui.style_format(pv3, decimals_map={c: 0 for c in pv3.columns if c != "지표"})
+    st.dataframe(styled, row_height=30, hide_index=True)
 
 
     # ──────────────────────────────────
@@ -819,7 +824,10 @@ def main():
 
         long = grp[["기간", dim_label, unit]].rename(columns={unit: "값"})
         pv = ui.build_pivot_table(long, index_col=dim_label, col_col="기간", val_col="값")
-        ui.render_table(pv, index_col=dim_label, decimals=0)
+
+        styled = ui.style_format(pv, decimals_map={c: 0 for c in pv.columns if c != dim_label})
+        st.dataframe(styled, row_height=30, hide_index=True)
+
 
     tab_e_geo_kr, tab_e_geo, tab_e_src = st.tabs(["접속권역", "접속지역", "유입매체"])
 

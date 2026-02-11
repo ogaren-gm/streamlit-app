@@ -12,10 +12,9 @@ import modules.bigquery
 importlib.reload(modules.bigquery)
 from modules.bigquery import BigQuery
 
-import sys
-import modules.style
-importlib.reload(sys.modules["modules.style"])
-from modules.style import style_format, style_cmap
+import modules.ui_common as ui
+importlib.reload(ui)
+from modules.ui_common import style_format, style_cmap
 
 from google.oauth2.service_account import Credentials
 import gspread
@@ -364,18 +363,17 @@ def main():
         styled2 = style_cmap(
             styled,
             gradient_rules=[
-                {"col": ("MEDIA", "노출수"), "cmap": "Blues", "low": 0.0, "high": 0.3},
-                {"col": ("MEDIA", "클릭수"), "cmap": "PuBu", "low": 0.0, "high": 0.3},
-
-                {"col": ("전체 세션수", "CPA"), "cmap": "OrRd_r", "low": 0.4, "high": -0.3},
-                {"col": ("PDP조회", "CPA"), "cmap": "OrRd_r", "low": 0.4, "high": -0.4},
-                {"col": ("PDPscr50", "CPA"), "cmap": "OrRd_r", "low": 0.4, "high": -0.4},
-                {"col": ("가격표시", "CPA"), "cmap": "OrRd_r", "low": 0.3, "high": -0.5},
-                {"col": ("쇼룸찾기", "CPA"), "cmap": "OrRd_r", "low": 0.3, "high": -0.5},
-                {"col": ("장바구니", "CPA"), "cmap": "OrRd_r", "low": 0.3, "high": -0.6},
-                {"col": ("쇼룸10초", "CPA"), "cmap": "OrRd_r", "low": 0.3, "high": -0.6},
-                {"col": ("쇼룸예약", "CPA"), "cmap": "OrRd_r", "low": 0.3, "high": -0.7},
-                {"col": ("구매완료", "CPA"), "cmap": "OrRd_r", "low": 0.3, "high": -0.7},
+                {"col": ("MEDIA", "노출수"), "cmap": "YlOrBr", "cmap_span": (0.0, 0.4)},
+                {"col": ("MEDIA", "클릭수"), "cmap": "YlOrBr", "cmap_span": (0.0, 0.4)},
+                {"col": ("전체 세션수", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
+                {"col": ("PDP조회", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
+                {"col": ("PDPscr50", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
+                {"col": ("가격표시", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
+                {"col": ("쇼룸찾기", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
+                {"col": ("장바구니", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
+                {"col": ("쇼룸10초", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
+                {"col": ("쇼룸예약", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
+                {"col": ("구매완료", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
             ],
         )
         st.dataframe(styled2, use_container_width=True, height=500, row_height=30, hide_index=True)
