@@ -166,8 +166,8 @@ def main():
             creds = Credentials.from_service_account_info(sa_info, scopes=scope)
 
         gc = gspread.authorize(creds)
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/11ov-_o6Lv5HcuZo1QxrKOZnLtnxEKTiV78OFBZzVmWA/edit")
-        df_sheet = pd.DataFrame(sh.worksheet("parse").get_all_records())
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1g2HWpm3Le3t3P3Hb9nm2owoiaxywaXv--L0SHEDx3rQ/edit")
+        df_sheet = pd.DataFrame(sh.worksheet("perf_campaign").get_all_records())
 
         # 3) merge
         merged = df_bq.merge(df_sheet, how="left", on="campaign_name_short")
