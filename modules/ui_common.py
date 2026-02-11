@@ -120,7 +120,7 @@ def add_weekend_shading(fig, x_vals: pd.Series):
 
 def _isWeeklyPeriod(x_dt: pd.Series) -> bool:
     """
-    부울 함수 (render_line_graph, render_stack_graph)
+    부울 함수
 
     - 날짜 간격 중앙값이 6일 이상이면 주 단위 데이터로 간주하고 True 반환 
     - 주 단위일 때는 일별 주말 음영을 안 넣기 위해. 
@@ -134,7 +134,7 @@ def _isWeeklyPeriod(x_dt: pd.Series) -> bool:
 
 def _isDatetime(s: pd.Series) -> bool:
     """
-    부울 함수 (render_line_graph, render_stack_graph)
+    부울 함수
     
     - Series가 datetime dtpye 이거나, 앞 5개의 샘플이 전부 datetime 변환 가능하면 True 반환
     """
@@ -146,10 +146,17 @@ def _isDatetime(s: pd.Series) -> bool:
         return False
 
 
-def render_line_graph(df: pd.DataFrame, x: str, y: list[str] | str, height: int = 360, title: str | None = None, key: str | None = None) -> None:
+def render_line_graph(
+    df: pd.DataFrame,
+    x: str,
+    y: list[str] | str,
+    height: int = 360,
+    title: str | None = None,
+    key: str | None = None
+) -> None:
     """
     라인 차트 렌더링 (px.line)
-    
+
     - hover 포맷 포함
     - 범례 상단 포함
     - 주 단위 제외 일 단위 일때만 셰이딩 포함
@@ -163,12 +170,28 @@ def render_line_graph(df: pd.DataFrame, x: str, y: list[str] | str, height: int 
 
     if use_dt:
         x_dt = pd.to_datetime(df[x], errors="coerce")
+
+        # ✅ x축 tick을 "유니크 날짜"로 강제 (중복 라벨 방지)
+        x_u = (
+            x_dt.dt.floor("D")
+               .dropna()
+               .drop_duplicates()
+               .sort_values()
+        )
+        if len(x_u):
+            fig.update_xaxes(
+                tickmode="array",
+                tickvals=x_u,
+                ticktext=[ts.strftime("%Y-%m-%d") for ts in x_u],
+            )
+
         if len(x_dt) and not _isWeeklyPeriod(x_dt):
             try:
                 add_weekend_shading(fig, x_dt)
             except Exception:
                 pass
-        fig.update_xaxes(type="date", tickformat="%Y-%m-%d")
+
+        fig.update_xaxes(type="date")
     else:
         fig.update_xaxes(type="category")
 
@@ -183,10 +206,20 @@ def render_line_graph(df: pd.DataFrame, x: str, y: list[str] | str, height: int 
     st.plotly_chart(fig, use_container_width=True, key=key)
 
 
-def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int = 360, opacity: float = 0.6, title: str | None = None, show_value_in_hover: bool = False, key: str | None = None) -> None:
+def render_stack_graph(
+    df: pd.DataFrame,
+    x: str,
+    y: str,
+    color: str,
+    height: int = 360,
+    opacity: float = 0.6,
+    title: str | None = None,
+    show_value_in_hover: bool = False,
+    key: str | None = None
+) -> None:
     """
     누적막대 차트 렌더링 (px.bar)
-    
+
     - hover 포맷 포함
     - 범례 상단 포함 ?
     - 주 단위 제외 일 단위 일때만 셰이딩 포함
@@ -214,7 +247,16 @@ def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int
         d[x_plot] = pd.Categorical(s, categories=x_cat_order, ordered=True)
         d = d.sort_values(x_plot).reset_index(drop=True)
 
-    fig = px.bar(d, x=x_plot, y=y, color=color, barmode="relative", opacity=opacity, title=title, custom_data=[color, "_share_pct", y])
+    fig = px.bar(
+        d,
+        x=x_plot,
+        y=y,
+        color=color,
+        barmode="relative",
+        opacity=opacity,
+        title=title,
+        custom_data=[color, "_share_pct", y]
+    )
     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
 
     if show_value_in_hover:
@@ -223,8 +265,24 @@ def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int
         fig.update_traces(hovertemplate="%{customdata[0]}<br>비중: %{customdata[1]:.1f}%<extra></extra>")
 
     if use_dt:
-        fig.update_xaxes(type="date", tickformat="%Y-%m-%d")
         x_dt = pd.to_datetime(d[x_plot], errors="coerce")
+
+        # ✅ x축 tick을 "유니크 날짜"로 강제 (중복 라벨 방지)
+        x_u = (
+            x_dt.dt.floor("D")
+               .dropna()
+               .drop_duplicates()
+               .sort_values()
+        )
+        if len(x_u):
+            fig.update_xaxes(
+                tickmode="array",
+                tickvals=x_u,
+                ticktext=[ts.strftime("%Y-%m-%d") for ts in x_u],
+            )
+
+        fig.update_xaxes(type="date")
+
         if len(x_dt) and not _isWeeklyPeriod(x_dt):
             try:
                 add_weekend_shading(fig, x_dt)
@@ -244,7 +302,7 @@ def render_stack_graph(df: pd.DataFrame, x: str, y: str, color: str, height: int
         bargap=0.5,
         bargroupgap=0.1,
     )
-    
+
     st.plotly_chart(fig, use_container_width=True, key=key)
 
 
