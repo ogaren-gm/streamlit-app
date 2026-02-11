@@ -363,17 +363,17 @@ def main():
         styled2 = style_cmap(
             styled,
             gradient_rules=[
-                {"col": ("MEDIA", "노출수"), "cmap": "YlOrBr", "cmap_span": (0.0, 0.4)},
-                {"col": ("MEDIA", "클릭수"), "cmap": "YlOrBr", "cmap_span": (0.0, 0.4)},
-                {"col": ("전체 세션수", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
-                {"col": ("PDP조회", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
-                {"col": ("PDPscr50", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
-                {"col": ("가격표시", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
-                {"col": ("쇼룸찾기", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
-                {"col": ("장바구니", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
-                {"col": ("쇼룸10초", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
-                {"col": ("쇼룸예약", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
-                {"col": ("구매완료", "CPA"), "cmap": "YlOrBr_r", "cmap_span": (0.6, 1.0)},
+                {"col": ("MEDIA", "노출수"), "cmap": "YlOrBr", "cmap_span": (0.0, 0.3)},
+                {"col": ("MEDIA", "클릭수"), "cmap": "YlOrBr", "cmap_span": (0.0, 0.3)},
+                {"col": ("전체 세션수", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
+                {"col": ("PDP조회", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
+                {"col": ("PDPscr50", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
+                {"col": ("가격표시", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
+                {"col": ("쇼룸찾기", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
+                {"col": ("장바구니", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
+                {"col": ("쇼룸10초", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
+                {"col": ("쇼룸예약", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
+                {"col": ("구매완료", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
             ],
         )
         st.dataframe(styled2, use_container_width=True, height=500, row_height=30, hide_index=True)
@@ -710,10 +710,19 @@ def main():
         a, b = st.columns(2, vertical_alignment="top")
         with a:
             st.markdown(f"###### 🙂 Low CPA Top {topk}")
-            st.dataframe(style_format(_top(g, True), decimals_map={"광고비(G)":0, sel_evt_label__ins:0, "CPA":0}), use_container_width=True, height=250, hide_index=True)
+            
+            df_LCT = _top(g, True)
+            sty = style_format(df_LCT, decimals_map={"광고비(G)": 0, sel_evt_label__ins: 0, "CPA": 0})
+            sty = style_cmap(sty, gradient_rules=[{"col": "CPA", "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)}])
+            st.dataframe(sty, use_container_width=True, height=250, hide_index=True)
+                        
         with b:
             st.markdown(f"###### 🙁 High CPA Top {topk}")
-            st.dataframe(style_format(_top(g, False), decimals_map={"광고비(G)":0, sel_evt_label__ins:0, "CPA":0}), use_container_width=True, height=250, hide_index=True)
+            
+            df_HCT = _top(g, False)
+            sty = style_format(df_HCT, decimals_map={"광고비(G)": 0, sel_evt_label__ins: 0, "CPA": 0})
+            sty = style_cmap(sty, gradient_rules=[{"col": "CPA", "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)}])
+            st.dataframe(sty, use_container_width=True, height=250, hide_index=True)            
 
 
     # ──────────────────────────────────
@@ -862,9 +871,13 @@ def main():
     def _calc_kpi(df, evt_raw: str):
         cost = float(df["cost_gross"].sum())
         sessions = float(df["session_start"].sum())
+        clk = float(df["clicks"].sum()) if "clicks" in df.columns else 0.0
+        imp = float(df["impressions"].sum()) if "impressions" in df.columns else 0.0
+        ctr = (clk / imp * 100) if imp > 0 else 0.0
+
         evt = float(df[evt_raw].sum()) if evt_raw in df.columns else 0.0
         cpa = (cost / evt) if evt > 0 else 0.0
-        return cost, sessions, evt, cpa
+        return cost, sessions, clk, ctr, evt, cpa
 
     def _delta(cur, prev):
         return None if prev == 0 else (cur - prev) / prev * 100
@@ -880,20 +893,25 @@ def main():
     if sel_evt_label not in evt_label_to_raw:
         sel_evt_label = evt_opts[0][0]
 
-    # 4개 카드 레이아웃
-    st.markdown("###### 제목 ")
-    c1, c2, c3, c4 = st.columns(4, vertical_alignment="top")
+    # 6개 카드 레이아웃
+    st.markdown("###### 📊 Summary ")
+    c1, c2, c3, c4, c5, c6 = st.columns(6, vertical_alignment="top")
 
-    # 공통: 광고비/세션 (selectbox와 무관)
-    cost, sessions, evt, cpa = _calc_kpi(df_filtered, evt_label_to_raw[sel_evt_label])
+    # (selectbox와 무관한 공통 KPI)
+    cost, sessions, clk, ctr, evt, cpa = _calc_kpi(df_filtered, evt_label_to_raw[sel_evt_label])
 
     if use_compare and df_filtered_cmp is not None:
-        cost_c, sessions_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, evt_label_to_raw[sel_evt_label])
+        cost_c, sessions_c, clk_c, ctr_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, evt_label_to_raw[sel_evt_label])
+
         t_cost, col_cost = _fmt_delta(_delta(cost, cost_c), good_if_down=False)
         t_ses,  col_ses  = _fmt_delta(_delta(sessions, sessions_c), good_if_down=False)
+        t_clk,  col_clk  = _fmt_delta(_delta(clk, clk_c), good_if_down=False)
+        t_ctr,  col_ctr  = _fmt_delta(_delta(ctr, ctr_c), good_if_down=False)
     else:
         t_cost, col_cost = "", "#64748b"
         t_ses,  col_ses  = "", "#64748b"
+        t_clk,  col_clk  = "", "#64748b"
+        t_ctr,  col_ctr  = "", "#64748b"
 
     # 1) 광고비
     with c1:
@@ -925,8 +943,38 @@ def main():
             unsafe_allow_html=True,
         )
 
-    # 3) 이벤트(selectbox + 값/증감)
+    # 3) 클릭수
     with c3:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">클릭수</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{clk:,.0f}</div>
+                <div class="kpi-delta" style="color:{col_clk};">{t_clk}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # 4) CTR
+    with c4:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">CTR</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{ctr:,.2f}%</div>
+                <div class="kpi-delta" style="color:{col_ctr};">{t_ctr}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # 5) 이벤트(selectbox + 값/증감)
+    with c5:
         with st.container(key="kpi_card_evt"):
             sel_evt_label = st.selectbox(
                 "",
@@ -937,10 +985,10 @@ def main():
             )
             sel_evt_raw = evt_label_to_raw[sel_evt_label]
 
-            cost, sessions, evt, cpa = _calc_kpi(df_filtered, sel_evt_raw)
+            cost, sessions, clk, ctr, evt, cpa = _calc_kpi(df_filtered, sel_evt_raw)
 
             if use_compare and df_filtered_cmp is not None:
-                cost_c, sessions_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, sel_evt_raw)
+                cost_c, sessions_c, clk_c, ctr_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, sel_evt_raw)
                 t_evt, col_evt = _fmt_delta(_delta(evt, evt_c), good_if_down=False)
             else:
                 t_evt, col_evt = "", "#64748b"
@@ -955,14 +1003,13 @@ def main():
                 unsafe_allow_html=True,
             )
 
-
-    # 4) CPA (선택 이벤트 기준)
-    with c4:
+    # 6) CPA (선택 이벤트 기준)
+    with c6:
         sel_evt_raw = evt_label_to_raw[sel_evt_label]
-        cost, sessions, evt, cpa = _calc_kpi(df_filtered, sel_evt_raw)
+        cost, sessions, clk, ctr, evt, cpa = _calc_kpi(df_filtered, sel_evt_raw)
 
         if use_compare and df_filtered_cmp is not None:
-            cost_c, sessions_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, sel_evt_raw)
+            cost_c, sessions_c, clk_c, ctr_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, sel_evt_raw)
             t_cpa, col_cpa = _fmt_delta(_delta(cpa, cpa_c), good_if_down=True)
         else:
             t_cpa, col_cpa = "", "#64748b"
@@ -979,6 +1026,7 @@ def main():
             """,
             unsafe_allow_html=True,
         )
+
 
     # 표 (데이터프레임)
     # st.markdown("###### Report")
