@@ -252,7 +252,7 @@ def render_stack_graph(
         x=x_plot,
         y=y,
         color=color,
-        barmode="relative",
+        barmode="stack", #relative?
         opacity=opacity,
         title=title,
         custom_data=[color, "_share_pct", y]
