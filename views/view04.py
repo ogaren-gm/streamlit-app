@@ -720,6 +720,12 @@ def main():
             bar[col_col] = pd.Categorical(bar[col_col].astype(str), categories=col_order, ordered=True)
             bar = bar.sort_values([row_col, col_col]).reset_index(drop=True)
 
+            # ✅ 배포에서도 100% 누적 막대가 안깨지게: 행별 합 100으로 재정규화
+            bar["_sum"] = bar.groupby(row_col, dropna=False)["pct"].transform("sum").replace(0, np.nan)
+            bar["pct"] = (bar["pct"] / bar["_sum"] * 100).fillna(0)
+            bar = bar.drop(columns=["_sum"])
+
+
             fig = px.bar(
                 bar,
                 y=row_col,
@@ -739,6 +745,7 @@ def main():
             fig.update_layout(
                 height=fig_height,
                 margin=dict(l=10, r=10, t=70, b=20),
+                xaxis=dict(range=[0, 100], ticksuffix="%", showgrid=False),  # ✅ 추가
                 xaxis_title=None,
                 yaxis_title=None,
                 legend=dict(
