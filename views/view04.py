@@ -7,7 +7,7 @@ import numpy as np
 import importlib
 from datetime import datetime, timedelta
 import plotly.express as px  # pie/bar만 사용
-import plotly.graph_objects as go
+import plotly.graph_objects as go  # ✅ 상단에 있어도 되고, 밑에 블록 내부 go import도 유지할 것(요청)
 
 import modules.ui_common as ui
 importlib.reload(ui)
@@ -42,6 +42,26 @@ CFG = {
     """,
 }
 
+# ──────────────────────────────────
+# DATE NORMALIZATION (단일 기준)
+# ──────────────────────────────────
+def _norm_dt(s: pd.Series | pd.Index | pd.DatetimeIndex) -> pd.Series:
+    """
+    날짜/시간이 섞여 들어와도 무조건 '날짜(00:00:00)'로 통일.
+    스택/라인/피벗 등 모든 축의 기준을 단 하나로 유지.
+    """
+    x = pd.to_datetime(s, errors="coerce")
+    return x.dt.normalize()
+
+def _add_period_day(df: pd.DataFrame, date_col: str) -> pd.DataFrame:
+    """
+    ui.add_period_columns를 쓰되,
+    _period_dt가 항상 normalize(00:00:00) 되도록 강제.
+    """
+    out = ui.add_period_columns(df, date_col, "일별")
+    if "_period_dt" in out.columns:
+        out["_period_dt"] = _norm_dt(out["_period_dt"])
+    return out
 
 # ──────────────────────────────────
 # HELPER
@@ -63,6 +83,9 @@ def _order_with_etc_last(keys: list, sums: dict | None = None) -> list:
     others = sorted(others, key=lambda k: float(sums.get(k, 0.0)), reverse=True)
     return others + etc
 
+# ──────────────────────────────────
+# RENDER: PIE + STACK + TABLE (영역2)
+# ──────────────────────────────────
 def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: dict):
     pie_dim = conf["pie"]
     x = conf["stack_x"]
@@ -122,11 +145,11 @@ def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: di
     # ── Stack ─────────────────────────
     with c2:
         if x in src.columns and c in src.columns:
-            # ✅ 여기서 먼저 클린 (집계 전에!)
+            # ✅ (중요) 집계 전에 클린 + (event_date 사용 시) period_dt normalize 일관화
             src[c] = _clean_cat(src[c])
 
             if x == "event_date":
-                base = ui.add_period_columns(src, "event_date", "일별")
+                base = _add_period_day(src, "event_date")
 
                 if (c in AW_COLS) and ("weight" in base.columns):
                     agg = (
@@ -147,13 +170,8 @@ def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: di
                             .reset_index(drop=True)
                     )
 
-                # ✅ (보험) 클린으로 라벨 합쳐졌을 경우를 대비해 한 번 더 재집계
-                agg = (
-                    agg.groupby(["_period_dt", "기간", c], dropna=False, as_index=False)["value"]
-                    .sum()
-                    .sort_values("_period_dt")
-                    .reset_index(drop=True)
-                )
+                # ✅ (일관성) 스택 축의 datetime은 무조건 normalize
+                agg["_period_dt"] = _norm_dt(agg["_period_dt"])
 
                 fig2 = px.bar(
                     agg, x="_period_dt", y="value", color=c,
@@ -171,26 +189,21 @@ def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: di
                 pv = ui.build_pivot_table(agg, index_col=c, col_col="기간", val_col="value")
 
             else:
+                # x가 event_date가 아니면(예: demo_age) 그대로 집계
                 if (c in AW_COLS) and ("weight" in src.columns):
                     agg = (
                         src.groupby([x, c], dropna=False)["weight"]
-                        .sum()
-                        .reset_index(name="value")
+                           .sum()
+                           .reset_index(name="value")
                     )
                 else:
                     agg = (
                         src.groupby([x, c], dropna=False)
-                        .size()
-                        .reset_index(name="value")
+                           .size()
+                           .reset_index(name="value")
                     )
 
                 agg[x] = agg[x].astype(str)
-
-                # ✅ (보험) 라벨 합쳐졌을 수 있으니 재집계
-                agg = (
-                    agg.groupby([x, c], dropna=False, as_index=False)["value"]
-                    .sum()
-                )
 
                 fig2 = px.bar(
                     agg, x=x, y="value", color=c,
@@ -209,12 +222,14 @@ def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: di
         else:
             st.info("Stack 차원 컬럼이 없습니다.")
 
-
     if pv is not None:
         st.dataframe(pv, use_container_width=True, hide_index=True, row_height=30)
     else:
         st.info("표를 만들 수 있는 데이터가 없습니다.")
 
+# ──────────────────────────────────
+# RENDER: TREND (영역1)
+# ──────────────────────────────────
 def render_shrm_trend(
     base_df: pd.DataFrame,
     filt: pd.Series | None,
@@ -228,14 +243,17 @@ def render_shrm_trend(
         st.info(empty_msg or "표시할 데이터가 없습니다.")
         return
 
-    # long
+    # long (period_dt 기준은 이미 main에서 add_period로 보장)
     g = (
         b.groupby(["_period_dt", dim], dropna=False)
          .size()
          .reset_index(name="value")
     )
-    g["_period_dt"] = pd.to_datetime(g["_period_dt"], errors="coerce")
+
+    # ✅ period_dt는 항상 normalize
+    g["_period_dt"] = _norm_dt(g["_period_dt"])
     g = g.dropna(subset=["_period_dt"])
+
     g[dim] = _clean_cat(g[dim])
     g = g.sort_values(["_period_dt", dim]).reset_index(drop=True)
 
@@ -245,7 +263,6 @@ def render_shrm_trend(
 
     # ───────────────── 그래프 ─────────────────
     if chart == "line":
-        # ✅ 그래프용 wide: datetime 유지 (build_pivot_table 쓰지 말 것)
         pv_line = (
             g.pivot_table(
                 index="_period_dt",
@@ -262,7 +279,6 @@ def render_shrm_trend(
         ui.render_line_graph(pv_line, x="_period_dt", y=y_cols, height=360, key=chart_key)
 
     else:
-        # stack은 long 그대로
         g[dim] = pd.Categorical(g[dim].astype(str), categories=y, ordered=True)
         g = g.sort_values(["_period_dt", dim]).reset_index(drop=True)
         ui.render_stack_graph(
@@ -274,7 +290,9 @@ def render_shrm_trend(
     pv_tbl = ui.build_pivot_table(g, index_col=dim, col_col="_period_dt", val_col="value")
     st.dataframe(pv_tbl, use_container_width=True, hide_index=True, row_height=30)
 
-
+# ──────────────────────────────────
+# INSIGHT (CROSS)
+# ──────────────────────────────────
 def write_mutable_insight(
     agg: pd.DataFrame,
     row_col: str,
@@ -283,9 +301,9 @@ def write_mutable_insight(
     col_label: str,
     row_order: list[str],
     col_order: list[str],
-    min_row_total: int = 5,     # 너무 작은 행은 인사이트에서 제외
-    strong_pct: float = 50.0,   # 한 항목이 50% 이상이면 "두드러짐"
-    gap_pct: float = 20.0,      # 1위-2위 격차
+    min_row_total: int = 5,
+    strong_pct: float = 50.0,
+    gap_pct: float = 20.0,
     topk: int = 3,
 ):
     if agg is None or agg.empty:
@@ -296,7 +314,6 @@ def write_mutable_insight(
     d[col_col] = d[col_col].astype(str)
     d["value"] = pd.to_numeric(d["value"], errors="coerce").fillna(0)
 
-    # ✅ 전체 분포(가중치: value 합)
     col_sum = d.groupby(col_col, dropna=False)["value"].sum().sort_values(ascending=False)
     if col_sum.empty:
         return ["선택한 조건에 해당하는 데이터가 없습니다."]
@@ -311,14 +328,11 @@ def write_mutable_insight(
         + " 순으로 많이 나타납니다."
     )
 
-    # ✅ 행별 상위 구성(행 내부 100% 기준, 단 row_total이 너무 작으면 제외)
     row_tot = d.groupby(row_col, dropna=False)["value"].sum()
-    # pct_row 재계산(여기서 다시 계산하면 항상 일관)
     d["_row_sum"] = d.groupby(row_col, dropna=False)["value"].transform("sum").replace(0, np.nan)
     d["pct_row"] = (d["value"] / d["_row_sum"] * 100).fillna(0)
     d = d.drop(columns=["_row_sum"])
 
-    # row_order 순서대로
     for r in row_order:
         if r not in row_tot.index:
             continue
@@ -336,7 +350,6 @@ def write_mutable_insight(
         if (v1 >= strong_pct) or ((v1 - v2) >= gap_pct):
             lines.append(f"- **{r}**에서는 **{c1}**이(가) {v1:.0f}%로 가장 많이 나타납니다.")
 
-    # ✅ 한 줄 요약(구조)
     top1 = str(col_sum.index[0])
     top1_pct = float(col_sum.iloc[0] / total * 100)
     if top1_pct >= 40:
@@ -344,21 +357,16 @@ def write_mutable_insight(
 
     return lines
 
-
 # ──────────────────────────────────
 # main
 # ──────────────────────────────────
 def main():
-    # ──────────────────────────────────
     # A) Layout / CSS
-    # ──────────────────────────────────
     st.markdown(CFG["CSS_BLOCK_CONTAINER"], unsafe_allow_html=True)
     st.markdown(CFG["CSS_TABS"], unsafe_allow_html=True)
-    px.defaults.color_discrete_sequence = px.colors.qualitative.Pastel2 # 추가
+    px.defaults.color_discrete_sequence = px.colors.qualitative.Pastel2
 
-    # ──────────────────────────────────
     # B) Sidebar / Filter
-    # ──────────────────────────────────
     st.sidebar.header("Filter")
     today = datetime.now().date()
     default_end = today - timedelta(days=1)
@@ -372,9 +380,7 @@ def main():
     cs = start_date.strftime("%Y%m%d")
     ce = (end_date + timedelta(days=1)).strftime("%Y%m%d")
 
-    # ──────────────────────────────────
     # C) Data Load
-    # ──────────────────────────────────
     @st.cache_data(ttl=CFG["CACHE_TTL"])
     def load_data(cs: str, ce: str):
         scope = [
@@ -397,9 +403,10 @@ def main():
         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1g2HWpm3Le3t3P3Hb9nm2owoiaxywaXv--L0SHEDx3rQ/edit")
         df = pd.DataFrame(sh.worksheet("shrm_data").get_all_records())
 
-        # (정규화) event_date
+        # (정규화) event_date: 로드 직후부터 단일 기준(날짜 00:00:00)
         df["event_date"] = df["event_date"].astype("string").str.strip()
         df["event_date"] = pd.to_datetime(df["event_date"], format="%Y. %m. %d", errors="coerce")
+        df["event_date"] = _norm_dt(df["event_date"])
 
         # (파생컬럼) shrm_type
         if "shrm_name" in df.columns:
@@ -419,9 +426,11 @@ def main():
             if c in df.columns:
                 df[c] = df[c].astype("category")
 
-        # 기간 필터
-        df = df[(df["event_date"] >= pd.to_datetime(cs)) & (df["event_date"] < pd.to_datetime(ce))]
-        
+        # 기간 필터 (cs/ce도 datetime으로 안전 변환)
+        cs_dt = pd.to_datetime(cs, format="%Y%m%d", errors="coerce")
+        ce_dt = pd.to_datetime(ce, format="%Y%m%d", errors="coerce")
+        df = df[(df["event_date"] >= cs_dt) & (df["event_date"] < ce_dt)]
+
         return df
 
     with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
@@ -459,9 +468,7 @@ def main():
 
         df_aw = df_aw.drop(columns=["awareness_type_list", "_n"])
 
-    # ──────────────────────────────────
     # D) Header
-    # ──────────────────────────────────
     st.subheader("쇼룸 대시보드 (제작중-배포해가면서 확인중입니다.)")
 
     if "refresh" in st.query_params:
@@ -511,6 +518,7 @@ def main():
     st.markdown(":gray-badge[:material/Info: Info]ㅤ일단 방문만 ")
 
     base = df
+
     if "shrm_type" in base.columns:
         base["shrm_type"] = _clean_cat(base["shrm_type"])
     else:
@@ -521,7 +529,8 @@ def main():
     else:
         base["shrm_name"] = "기타"
 
-    base = ui.add_period_columns(base, "event_date", "일별")
+    # ✅ 날짜 기준 통일: add_period_day(=normalize 보장)
+    base = _add_period_day(base, "event_date")
 
     if base.empty:
         st.info("표시할 데이터가 없습니다.")
@@ -562,38 +571,38 @@ def main():
             )
 
     # ──────────────────────────────────
-    # 2) ??
+    # 2) Tabs
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>제목 </h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ필터 추가해서 상세히 볼수있도록 ")
-    
+
     DIM_MAP = {
-        "방문유형": {  # visit_type
+        "방문유형": {
             "pie": "visit_type",
             "stack_x": "event_date",
             "stack_color": "visit_type",
             "raw_cols": ["event_date", "visit_type"]
         },
-        "데모그래픽": {  # demo_gender, demo_age
+        "데모그래픽": {
             "pie": "demo_gender",
             "stack_x": "demo_age",
             "stack_color": "demo_gender",
             "raw_cols": ["event_date", "demo_gender", "demo_age"]
         },
-        "인지단계": {  # awareness_type_a 
+        "인지단계": {
             "pie": "awareness_type_a",
             "stack_x": "event_date",
             "stack_color": "awareness_type_a",
             "raw_cols": ["event_date", "awareness_type_a"]
         },
-        "인지채널": {  # awareness_type_b 
+        "인지채널": {
             "pie": "awareness_type_b",
             "stack_x": "event_date",
             "stack_color": "awareness_type_b",
             "raw_cols": ["event_date", "awareness_type_b"]
         },
-        "구매목적": {  # purchase_purpose
+        "구매목적": {
             "pie": "purchase_purpose",
             "stack_x": "event_date",
             "stack_color": "purchase_purpose",
@@ -646,7 +655,6 @@ def main():
 
     AW_COLS = {"awareness_type", "awareness_type_a", "awareness_type_b"}
 
-    # ✅ 컬럼 존재 체크(둘 중 하나라도 없으면 종료)
     has_row = (row_col in df.columns) or (df_aw is not None and row_col in df_aw.columns)
     has_col = (col_col in df.columns) or (df_aw is not None and col_col in df_aw.columns)
 
@@ -675,22 +683,20 @@ def main():
         if agg is None or agg.empty:
             st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
         else:
-            # 정리
             agg[row_col] = _clean_cat(agg[row_col])
             agg[col_col] = _clean_cat(agg[col_col])
             agg["value"] = pd.to_numeric(agg["value"], errors="coerce").fillna(0)
 
-            # ✅ (중요) 정리 후 중복 키 제거: clean_cat으로 라벨이 합쳐질 수 있으니 다시 집계
+            # ✅ clean 후 라벨 합쳐질 수 있으니 키 기준 재집계(중복 제거)
             agg = (
                 agg.groupby([row_col, col_col], dropna=False, as_index=False)["value"]
-                .sum()
+                   .sum()
             )
 
-            # ✅ 행 기준 정렬 규칙
             row_sum = (
                 agg.groupby(row_col, dropna=False)["value"]
-                .sum()
-                .sort_values(ascending=False)
+                   .sum()
+                   .sort_values(ascending=False)
             )
             base_order = row_sum.index.astype(str).tolist()
             etc_in = [k for k in ["기타"] if k in base_order]
@@ -705,30 +711,25 @@ def main():
             else:
                 row_order = [x for x in base_order if x not in etc_in] + etc_in
 
-            # ✅ 열 기준 정렬 규칙 (범례/표 공통)
             col_sum = (
                 agg.groupby(col_col, dropna=False)["value"]
-                .sum()
-                .sort_values(ascending=False)
+                   .sum()
+                   .sort_values(ascending=False)
             )
             col_order = col_sum.index.astype(str).tolist()
             etc_in_col = [k for k in ["기타"] if k in col_order]
             col_order = [x for x in col_order if x not in etc_in_col] + etc_in_col
 
-            # ✅ 행 기준 퍼센트
             agg["_row_sum"] = agg.groupby(row_col, dropna=False)["value"].transform("sum").replace(0, np.nan)
             agg["pct_row"] = (agg["value"] / agg["_row_sum"] * 100).fillna(0)
             agg = agg.drop(columns=["_row_sum"])
 
-            # 피벗 2종 (표용)
             pv_cnt = ui.build_pivot_table(agg, index_col=row_col, col_col=col_col, val_col="value")
             pv_pct = ui.build_pivot_table(agg, index_col=row_col, col_col=col_col, val_col="pct_row")
 
-            # ✅ 피벗 행 순서 강제
             pv_cnt = pv_cnt.set_index(row_col).reindex(row_order).reset_index()
             pv_pct = pv_pct.set_index(row_col).reindex(row_order).reset_index()
 
-            # ✅ 피벗 열 순서 강제
             cnt_cols = [c for c in pv_cnt.columns if c != row_col]
             cnt_cols = [c for c in col_order if c in cnt_cols]
             pv_cnt = pv_cnt[[row_col] + cnt_cols]
@@ -738,7 +739,7 @@ def main():
             pv_pct = pv_pct[[row_col] + pct_cols]
 
             # ── 누적 가로막대(행=100%)
-            import plotly.graph_objects as go
+            import plotly.graph_objects as go  # ✅ 요청대로 여기 블록의 go import는 유지
 
             bar = agg[[row_col, col_col, "pct_row"]].copy()
             bar = bar.rename(columns={"pct_row": "pct"})
@@ -786,7 +787,6 @@ def main():
 
             st.plotly_chart(fig, use_container_width=True, key="cross_stack_100")
 
-            # ── 화면용 합친 표 (row_order + col_order 고정)
             pv_show = pv_cnt.copy()
             for cc in [c for c in pv_show.columns if c != row_col]:
                 if cc in pv_pct.columns:
@@ -815,8 +815,6 @@ def main():
             )
             st.write("시범기능입니다..")
             st.success("\n".join(insight_lines), icon="✅")
-
-
 
 
 if __name__ == "__main__":
