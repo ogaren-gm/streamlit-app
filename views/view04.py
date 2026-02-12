@@ -714,30 +714,34 @@ def main():
             pct_cols = [c for c in col_order if c in pct_cols]
             pv_pct = pv_pct[[row_col] + pct_cols]
 
-            # 누적 막대(행 기준 100%)
-            bar = agg[[row_col, col_col, "pct_row"]].rename(columns={"pct_row": "pct"})
+            # ✅ 누적 막대: value로 그리고, percent 정규화는 plotly(barnorm)로 처리(배포 안정)
+            bar = agg[[row_col, col_col, "value", "pct_row"]].copy()
             bar[row_col] = pd.Categorical(bar[row_col].astype(str), categories=row_order, ordered=True)
             bar[col_col] = pd.Categorical(bar[col_col].astype(str), categories=col_order, ordered=True)
+
+            bar["value"] = pd.to_numeric(bar["value"], errors="coerce").fillna(0).astype(float)
+            bar["pct_row"] = pd.to_numeric(bar["pct_row"], errors="coerce").fillna(0).astype(float)
+
             bar = bar.sort_values([row_col, col_col]).reset_index(drop=True)
-
-            # ✅ 배포에서도 100% 누적 막대가 안깨지게: 행별 합 100으로 재정규화
-            bar["_sum"] = bar.groupby(row_col, dropna=False)["pct"].transform("sum").replace(0, np.nan)
-            bar["pct"] = (bar["pct"] / bar["_sum"] * 100).fillna(0)
-            bar = bar.drop(columns=["_sum"])
-
 
             fig = px.bar(
                 bar,
                 y=row_col,
-                x="pct",
+                x="value",              # ✅ pct 말고 value
                 color=col_col,
                 orientation="h",
                 barmode="stack",
-                text=bar["pct"].round(0).astype(int).astype(str) + "%",
+                text=(bar["pct_row"].round(0).astype(int).astype(str) + "%"),  # ✅ 라벨은 pct_row 사용
             )
 
-            # ✅ 표(row_order)와 그래프 순서 동일하게 고정
+            # ✅ 진짜 100% 누적: plotly가 행 기준으로 percent 정규화
+            fig.update_layout(barmode="stack", barnorm="percent")
+
+            # ✅ y축 순서 고정(역순 방지)
             fig.update_yaxes(categoryorder="array", categoryarray=row_order, autorange="reversed")
+
+            # ✅ x축 0~100 고정(퍼센트 축)
+            fig.update_xaxes(range=[0, 100], ticksuffix="%")
 
             n_rows = bar[row_col].nunique()
             fig_height = 150 + (n_rows * 30)
@@ -745,7 +749,6 @@ def main():
             fig.update_layout(
                 height=fig_height,
                 margin=dict(l=10, r=10, t=70, b=20),
-                xaxis=dict(range=[0, 100], ticksuffix="%", showgrid=False),  # ✅ 추가
                 xaxis_title=None,
                 yaxis_title=None,
                 legend=dict(
@@ -757,11 +760,14 @@ def main():
                     title_text="",
                 ),
             )
+
             fig.update_traces(
                 hovertemplate="%{y}<br>%{fullData.name}: %{x:.1f}%<extra></extra>",
                 textposition="inside"
             )
+
             st.plotly_chart(fig, use_container_width=True)
+
 
             # ── 화면용 합친 표 (row_order + col_order 고정)
             pv_show = pv_cnt.copy()
