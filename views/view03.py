@@ -43,10 +43,10 @@ CFG = {
         <style>
             .block-container {
                 max-width: 100% !important;
-                padding-top: 1rem;
+                padding-top: 0rem;
                 padding-bottom: 8rem;
                 padding-left: 5rem;
-                padding-right: 4rem;
+                padding-right: 4.5rem;
             }
         </style>
     """,

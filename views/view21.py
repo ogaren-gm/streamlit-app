@@ -11,10 +11,8 @@ from pandas.tseries.offsets import MonthEnd
 import gspread
 from google.oauth2.service_account import Credentials
 
-import sys
-import modules.style
-importlib.reload(sys.modules['modules.style'])
-from modules.style import style_format, style_cmap
+import modules.ui_common as ui
+importlib.reload(ui)
 
 from zoneinfo import ZoneInfo
 
@@ -26,13 +24,12 @@ def main():
     st.markdown(
         """
         <style>
-            /* 전체 컨테이너의 패딩 조정 */
             .block-container {
                 max-width: 100% !important;
-                padding-top: 1rem;   /* 위쪽 여백 */
+                padding-top: 0rem;
                 padding-bottom: 8rem;
-                padding-left: 5rem; 
-                padding-right: 4rem; 
+                padding-left: 5rem;
+                padding-right: 4.5rem;
             }
         </style>
         """,
