@@ -7,13 +7,13 @@ import numpy as np
 import importlib
 from datetime import datetime, timedelta
 import plotly.express as px  # pie/bar만 사용
+import plotly.graph_objects as go
 
 import modules.ui_common as ui
 importlib.reload(ui)
 
 from google.oauth2.service_account import Credentials
 import gspread
-
 
 # ──────────────────────────────────
 # CONFIG
@@ -610,7 +610,6 @@ def main():
     }
 
     with st.expander("Filter", expanded=True):
-        
         c1, c2 = st.columns(2)
         with c1:
             row_label = st.selectbox(
@@ -635,7 +634,7 @@ def main():
     # ✅ 컬럼 존재 체크(둘 중 하나라도 없으면 종료)
     has_row = (row_col in df.columns) or (df_aw is not None and row_col in df_aw.columns)
     has_col = (col_col in df.columns) or (df_aw is not None and col_col in df_aw.columns)
-    
+
     if not (has_row and has_col):
         st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
     else:
@@ -644,6 +643,7 @@ def main():
         if use_aw:
             if df_aw is None or df_aw.empty:
                 st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
+                agg = None
             else:
                 agg = (
                     df_aw.groupby([row_col, col_col], dropna=False)["weight"]
@@ -657,9 +657,19 @@ def main():
                     .reset_index(name="value")
             )
 
-        if "agg" in locals() and agg is not None and not agg.empty:
+        if agg is None or agg.empty:
+            st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
+        else:
+            # 정리
             agg[row_col] = _clean_cat(agg[row_col])
             agg[col_col] = _clean_cat(agg[col_col])
+            agg["value"] = pd.to_numeric(agg["value"], errors="coerce").fillna(0)
+
+            # ✅ (중요) 정리 후 중복 키 제거: clean_cat으로 라벨이 합쳐질 수 있으니 다시 집계
+            agg = (
+                agg.groupby([row_col, col_col], dropna=False, as_index=False)["value"]
+                .sum()
+            )
 
             # ✅ 행 기준 정렬 규칙
             row_sum = (
@@ -681,8 +691,6 @@ def main():
                 row_order = [x for x in base_order if x not in etc_in] + etc_in
 
             # ✅ 열 기준 정렬 규칙 (범례/표 공통)
-            # - 기본: 열 합(value) 큰 순
-            # - 기타는 항상 마지막
             col_sum = (
                 agg.groupby(col_col, dropna=False)["value"]
                 .sum()
@@ -697,7 +705,7 @@ def main():
             agg["pct_row"] = (agg["value"] / agg["_row_sum"] * 100).fillna(0)
             agg = agg.drop(columns=["_row_sum"])
 
-            # 피벗 2종
+            # 피벗 2종 (표용)
             pv_cnt = ui.build_pivot_table(agg, index_col=row_col, col_col=col_col, val_col="value")
             pv_pct = ui.build_pivot_table(agg, index_col=row_col, col_col=col_col, val_col="pct_row")
 
@@ -705,7 +713,7 @@ def main():
             pv_cnt = pv_cnt.set_index(row_col).reindex(row_order).reset_index()
             pv_pct = pv_pct.set_index(row_col).reindex(row_order).reset_index()
 
-            # ✅ 피벗 열(=col_col) 순서 강제: col_order 기준으로 재배열
+            # ✅ 피벗 열 순서 강제
             cnt_cols = [c for c in pv_cnt.columns if c != row_col]
             cnt_cols = [c for c in col_order if c in cnt_cols]
             pv_cnt = pv_cnt[[row_col] + cnt_cols]
@@ -714,40 +722,37 @@ def main():
             pct_cols = [c for c in col_order if c in pct_cols]
             pv_pct = pv_pct[[row_col] + pct_cols]
 
-            # ✅ 누적 막대: value로 그리고, percent 정규화는 plotly(barnorm)로 처리(배포 안정)
-            bar = agg[[row_col, col_col, "value", "pct_row"]].copy()
-            bar[row_col] = pd.Categorical(bar[row_col].astype(str), categories=row_order, ordered=True)
-            bar[col_col] = pd.Categorical(bar[col_col].astype(str), categories=col_order, ordered=True)
+            # ── 누적 가로막대(행=100%)
+            import plotly.graph_objects as go
 
-            bar["value"] = pd.to_numeric(bar["value"], errors="coerce").fillna(0).astype(float)
-            bar["pct_row"] = pd.to_numeric(bar["pct_row"], errors="coerce").fillna(0).astype(float)
+            bar = agg[[row_col, col_col, "pct_row"]].copy()
+            bar = bar.rename(columns={"pct_row": "pct"})
+            bar["pct"] = pd.to_numeric(bar["pct"], errors="coerce").fillna(0)
 
-            bar = bar.sort_values([row_col, col_col]).reset_index(drop=True)
+            fig = go.Figure()
 
-            fig = px.bar(
-                bar,
-                y=row_col,
-                x="value",              # ✅ pct 말고 value
-                color=col_col,
-                orientation="h",
-                barmode="stack",
-                text=(bar["pct_row"].round(0).astype(int).astype(str) + "%"),  # ✅ 라벨은 pct_row 사용
-            )
+            for c in col_order:
+                s = (
+                    bar[bar[col_col].astype(str) == str(c)]
+                    .groupby(row_col, dropna=False)["pct"]
+                    .sum()
+                    .reindex(row_order)
+                    .fillna(0)
+                )
 
-            # ✅ 진짜 100% 누적: plotly가 행 기준으로 percent 정규화
-            fig.update_layout(barmode="stack", barnorm="percent")
-
-            # ✅ y축 순서 고정(역순 방지)
-            fig.update_yaxes(categoryorder="array", categoryarray=row_order, autorange="reversed")
-
-            # ✅ x축 0~100 고정(퍼센트 축)
-            fig.update_xaxes(range=[0, 100], ticksuffix="%")
-
-            n_rows = bar[row_col].nunique()
-            fig_height = 150 + (n_rows * 30)
+                fig.add_bar(
+                    y=row_order,
+                    x=s.values,
+                    name=str(c),
+                    orientation="h",
+                    text=(s.round(0).astype(int).astype(str) + "%").values,
+                    textposition="inside",
+                    hovertemplate="%{y}<br>%{fullData.name}: %{x:.1f}%<extra></extra>",
+                )
 
             fig.update_layout(
-                height=fig_height,
+                barmode="stack",
+                height=150 + (len(row_order) * 30),
                 margin=dict(l=10, r=10, t=70, b=20),
                 xaxis_title=None,
                 yaxis_title=None,
@@ -761,13 +766,10 @@ def main():
                 ),
             )
 
-            fig.update_traces(
-                hovertemplate="%{y}<br>%{fullData.name}: %{x:.1f}%<extra></extra>",
-                textposition="inside"
-            )
+            fig.update_xaxes(range=[0, 100], ticksuffix="%")
+            fig.update_yaxes(categoryorder="array", categoryarray=row_order, autorange="reversed")
 
-            st.plotly_chart(fig, use_container_width=True)
-
+            st.plotly_chart(fig, use_container_width=True, key="cross_stack_100")
 
             # ── 화면용 합친 표 (row_order + col_order 고정)
             pv_show = pv_cnt.copy()
@@ -786,15 +788,20 @@ def main():
                 hide_index=True,
                 row_height=30
             )
-            
-                    
-            insight_lines = write_mutable_insight(agg=agg, row_col=row_col, col_col=col_col, row_label=row_label, col_label=col_label, row_order=row_order, col_order=col_order)
+
+            insight_lines = write_mutable_insight(
+                agg=agg,
+                row_col=row_col,
+                col_col=col_col,
+                row_label=row_label,
+                col_label=col_label,
+                row_order=row_order,
+                col_order=col_order
+            )
             st.write("시범기능입니다..")
             st.success("\n".join(insight_lines), icon="✅")
 
-            
-        else:
-            st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
+
 
 
 if __name__ == "__main__":
