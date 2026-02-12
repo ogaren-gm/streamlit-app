@@ -122,6 +122,9 @@ def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: di
     # ── Stack ─────────────────────────
     with c2:
         if x in src.columns and c in src.columns:
+            # ✅ 여기서 먼저 클린 (집계 전에!)
+            src[c] = _clean_cat(src[c])
+
             if x == "event_date":
                 base = ui.add_period_columns(src, "event_date", "일별")
 
@@ -144,7 +147,13 @@ def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: di
                             .reset_index(drop=True)
                     )
 
-                agg[c] = _clean_cat(agg[c])
+                # ✅ (보험) 클린으로 라벨 합쳐졌을 경우를 대비해 한 번 더 재집계
+                agg = (
+                    agg.groupby(["_period_dt", "기간", c], dropna=False, as_index=False)["value"]
+                    .sum()
+                    .sort_values("_period_dt")
+                    .reset_index(drop=True)
+                )
 
                 fig2 = px.bar(
                     agg, x="_period_dt", y="value", color=c,
@@ -165,18 +174,23 @@ def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: di
                 if (c in AW_COLS) and ("weight" in src.columns):
                     agg = (
                         src.groupby([x, c], dropna=False)["weight"]
-                           .sum()
-                           .reset_index(name="value")
+                        .sum()
+                        .reset_index(name="value")
                     )
                 else:
                     agg = (
                         src.groupby([x, c], dropna=False)
-                           .size()
-                           .reset_index(name="value")
+                        .size()
+                        .reset_index(name="value")
                     )
 
                 agg[x] = agg[x].astype(str)
-                agg[c] = _clean_cat(agg[c])
+
+                # ✅ (보험) 라벨 합쳐졌을 수 있으니 재집계
+                agg = (
+                    agg.groupby([x, c], dropna=False, as_index=False)["value"]
+                    .sum()
+                )
 
                 fig2 = px.bar(
                     agg, x=x, y="value", color=c,
@@ -194,6 +208,7 @@ def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: di
                 pv = ui.build_pivot_table(agg, index_col=c, col_col=x, val_col="value")
         else:
             st.info("Stack 차원 컬럼이 없습니다.")
+
 
     if pv is not None:
         st.dataframe(pv, use_container_width=True, hide_index=True, row_height=30)
