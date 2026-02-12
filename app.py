@@ -36,8 +36,8 @@ st.markdown("""
 
 /* 헤더 스타일 */
 [data-testid="stNavSectionHeader"] {
-    font-size: 18px;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 600;
 }
 
 /* 선택된 메뉴 볼드 낮추기 */
