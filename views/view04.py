@@ -83,153 +83,7 @@ def _order_with_etc_last(keys: list, sums: dict | None = None) -> list:
     others = sorted(others, key=lambda k: float(sums.get(k, 0.0)), reverse=True)
     return others + etc
 
-# ──────────────────────────────────
-# RENDER: PIE + STACK + TABLE (영역2)
-# ──────────────────────────────────
-def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: dict):
-    pie_dim = conf["pie"]
-    x = conf["stack_x"]
-    c = conf["stack_color"]
 
-    if df is None or df.empty:
-        st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
-        return
-
-    AW_COLS = {"awareness_type", "awareness_type_a", "awareness_type_b"}
-    use_aw = (pie_dim in AW_COLS) or (c in AW_COLS)
-    src = df_aw if (use_aw and df_aw is not None and not df_aw.empty) else df
-
-    # ✅ Stack에서 쓰는 차원 기준으로 팔레트 고정(파이/스택 톤 통일)
-    dim_for_map = c if c in src.columns else pie_dim
-    color_map = None
-    if dim_for_map in src.columns:
-        cats = _clean_cat(src[dim_for_map]).unique().tolist()
-        palette = (px.defaults.color_discrete_sequence * ((len(cats) // 10) + 1))[:len(cats)]
-        color_map = dict(zip(cats, palette))
-
-    pv = None
-    c1, c2 = st.columns([3, 7], vertical_alignment="top")
-
-    # ── Pie ─────────────────────────
-    with c1:
-        if pie_dim in src.columns:
-            if (pie_dim in AW_COLS) and ("weight" in src.columns):
-                d_pie = (
-                    src.groupby(pie_dim, dropna=False)["weight"]
-                       .sum()
-                       .reset_index(name="value")
-                )
-            else:
-                d_pie = (
-                    src.groupby(pie_dim, dropna=False)
-                       .size()
-                       .reset_index(name="value")
-                )
-
-            d_pie[pie_dim] = _clean_cat(d_pie[pie_dim])
-            d_pie = d_pie.sort_values("value", ascending=False)
-
-            fig1 = px.pie(
-                d_pie,
-                names=pie_dim,
-                values="value",
-                title=None,
-                color=pie_dim,
-                color_discrete_map=(color_map if (color_map is not None and pie_dim == dim_for_map) else None),
-            )
-            fig1.update_layout(height=360, margin=dict(l=0, r=0, t=30, b=30), showlegend=False)
-            st.plotly_chart(fig1, use_container_width=True)
-        else:
-            st.info("Pie 차원 컬럼이 없습니다.")
-
-    # ── Stack ─────────────────────────
-    with c2:
-        if x in src.columns and c in src.columns:
-            # ✅ (중요) 집계 전에 클린 + (event_date 사용 시) period_dt normalize 일관화
-            src[c] = _clean_cat(src[c])
-
-            if x == "event_date":
-                base = _add_period_day(src, "event_date")
-
-                if (c in AW_COLS) and ("weight" in base.columns):
-                    agg = (
-                        base.groupby(["_period_dt", "_period", c], dropna=False)["weight"]
-                            .sum()
-                            .reset_index(name="value")
-                            .rename(columns={"_period": "기간"})
-                            .sort_values("_period_dt")
-                            .reset_index(drop=True)
-                    )
-                else:
-                    agg = (
-                        base.groupby(["_period_dt", "_period", c], dropna=False)
-                            .size()
-                            .reset_index(name="value")
-                            .rename(columns={"_period": "기간"})
-                            .sort_values("_period_dt")
-                            .reset_index(drop=True)
-                    )
-
-                # ✅ (일관성) 스택 축의 datetime은 무조건 normalize
-                agg["_period_dt"] = _norm_dt(agg["_period_dt"])
-
-                fig2 = px.bar(
-                    agg, x="_period_dt", y="value", color=c,
-                    barmode="stack", opacity=0.6,
-                    color_discrete_map=color_map if color_map is not None else None,
-                )
-                fig2.update_layout(
-                    height=360, margin=dict(l=10, r=140, t=20, b=10),
-                    xaxis_title=None, yaxis_title=None,
-                    legend=dict(orientation="v", x=1.02, xanchor="left", y=1, yanchor="top"),
-                )
-                fig2.update_traces(hovertemplate="%{x|%Y-%m-%d}<br>%{fullData.name}: %{y:,}<extra></extra>")
-                st.plotly_chart(fig2, use_container_width=True, key=f"stack::{title}::{c}")
-
-                pv = ui.build_pivot_table(agg, index_col=c, col_col="기간", val_col="value")
-
-            else:
-                # x가 event_date가 아니면(예: demo_age) 그대로 집계
-                if (c in AW_COLS) and ("weight" in src.columns):
-                    agg = (
-                        src.groupby([x, c], dropna=False)["weight"]
-                           .sum()
-                           .reset_index(name="value")
-                    )
-                else:
-                    agg = (
-                        src.groupby([x, c], dropna=False)
-                           .size()
-                           .reset_index(name="value")
-                    )
-
-                agg[x] = agg[x].astype(str)
-
-                fig2 = px.bar(
-                    agg, x=x, y="value", color=c,
-                    barmode="stack", opacity=0.6,
-                    color_discrete_map=color_map if color_map is not None else None,
-                )
-                fig2.update_layout(
-                    height=360, margin=dict(l=10, r=10, t=10, b=10),
-                    xaxis_title=None, yaxis_title=None,
-                    legend=dict(orientation="h", y=1.02, x=1, xanchor="right"),
-                )
-                fig2.update_traces(hovertemplate="%{x}<br>%{fullData.name}: %{y:,}<extra></extra>")
-                st.plotly_chart(fig2, use_container_width=True, key=f"stack::{title}::{x}::{c}")
-
-                pv = ui.build_pivot_table(agg, index_col=c, col_col=x, val_col="value")
-        else:
-            st.info("Stack 차원 컬럼이 없습니다.")
-
-    if pv is not None:
-        st.dataframe(pv, use_container_width=True, hide_index=True, row_height=30)
-    else:
-        st.info("표를 만들 수 있는 데이터가 없습니다.")
-
-# ──────────────────────────────────
-# RENDER: TREND (영역1)
-# ──────────────────────────────────
 def render_shrm_trend(
     base_df: pd.DataFrame,
     filt: pd.Series | None,
@@ -289,6 +143,145 @@ def render_shrm_trend(
     # ───────────────── 표(날짜가 컬럼) ─────────────────
     pv_tbl = ui.build_pivot_table(g, index_col=dim, col_col="_period_dt", val_col="value")
     st.dataframe(pv_tbl, use_container_width=True, hide_index=True, row_height=30)
+
+
+def render_shrm_tabs(df: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: dict):
+    pie_dim = conf["pie"]
+    x = conf["stack_x"]
+    c = conf["stack_color"]
+
+    if df is None or df.empty:
+        st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+        return
+
+    AW_COLS = {"awareness_type", "awareness_type_a", "awareness_type_b"}
+    use_aw = (pie_dim in AW_COLS) or (c in AW_COLS)
+    src = df_aw if (use_aw and df_aw is not None and not df_aw.empty) else df
+
+    # ✅ Stack에서 쓰는 차원 기준으로 팔레트 고정(파이/스택 톤 통일)
+    dim_for_map = c if c in src.columns else pie_dim
+    color_map = None
+    if dim_for_map in src.columns:
+        cats = _clean_cat(src[dim_for_map]).unique().tolist()
+        palette = (px.defaults.color_discrete_sequence * ((len(cats) // 10) + 1))[:len(cats)]
+        color_map = dict(zip(cats, palette))
+
+    pv = None
+    c1, c2 = st.columns([3, 7], vertical_alignment="top")
+
+    # ── Pie ─────────────────────────
+    with c1:
+        if pie_dim in src.columns:
+            if (pie_dim in AW_COLS) and ("weight" in src.columns):
+                d_pie = (
+                    src.groupby(pie_dim, dropna=False)["weight"]
+                       .sum()
+                       .reset_index(name="value")
+                )
+            else:
+                d_pie = (
+                    src.groupby(pie_dim, dropna=False)
+                       .size()
+                       .reset_index(name="value")
+                )
+
+            d_pie[pie_dim] = _clean_cat(d_pie[pie_dim])
+            d_pie = d_pie.sort_values("value", ascending=False)
+
+            fig1 = px.pie(
+                d_pie,
+                names=pie_dim,
+                values="value",
+                title=None,
+                color=pie_dim,
+                color_discrete_map=(color_map if (color_map is not None and pie_dim == dim_for_map) else None),
+            )
+            fig1.update_layout(height=360, margin=dict(l=0, r=0, t=30, b=30), showlegend=False)
+            st.plotly_chart(fig1, use_container_width=True)
+        else:
+            st.info("Pie 차원 컬럼이 없습니다.")
+
+    # ── Stack ─────────────────────────
+    with c2:
+        if x in src.columns and c in src.columns:
+            # ✅ 집계 전에 클린(라벨 통일)
+            src[c] = _clean_cat(src[c])
+
+            if x == "event_date":
+                # ✅ 1번 영역과 동일한 원리: ui.render_stack_graph 사용
+                base = _add_period_day(src, "event_date")  # _period_dt normalize 보장
+
+                if (c in AW_COLS) and ("weight" in base.columns):
+                    agg = (
+                        base.groupby(["_period_dt", "_period", c], dropna=False)["weight"]
+                            .sum()
+                            .reset_index(name="value")
+                            .sort_values("_period_dt")
+                            .reset_index(drop=True)
+                    )
+                else:
+                    agg = (
+                        base.groupby(["_period_dt", "_period", c], dropna=False)
+                            .size()
+                            .reset_index(name="value")
+                            .sort_values("_period_dt")
+                            .reset_index(drop=True)
+                    )
+
+                # ✅ 스택 그래프 (Plotly px.bar 직접 호출 금지)
+                ui.render_stack_graph(
+                    agg,
+                    x="_period_dt",
+                    y="value",
+                    color=c,
+                    height=360,
+                    opacity=0.6,
+                    show_value_in_hover=True,
+                    key=f"stack::{title}::{c}",
+                )
+
+                pv = ui.build_pivot_table(agg, index_col=c, col_col="_period_dt", val_col="value")
+
+            else:
+                # (event_date가 아닌 축: 예 demo_age)
+                if (c in AW_COLS) and ("weight" in src.columns):
+                    agg = (
+                        src.groupby([x, c], dropna=False)["weight"]
+                           .sum()
+                           .reset_index(name="value")
+                    )
+                else:
+                    agg = (
+                        src.groupby([x, c], dropna=False)
+                           .size()
+                           .reset_index(name="value")
+                    )
+
+                agg[x] = agg[x].astype(str)
+                agg[c] = _clean_cat(agg[c])
+
+                # ✅ 여기도 “스택”은 ui.render_stack_graph로 통일(1번 원리)
+                ui.render_stack_graph(
+                    agg,
+                    x=x,
+                    y="value",
+                    color=c,
+                    height=360,
+                    opacity=0.6,
+                    show_value_in_hover=True,
+                    key=f"stack::{title}::{x}::{c}",
+                )
+
+                pv = ui.build_pivot_table(agg, index_col=c, col_col=x, val_col="value")
+
+        else:
+            st.info("Stack 차원 컬럼이 없습니다.")
+
+    if pv is not None:
+        st.dataframe(pv, use_container_width=True, hide_index=True, row_height=30)
+    else:
+        st.info("표를 만들 수 있는 데이터가 없습니다.")
+
 
 # ──────────────────────────────────
 # INSIGHT (CROSS)
