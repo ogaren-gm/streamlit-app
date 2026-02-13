@@ -345,7 +345,7 @@ def main():
         return df
 
     def render_style_eng(target_df, select_option):
-        styled = style_format(
+        styled = ui.style_format(
             decorate_df_eng(target_df, select_option=opt),
             decimals_map={
                 ("COST",         "일할비용"):0,          # 
@@ -491,7 +491,7 @@ def main():
         for g in channel_groups:
             suffix_map[(g, "비중(%)")] = " %"
 
-        styled = style_format(decorated, decimals_map=decimals_map, suffix_map=suffix_map)
+        styled = ui.style_format(decorated, decimals_map=decimals_map, suffix_map=suffix_map)
         st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
 
 

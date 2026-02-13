@@ -215,7 +215,8 @@ def render_stack_graph(
     opacity: float = 0.6,
     title: str | None = None,
     show_value_in_hover: bool = False,
-    key: str | None = None
+    key: str | None = None,
+    **px_kwargs,   # ✅ 추가: plotly express kwargs 통과
 ) -> None:
     """
     누적막대 차트 렌더링 (px.bar)
@@ -255,7 +256,8 @@ def render_stack_graph(
         barmode="stack", #relative?
         opacity=opacity,
         title=title,
-        custom_data=[color, "_share_pct", y]
+        custom_data=[color, "_share_pct", y],
+        **px_kwargs,  # ✅ 추가: 외부에서 준 color_discrete_map/sequence/orders 받음
     )
     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
 
