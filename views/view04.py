@@ -22,7 +22,7 @@ import gspread
 CFG = {
     "TZ": "Asia/Seoul",
     "CACHE_TTL": 3600,
-    "DEFAULT_LOOKBACK_DAYS": 7,
+    "DEFAULT_LOOKBACK_DAYS": 14,
     "HEADER_UPDATE_AM": 850,
     "HEADER_UPDATE_PM": 1535,
     "CSS_BLOCK_CONTAINER": """
@@ -49,10 +49,9 @@ AW_COLS  = {
             "awareness_type_b"
             }
 CAT_COLS = [
-            "shrm_name",
             "shrm_type",
-            "shrm_branch",
             "shrm_region",
+            "shrm_branch",
             "demo_gender",
             "demo_age",
             "awareness_type",
@@ -177,29 +176,68 @@ def _parse_shrm_text(df1: pd.DataFrame) -> pd.DataFrame:
     return df1
 
 
-# ──────────────────────────────────
-# RENDER 2) PIE + STACK (COLOR MAP 통일)
-# ──────────────────────────────────
-def render_shrm_tabs(df1: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: dict):
+def render_shrm_tabs(
+    df: pd.DataFrame,
+    df_aw: pd.DataFrame,
+    title: str,
+    conf: dict,
+    key_tag: str = "tab",
+    agg_mode: str = "auto",        # "auto" | "size" | "sum"
+    agg_value_col: str | None = None,  # ex) "cnt"  (sum일 때만 의미)
+):
     pie_dim = conf["pie"]
     x = conf["stack_x"]
     c = conf["stack_color"]
 
-    if df1 is None or df1.empty:
+    if df is None or df.empty:
         st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
         return
 
     use_aw = (pie_dim in AW_COLS) or (c in AW_COLS)
-    src = df_aw if (use_aw and df_aw is not None and not df_aw.empty) else df1
+    src = df_aw if (use_aw and df_aw is not None and not df_aw.empty) else df
 
-    # ✅ (2,3) 팔레트/맵 로직 단일화: 전역 함수만 사용
+    # agg_mode
+    mode = (agg_mode or "auto").lower().strip()
+    if mode not in ("auto", "size", "sum"):
+        mode = "auto"
+
+    if mode == "auto":
+        if agg_value_col and (agg_value_col in src.columns):
+            mode2 = "sum"
+        else:
+            mode2 = "size"
+    else:
+        mode2 = mode
+
+    # sum을 강제했는데 컬럼이 없으면 0으로 만들어서 동작만 유지 (굳이)
+    if mode2 == "sum":
+        if (not agg_value_col) or (agg_value_col not in src.columns):
+            src[agg_value_col or "_cnt"] = 0
+            agg_value_col = agg_value_col or "_cnt"
+        src[agg_value_col] = pd.to_numeric(src[agg_value_col], errors="coerce").fillna(0)
+
+    # 팔레트/맵 로직 단일화: 전역 함수만 사용
     seq = _get_px_sequence()
 
-    # 1) order/cmap 기준: "stack_color(c)" 합계 큰 순 + 기타 맨뒤
+    # 1) order/cmap 기준: stack_color(c) 기준 합계 큰 순 + 기타 맨뒤
     bar_order = None
     bar_cmap = None
     if c in src.columns:
-        d_ord = _agg_dim_for_order(src, c)
+        if mode2 == "sum":
+            d_ord = (
+                src.assign(_k=_clean_cat(src[c]).astype(str))
+                .groupby("_k", dropna=False)[agg_value_col]
+                .sum()
+                .reset_index()
+                .rename(columns={"_k": c, agg_value_col: "value"})
+            )
+            d_ord["value"] = pd.to_numeric(d_ord["value"], errors="coerce").fillna(0)
+            d_ord[c] = _clean_cat(d_ord[c]).astype(str)
+            d_ord = d_ord.groupby(c, dropna=False, as_index=False)["value"].sum()
+            d_ord = d_ord.sort_values("value", ascending=False).reset_index(drop=True)
+        else:
+            d_ord = _agg_dim_for_order(src, c)
+
         if not d_ord.empty:
             sums = d_ord.set_index(c)["value"].to_dict()
             bar_order = _order_with_etc_last(list(sums.keys()), sums)
@@ -211,27 +249,37 @@ def render_shrm_tabs(df1: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: d
     # 2) PIE
     with c1:
         if pie_dim not in src.columns:
-            st.info("Pie 차원 컬럼이 없습니다.")
+            st.warning("표시할 데이터가 없습니다.")
         else:
-            d_pie = _agg_dim_for_order(src, pie_dim)
+            if mode2 == "sum":
+                d_pie = (
+                    src.assign(_k=_clean_cat(src[pie_dim]).astype(str))
+                    .groupby("_k", dropna=False)[agg_value_col]
+                    .sum()
+                    .reset_index()
+                    .rename(columns={"_k": pie_dim, agg_value_col: "value"})
+                )
+                d_pie["value"] = pd.to_numeric(d_pie["value"], errors="coerce").fillna(0)
+                d_pie[pie_dim] = _clean_cat(d_pie[pie_dim]).astype(str)
+                d_pie = d_pie.groupby(pie_dim, dropna=False, as_index=False)["value"].sum()
+                d_pie = d_pie.sort_values("value", ascending=False).reset_index(drop=True)
+            else:
+                d_pie = _agg_dim_for_order(src, pie_dim)
+
             if d_pie.empty:
-                st.info("표시할 데이터가 없습니다.")
+                st.warning("표시할 데이터가 없습니다.")
             else:
                 sums_p = d_pie.set_index(pie_dim)["value"].to_dict()
                 pie_order = _order_with_etc_last(list(sums_p.keys()), sums_p)
 
-                # ✅ pie_dim==c이면 "막대 컬러칩"으로 1:1 고정
                 if (pie_dim == c) and (bar_order is not None) and (bar_cmap is not None):
                     pie_order = [k for k in bar_order if k in pie_order] + [
                         k for k in pie_order if k not in bar_order
                     ]
                     pie_cmap = {k: bar_cmap[k] for k in pie_order if k in bar_cmap}
-
-                    # pie에만 있고 bar_cmap에 없는 라벨은 fallback 팔레트로 채움
                     missing = [k for k in pie_order if k not in pie_cmap]
                     if missing:
-                        extra = _make_color_map(missing, seq)
-                        pie_cmap.update(extra)
+                        pie_cmap.update(_make_color_map(missing, seq))
                 else:
                     pie_cmap = _make_color_map(pie_order, seq)
 
@@ -249,13 +297,17 @@ def render_shrm_tabs(df1: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: d
                     category_orders={pie_dim: pie_order},
                     title=None,
                 )
-                fig1.update_traces(opacity=0.6)  # (요구사항 1,2,3,6만 반영: 이 줄은 그대로)
+                fig1.update_traces(opacity=0.6)
                 fig1.update_layout(
                     height=360,
                     margin=dict(l=0, r=0, t=30, b=30),
                     showlegend=False,
                 )
-                st.plotly_chart(fig1, use_container_width=True)
+                st.plotly_chart(
+                    fig1,
+                    use_container_width=True,
+                    key=f"pie::{key_tag}::{title}::{pie_dim}",
+                )
 
     # 3) STACK
     with c2:
@@ -263,31 +315,42 @@ def render_shrm_tabs(df1: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: d
             if x == "event_date":
                 base = _add_period_day(src, "event_date")
                 base = base.assign(**{c: _clean_cat(base[c]).astype(str)})
-
-                # ✅ 주별/일별 자동 판단: _period에 "~" 있으면 주별
+                
+                # 주별/일별 자동 판단
                 is_week = False
                 if "_period" in base.columns:
                     is_week = base["_period"].astype(str).str.contains("~").any()
 
-                x_col = "_period" if is_week else "_period_dt"   # ✅ 주별 라벨을 x로 쓰기
-                sort_col = "_period_dt"                          # ✅ 정렬은 항상 dt로
+                x_col = "_period" if is_week else "_period_dt"
+                sort_col = "_period_dt"
 
-                if (c in AW_COLS) and ("weight" in base.columns):
+                if mode2 == "sum":
                     agg = (
-                        base.groupby([x_col, "_period", c], dropna=False)["weight"]
+                        base.groupby([x_col, "_period", c], dropna=False)[agg_value_col]
                         .sum()
                         .reset_index(name="value")
                         .sort_values(sort_col)
                         .reset_index(drop=True)
                     )
                 else:
-                    agg = (
-                        base.groupby([x_col, "_period", c], dropna=False)
-                        .size()
-                        .reset_index(name="value")
-                        .sort_values(sort_col)
-                        .reset_index(drop=True)
-                    )
+                    if (c in AW_COLS) and ("weight" in base.columns):
+                        agg = (
+                            base.groupby([x_col, "_period", c], dropna=False)["weight"]
+                            .sum()
+                            .reset_index(name="value")
+                            .sort_values(sort_col)
+                            .reset_index(drop=True)
+                        )
+                    else:
+                        agg = (
+                            base.groupby([x_col, "_period", c], dropna=False)
+                            .size()
+                            .reset_index(name="value")
+                            .sort_values(sort_col)
+                            .reset_index(drop=True)
+                        )
+
+                agg["value"] = pd.to_numeric(agg["value"], errors="coerce").fillna(0)
 
                 if bar_order is not None:
                     agg[c] = pd.Categorical(agg[c].astype(str), categories=bar_order, ordered=True)
@@ -295,35 +358,43 @@ def render_shrm_tabs(df1: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: d
 
                 ui.render_stack_graph(
                     agg,
-                    x=x_col,                 # ✅ 여기!
+                    x=x_col,
                     y="value",
                     color=c,
                     height=360,
                     opacity=0.6,
                     show_value_in_hover=True,
-                    key=f"stack::{title}::{c}",
+                    key=f"stack::{key_tag}::{title}::{c}",
                     color_discrete_map=(bar_cmap or None),
                     category_orders={c: (bar_order or None)},
                 )
 
-                pv = ui.build_pivot_table(agg, index_col=c, col_col=x_col, val_col="value")  # ✅ 여기!
+                pv = ui.build_pivot_table(agg, index_col=c, col_col=x_col, val_col="value")
 
             else:
                 tmp = src.assign(**{c: _clean_cat(src[c]).astype(str)})
 
-                if (c in AW_COLS) and ("weight" in tmp.columns):
+                if mode2 == "sum":
                     agg = (
-                        tmp.groupby([x, c], dropna=False)["weight"]
+                        tmp.groupby([x, c], dropna=False)[agg_value_col]
                         .sum()
                         .reset_index(name="value")
                     )
                 else:
-                    agg = (
-                        tmp.groupby([x, c], dropna=False)
-                        .size()
-                        .reset_index(name="value")
-                    )
+                    if (c in AW_COLS) and ("weight" in tmp.columns):
+                        agg = (
+                            tmp.groupby([x, c], dropna=False)["weight"]
+                            .sum()
+                            .reset_index(name="value")
+                        )
+                    else:
+                        agg = (
+                            tmp.groupby([x, c], dropna=False)
+                            .size()
+                            .reset_index(name="value")
+                        )
 
+                agg["value"] = pd.to_numeric(agg["value"], errors="coerce").fillna(0)
                 agg[x] = agg[x].astype(str)
                 agg[c] = _clean_cat(agg[c]).astype(str)
 
@@ -339,20 +410,20 @@ def render_shrm_tabs(df1: pd.DataFrame, df_aw: pd.DataFrame, title: str, conf: d
                     height=360,
                     opacity=0.6,
                     show_value_in_hover=True,
-                    key=f"stack::{title}::{x}::{c}",
+                    key=f"stack::{key_tag}::{title}::{x}::{c}",
                     color_discrete_map=(bar_cmap or None),
                     category_orders={c: (bar_order or None)},
                 )
 
                 pv = ui.build_pivot_table(agg, index_col=c, col_col=x, val_col="value")
-
         else:
-            st.info("Stack 차원 컬럼이 없습니다.")
+            st.warning("표시할 데이터가 없습니다.")
 
     if pv is not None:
         st.dataframe(pv, use_container_width=True, hide_index=True, row_height=30)
     else:
-        st.info("표를 만들 수 있는 데이터가 없습니다.")
+        st.warning("표시할 데이터가 없습니다.")
+
 
 
 # ──────────────────────────────────
@@ -567,198 +638,126 @@ def main():
     # 1) 조회·예약·방문 추이
     # ──────────────────────────────────
     st.markdown(" ")
-    st.markdown("<h5 style='margin:0'>조회·예약·방문 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ일자·지점별 조회/예약/방문 추이")
+    st.markdown("<h5 style='margin:0'>쇼룸 현황</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
 
-    with st.expander("Filter", expanded=False):
-        f1, f2, f3, f4 = st.columns([1.2, 1.6, 1.6, 1.6])
-
-        with f1:
-            unit = st.radio("기간 단위", ["일별", "주별"], horizontal=True, key="shrm_tr_unit_v1")
-
-        x_col = "_period_dt" if unit == "일별" else "_period"
-
-        tmpf = df1
-        if "shrm_name" in tmpf.columns:
-            tmpf = tmpf[tmpf["shrm_name"].astype("string").fillna("").str.strip().str.len() >= 2]
-
-        tmpf = _parse_shrm_text(tmpf)
-
-        with f2:
-            type_opts = ["전체"] + sorted(tmpf["shrm_type"].astype(str).fillna("기타").unique().tolist())
-            sel_type = st.selectbox("쇼룸유형", type_opts, 0, key="shrm_tr_type_v1")
-
-        tmpf2 = tmpf if sel_type == "전체" else tmpf[tmpf["shrm_type"].astype(str) == sel_type]
-
-        with f3:
-            region_opts = ["전체"] + sorted(tmpf2["shrm_region"].astype(str).fillna("기타").unique().tolist())
-            sel_region = st.selectbox("쇼룸권역", region_opts, 0, key="shrm_tr_region_v1")
-
-        tmpf3 = tmpf2 if sel_region == "전체" else tmpf2[tmpf2["shrm_region"].astype(str) == sel_region]
-
-        with f4:
-            branch_opts = ["전체"] + sorted(tmpf3["shrm_branch"].astype(str).fillna("기타").unique().tolist())
-            sel_branch = st.selectbox("쇼룸지점", branch_opts, 0, key="shrm_tr_branch_v1")
-
-
-    df1 = ui.add_period_columns(df1, "event_date", unit)
-    df2 = ui.add_period_columns(df2, "event_date", unit)
-
-    if "_period_dt" in df1.columns:
-        df1["_period_dt"] = pd.to_datetime(df1["_period_dt"], errors="coerce").dt.normalize()
-    if "_period_dt" in df2.columns:
-        df2["_period_dt"] = pd.to_datetime(df2["_period_dt"], errors="coerce").dt.normalize()
-
-    df1 = df1[df1["shrm_name"].astype("string").fillna("").str.strip().str.len() >= 2]
-    df2 = df2[df2["shrm_name"].astype("string").fillna("").str.strip().str.len() >= 2]
+    # 방문(df1) + 조회/예약(df2) --> long 통합
+    base_cols = [c for c in ["event_date", "shrm_name", "shrm_type", "shrm_region", "shrm_branch"] if c in df1.columns]
+    v = df1.loc[:, base_cols].assign(event_type="방문", cnt=1)
 
     m_cols = [c for c in ["look_cnt", "bookConfirmed_cnt"] if c in df2.columns]
-    for c in m_cols:
-        df2[c] = pd.to_numeric(df2[c], errors="coerce").fillna(0)
+    if not m_cols:
+        df2["look_cnt"] = 0
+        df2["bookConfirmed_cnt"] = 0
+        m_cols = ["look_cnt", "bookConfirmed_cnt"]
 
-    v = df1.groupby([x_col, "shrm_name"], dropna=False).size().reset_index(name="visit_cnt")
-    m = df2.groupby([x_col, "shrm_name"], dropna=False)[m_cols].sum().reset_index()
+    m_base_cols = [c for c in ["event_date", "shrm_name", "shrm_type", "shrm_region", "shrm_branch"] if c in df2.columns]
+    m = df2.loc[:, m_base_cols + m_cols]
+    m[m_cols] = m[m_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
-    df_shrm = v.merge(m, on=[x_col, "shrm_name"], how="left")
-    df_shrm["look_cnt"] = pd.to_numeric(df_shrm.get("look_cnt", 0), errors="coerce").fillna(0)
-    df_shrm["bookConfirmed_cnt"] = pd.to_numeric(df_shrm.get("bookConfirmed_cnt", 0), errors="coerce").fillna(0)
-    df_shrm["visit_cnt"] = pd.to_numeric(df_shrm.get("visit_cnt", 0), errors="coerce").fillna(0)
+    m = m.melt(
+        id_vars=m_base_cols,
+        value_vars=m_cols,
+        var_name="event_type",
+        value_name="cnt",
+    )
+    m["event_type"] = m["event_type"].replace({"look_cnt": "조회", "bookConfirmed_cnt": "예약"})
+    m["cnt"] = pd.to_numeric(m["cnt"], errors="coerce").fillna(0)
 
-    df_shrm = df_shrm.replace([np.inf, -np.inf], 0).fillna(0)
+    df_evt = pd.concat([v, m], ignore_index=True)
+    df_evt["event_date"] = pd.to_datetime(df_evt["event_date"], errors="coerce").dt.normalize()
+    df_evt["event_type"] = df_evt["event_type"].astype(str).str.strip().replace("", "기타")
+    df_evt["cnt"] = pd.to_numeric(df_evt["cnt"], errors="coerce").fillna(0)
 
-    df_shrm = _parse_shrm_text(df_shrm)
+    # ✅ 공통 필터
+    with st.expander("Filter", expanded=True):
+        c1, c2, c3, c4 = st.columns(4)
 
-    if sel_type != "전체":
-        df_shrm = df_shrm[df_shrm["shrm_type"].astype(str) == sel_type]
-    if sel_region != "전체":
-        df_shrm = df_shrm[df_shrm["shrm_region"].astype(str) == sel_region]
-    if sel_branch != "전체":
-        df_shrm = df_shrm[df_shrm["shrm_branch"].astype(str) == sel_branch]
+        def _opts(col, all_label="전체"):
+            s = df_evt[col].astype("string").fillna("").str.strip().replace("", "기타") if col in df_evt.columns else pd.Series([], dtype="string")
+            o = sorted(s.dropna().unique().astype(str).tolist())
+            return ([all_label] + o) if all_label else o
 
-    tabs = st.tabs(["전체", "유형별", "권역별", "지점순"])
+        evt_opts = _opts("event_type", all_label=None)
+        
+        # evt_idx = evt_opts.index("방문") if "방문" in evt_opts else 0
+        # with c1: sel_evt    = st.radio("이벤트", options=evt_opts, index=evt_idx, horizontal=True, key="df_evt_filter__evt")
+        
+        with c1:
+            evt_opts_raw = _opts("event_type", all_label=None)
+            _ord = [k for k in ["조회","예약","방문"] if k in evt_opts_raw]
+            sel_evt = st.radio("이벤트", options=_ord, index=_ord.index("방문") if "방문" in _ord else 0, horizontal=True, key="df_evt_filter__evt")
+        with c2: sel_type   = st.selectbox("쇼룸형태",  _opts("shrm_type"),   0, key="df_evt_filter__type")
+        with c3: sel_region = st.selectbox("쇼룸권역",  _opts("shrm_region"), 0, key="df_evt_filter__region")
+        with c4: sel_branch = st.selectbox("쇼룸지점",  _opts("shrm_branch"), 0, key="df_evt_filter__branch")
+
+        df_evt_f = df_evt[df_evt["event_type"] == sel_evt]
+        for col, val in [("shrm_type", sel_type), ("shrm_region", sel_region), ("shrm_branch", sel_branch)]:
+            if val != "전체" and col in df_evt_f.columns:
+                df_evt_f = df_evt_f[df_evt_f[col].astype(str) == str(val)]
 
 
-    # 전체 (추이 - 선)
-    with tabs[0]:
-        if df_shrm.empty:
-            st.info("표시할 데이터가 없습니다.")
-        else:
-            tot = (
-                df_shrm.groupby(x_col)[["look_cnt", "bookConfirmed_cnt", "visit_cnt"]]
-                .sum()
-                .reset_index()
-                .rename(columns={
-                    "look_cnt": "조회",
-                    "bookConfirmed_cnt": "예약",
-                    "visit_cnt": "방문"
-                })
+    DIM_MAP = {
+        "쇼룸형태": {
+            "pie": "shrm_type",
+            "stack_x": "event_date",
+            "stack_color": "shrm_type",
+            "raw_cols": ["event_date", "shrm_type"],
+        },
+        "쇼룸권역": {
+            "pie": "shrm_region",
+            "stack_x": "event_date",
+            "stack_color": "shrm_region",
+            "raw_cols": ["event_date", "shrm_region"],
+        },
+        "쇼룸지점": {
+            "pie": "shrm_branch",
+            "stack_x": "event_date",
+            "stack_color": "shrm_branch",
+            "raw_cols": ["event_date", "shrm_branch"],
+        },
+    }
+
+    tabs = st.tabs(list(DIM_MAP.keys()))
+    for tab, name in zip(tabs, DIM_MAP.keys()):
+        with tab:
+            render_shrm_tabs(
+                df=df_evt_f,               # 필터 적용
+                df_aw=None,
+                title=name,
+                conf=DIM_MAP[name],
+                key_tag="status",          
+                agg_mode="sum",            # cnt 합계
+                agg_value_col="cnt",
             )
-
-            if x_col == "_period":
-                tot = _sort_week_label(tot, "_period")
-
-            fig = px.line(
-                tot,
-                x=x_col,
-                y=["조회", "예약", "방문"],
-                markers=False
-            )
-            fig.update_layout(height=360, margin=dict(l=0, r=0, t=10, b=0))
-            st.plotly_chart(fig, use_container_width=True)
-
-
-    # 유형별 (막대)
-    with tabs[1]:
-        if df_shrm.empty:
-            st.info("표시할 데이터가 없습니다.")
-        else:
-            t = (
-                df_shrm.groupby("shrm_type")[["look_cnt", "bookConfirmed_cnt", "visit_cnt"]]
-                .sum()
-                .reset_index()
-                .rename(columns={
-                    "look_cnt": "조회",
-                    "bookConfirmed_cnt": "예약",
-                    "visit_cnt": "방문"
-                })
-            )
-
-            t = t.sort_values("방문", ascending=False)
-
-            fig = px.bar(
-                t,
-                x="shrm_type",
-                y=["조회", "예약", "방문"],
-                barmode="group"
-            )
-            fig.update_layout(height=360, margin=dict(l=0, r=0, t=10, b=0), xaxis_title="")
-            st.plotly_chart(fig, use_container_width=True)
-
-
-    # 권역별 (막대)
-    with tabs[2]:
-        if df_shrm.empty:
-            st.info("표시할 데이터가 없습니다.")
-        else:
-            t = (
-                df_shrm.groupby("shrm_region")[["look_cnt", "bookConfirmed_cnt", "visit_cnt"]]
-                .sum()
-                .reset_index()
-                .rename(columns={
-                    "look_cnt": "조회",
-                    "bookConfirmed_cnt": "예약",
-                    "visit_cnt": "방문"
-                })
-            )
-
-            t = t.sort_values("방문", ascending=False)
-
-            fig = px.bar(
-                t,
-                x="shrm_region",
-                y=["조회", "예약", "방문"],
-                barmode="group"
-            )
-            fig.update_layout(height=360, margin=dict(l=0, r=0, t=10, b=0), xaxis_title="")
-            st.plotly_chart(fig, use_container_width=True)
-
-
-    # 지점순 (Top 10 막대)
-    with tabs[3]:
-        if df_shrm.empty:
-            st.info("표시할 데이터가 없습니다.")
-        else:
-            t = (
-                df_shrm.groupby("shrm_branch")[["look_cnt", "bookConfirmed_cnt", "visit_cnt"]]
-                .sum()
-                .reset_index()
-                .rename(columns={
-                    "look_cnt": "조회",
-                    "bookConfirmed_cnt": "예약",
-                    "visit_cnt": "방문"
-                })
-            )
-
-            t = t.sort_values("방문", ascending=False).head(10)
-
-            fig = px.bar(
-                t,
-                x="shrm_branch",
-                y=["조회", "예약", "방문"],
-                barmode="group"
-            )
-            fig.update_layout(height=360, margin=dict(l=0, r=0, t=10, b=0), xaxis_title="")
-            st.plotly_chart(fig, use_container_width=True)
 
 
     # ──────────────────────────────────
     # 2) Tabs
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>제목 </h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ필터 추가해서 상세히 볼수있도록 ")
+    st.markdown("<h5 style='margin:0'>방문 현황 </h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
 
-    # ✅ awareness_type: 콤마 멀티값 분해 + weight + (괄호)/(괄호제외) 분리
+    # ✅ 공통 필터
+    with st.expander("Filter", expanded=True):
+        f1, f2, f3 = st.columns(3)
+
+        def _opts2(d: pd.DataFrame, col: str, all_label: str = "전체"):
+            if d is None or d.empty or col not in d.columns:
+                return [all_label]
+            s = d[col].astype("string").fillna("").str.strip().replace("", "기타")
+            o = sorted(s.dropna().unique().astype(str).tolist())
+            return [all_label] + o
+
+        with f1:
+            sel_type2 = st.selectbox("쇼룸형태", _opts2(df1, "shrm_type"), 0, key="visit_filter__type")
+        with f2:
+            sel_region2 = st.selectbox("쇼룸권역", _opts2(df1, "shrm_region"), 0, key="visit_filter__region")
+        with f3:
+            sel_branch2 = st.selectbox("쇼룸지점", _opts2(df1, "shrm_branch"), 0, key="visit_filter__branch")
+
+    # awareness_type: 콤마 멀티값 분해 + weight + (괄호)/(괄호제외) 분리
     df_aw = None
     if df1 is not None and not df1.empty and "awareness_type" in df1.columns:
         _rid = np.arange(len(df1))
@@ -790,6 +789,18 @@ def main():
 
         df_aw = df_aw.drop(columns=["awareness_type_list", "_n"])
 
+    # ✅ 필터 적용
+    df1_f = df1
+    if df1_f is not None and not df1_f.empty:
+        for col, val in [("shrm_type", sel_type2), ("shrm_region", sel_region2), ("shrm_branch", sel_branch2)]:
+            if val != "전체" and col in df1_f.columns:
+                df1_f = df1_f[df1_f[col].astype(str) == str(val)]
+
+    df_aw_f = df_aw
+    if df_aw_f is not None and not df_aw_f.empty:
+        for col, val in [("shrm_type", sel_type2), ("shrm_region", sel_region2), ("shrm_branch", sel_branch2)]:
+            if val != "전체" and col in df_aw_f.columns:
+                df_aw_f = df_aw_f[df_aw_f[col].astype(str) == str(val)]
 
     DIM_MAP = {
         "방문유형": {
@@ -827,7 +838,16 @@ def main():
     tabs = st.tabs(list(DIM_MAP.keys()))
     for tab, name in zip(tabs, DIM_MAP.keys()):
         with tab:
-            render_shrm_tabs(df1, df_aw, name, DIM_MAP[name])
+            render_shrm_tabs(
+                df=df1_f,          # ✅ 필터 적용
+                df_aw=df_aw_f,      # ✅ 필터 적용
+                title=name,
+                conf=DIM_MAP[name],
+                key_tag="detail",
+                agg_mode="size",
+                agg_value_col=None,
+            )
+
 
     # ──────────────────────────────────
     # 3) CROSS INSIGHT
@@ -838,10 +858,11 @@ def main():
 
     DIM_OPTS = {
         "쇼룸형태": "shrm_type",
-        "쇼룸구분": "shrm_name",
+        "쇼룸권역": "shrm_region",
+        "쇼룸지점": "shrm_branch",
         "방문유형": "visit_type",
-        "성별": "demo_gender",
-        "연령대": "demo_age",
+        "성별"   : "demo_gender",
+        "연령대" : "demo_age",
         "인지단계": "awareness_type_a",
         "인지채널": "awareness_type_b",
         "구매목적": "purchase_purpose",
@@ -853,14 +874,14 @@ def main():
             row_label = st.selectbox(
                 "분석 기준 (*선택한 항목으로 데이터를 나눕니다.)",
                 options=list(DIM_OPTS.keys()),
-                index=4,
+                index=5,
                 key="cross_row",
             )
         with cc2:
             col_label = st.selectbox(
                 "구성 기준 (*선택한 항목의 구성 비중을 표시합니다.)",
                 options=[k for k in DIM_OPTS.keys() if k != row_label],
-                index=6,
+                index=7,
                 key="cross_col",
             )
 
@@ -935,6 +956,8 @@ def main():
             pct_cols = [c for c in col_order if c in pct_cols]
             pv_pct = pv_pct[[row_col] + pct_cols]
 
+            
+            
             # ── 누적 가로막대(행=100%)
             import plotly.graph_objects as go  # ✅ 요청대로 여기 블록의 go import는 유지
 
@@ -944,8 +967,12 @@ def main():
 
             fig = go.Figure()
 
-            # ✅ (1) 변수 c 덮어쓰기 제거: for c -> for cc
-            for cc in col_order:
+            # ✅ 범례/그래프 순서 정합: stack에서 보이는 체감 순서에 맞추려면 역순으로 그리기
+            # - 범례는 trace 추가 순서
+            # - stack에서 보이는 블록 순서(위/아래)는 체감상 반대로 느껴질 수 있어 역순이 맞는 경우가 많음
+            col_order_draw = list(col_order)[::-1]
+
+            for cc in col_order_draw:
                 s = (
                     bar[bar[col_col].astype(str) == str(cc)]
                     .groupby(row_col, dropna=False)["pct"]
@@ -962,6 +989,7 @@ def main():
                     text=(s.round(0).astype(int).astype(str) + "%").values,
                     textposition="inside",
                     hovertemplate="%{y}<br>%{fullData.name}: %{x:.1f}%<extra></extra>",
+                    opacity=0.7,  # opacity
                 )
 
             fig.update_layout(
@@ -977,6 +1005,7 @@ def main():
                     xanchor="right",
                     x=1,
                     title_text="",
+                    traceorder="normal",  # ✅ trace 추가 순서 그대로
                 ),
             )
 
@@ -984,6 +1013,7 @@ def main():
             fig.update_yaxes(categoryorder="array", categoryarray=row_order, autorange="reversed")
 
             st.plotly_chart(fig, use_container_width=True, key="cross_stack_100")
+
 
             pv_show = pv_cnt.copy()
             for cc in [c for c in pv_show.columns if c != row_col]:
@@ -997,17 +1027,17 @@ def main():
 
             st.dataframe(pv_show, use_container_width=True, hide_index=True, row_height=30)
 
-            insight_lines = write_mutable_insight(
-                agg=agg,
-                row_col=row_col,
-                col_col=col_col,
-                row_label=row_label,
-                col_label=col_label,
-                row_order=row_order,
-                col_order=col_order,
-            )
-            st.write("시범기능입니다..")
-            st.success("\n".join(insight_lines), icon="✅")
+            # insight_lines = write_mutable_insight(
+            #     agg=agg,
+            #     row_col=row_col,
+            #     col_col=col_col,
+            #     row_label=row_label,
+            #     col_label=col_label,
+            #     row_order=row_order,
+            #     col_order=col_order,
+            # )
+            # st.write("시범기능입니다..")
+            # st.success("\n".join(insight_lines), icon="✅")
 
 
 if __name__ == "__main__":
