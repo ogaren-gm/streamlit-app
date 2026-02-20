@@ -942,10 +942,12 @@ def main():
         key=f"flow::{sel_type}::{sel_reg}::{sel_br}",
     )
 
-    tab1, tab2 = st.tabs(["전체 데이터", "🚨이상치 탐색"])
+    tab1, tab2 = st.tabs(["전체 데이터", "🚨이상치 알림"])
     
     with tab1: 
         # ✅ 표
+        st.markdown(":gray-badge[:material/Info: Info]ㅤ선 그래프의 **상세 데이터**입니다.")
+        
         daily_tbl = df_evt_f.copy()
         daily_tbl["날짜"] = pd.to_datetime(daily_tbl["날짜"], errors="coerce").dt.strftime("%Y-%m-%d")
 
@@ -960,6 +962,7 @@ def main():
 
     with tab2:
         # ✅ 동요일 급증 감지
+        st.markdown(":gray-badge[:material/Info: Info]ㅤ지난주 같은 요일 대비 **변화가 큰 요일**을 확인합니다.")
         
         with st.expander("Filter", expanded=True):
             cA, cB, cC = st.columns([1, 1, 2], vertical_alignment="center")
@@ -985,7 +988,7 @@ def main():
                     "이상치 기준 (%)",
                     min_value=10,
                     max_value=300,
-                    value=30,
+                    value=20,
                     step=5,
                     key="spike_pct_th",
                 )
@@ -1048,7 +1051,7 @@ def main():
         cols_show = ["날짜","요일","지난주","이번주","증감","증감률(%)"]
 
         with c1:
-            st.markdown(f"###### 🙂 급증했어요 (+{spike_pct_th:.0f}%)")
+            st.markdown(f"###### 📈 {sel_metric_label} 급증 요일 (+{spike_pct_th:.0f}%)")
             st.dataframe(
                 spikes[cols_show] if not spikes.empty else pd.DataFrame(columns=cols_show),
                 use_container_width=True,
@@ -1058,7 +1061,7 @@ def main():
             )
 
         with c2:
-            st.markdown(f"###### 🙁 급락했어요 (-{spike_pct_th:.0f}%)")
+            st.markdown(f"###### 📉 {sel_metric_label} 급락 요일 (-{spike_pct_th:.0f}%)")
             st.dataframe(
                 drops[cols_show] if not drops.empty else pd.DataFrame(columns=cols_show),
                 use_container_width=True,
