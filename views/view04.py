@@ -1,5 +1,5 @@
 # SEOHEE
-# 2026-02-11 ver. (refac: keep same features)
+# 2026-02-20 ver.
 
 import streamlit as st
 import pandas as pd
@@ -46,7 +46,7 @@ CFG = {
 AW_COLS  = {
             "awareness_type",
             "awareness_type_a",
-            "awareness_type_b"
+            "awareness_type_b",
             }
 CAT_COLS = [
             "shrm_type",
@@ -58,6 +58,16 @@ CAT_COLS = [
             "purchase_purpose",
             "visit_type",
             ]
+
+LBL = {
+        "look_cnt"    : "조회",
+        "bookreq_cnt" : "예약신청",
+        "res_cnt"     : "예약",
+        "visit"       : "방문",
+        "BPL"         : "BPL (신청/조회)",
+        "VPL"         : "VPL (방문/조회)",
+        "VPR"         : "VPR (방문/예약)"
+        }
 
 # ──────────────────────────────────
 # DATE NORMALIZATION (단일 기준)
@@ -350,7 +360,8 @@ def render_shrm_tabs(
                             .reset_index(drop=True)
                         )
 
-                agg["value"] = pd.to_numeric(agg["value"], errors="coerce").fillna(0)
+                # agg["value"] = pd.to_numeric(agg["value"], errors="coerce").fillna(0)
+                agg["value"] = pd.to_numeric(agg["value"], errors="coerce").fillna(0).round(0).astype(int)
 
                 if bar_order is not None:
                     agg[c] = pd.Categorical(agg[c].astype(str), categories=bar_order, ordered=True)
@@ -425,73 +436,115 @@ def render_shrm_tabs(
         st.warning("표시할 데이터가 없습니다.")
 
 
+def apply_dim_filter(
+    df: pd.DataFrame,
+    *,
+    dims: list[str],
+    sels: dict[str, str],
+    all_label: str = "전체",
+) -> pd.DataFrame:
+    """
+    dims: ["shrm_type","shrm_region","shrm_branch"]
+    sels: {"shrm_type": sel_type, "shrm_region": sel_reg, "shrm_branch": sel_br}
+    - 선택값이 "전체"가 아니면 해당 컬럼 == 선택값으로 필터
+    - df가 None/empty면 그대로 반환
+    """
+    if df is None or df.empty:
+        return df
 
-# ──────────────────────────────────
-# INSIGHT (CROSS)
-# ──────────────────────────────────
-def write_mutable_insight(
-    agg: pd.DataFrame,
-    row_col: str,
-    col_col: str,
-    row_label: str,
-    col_label: str,
-    row_order: list[str],
-    col_order: list[str],
-    min_row_total: int = 5,
-    strong_pct: float = 50.0,
-    gap_pct: float = 20.0,
-    topk: int = 3,
-):
-    if agg is None or agg.empty:
-        return ["선택한 조건에 해당하는 데이터가 없습니다."]
-
-    d = agg[[row_col, col_col, "value"]].copy()
-    d[row_col] = d[row_col].astype(str)
-    d[col_col] = d[col_col].astype(str)
-    d["value"] = pd.to_numeric(d["value"], errors="coerce").fillna(0)
-
-    col_sum = d.groupby(col_col, dropna=False)["value"].sum().sort_values(ascending=False)
-    if col_sum.empty:
-        return ["선택한 조건에 해당하는 데이터가 없습니다."]
-
-    total = float(col_sum.sum()) if float(col_sum.sum()) != 0 else 1.0
-    top_cols = [c for c in col_order if c in col_sum.index][:topk] or col_sum.index.astype(str).tolist()[:topk]
-
-    lines = []
-    lines.append(
-        f"전체적으로 **{col_label}**에서는 "
-        + ", ".join([f"**{c}**({col_sum[c]/total*100:.0f}%)" for c in top_cols])
-        + " 순으로 많이 나타납니다."
-    )
-
-    row_tot = d.groupby(row_col, dropna=False)["value"].sum()
-    d["_row_sum"] = d.groupby(row_col, dropna=False)["value"].transform("sum").replace(0, np.nan)
-    d["pct_row"] = (d["value"] / d["_row_sum"] * 100).fillna(0)
-    d = d.drop(columns=["_row_sum"])
-
-    for r in row_order:
-        if r not in row_tot.index:
-            continue
-        if float(row_tot[r]) < float(min_row_total):
+    out = df
+    for col in dims:
+        if col not in out.columns:
             continue
 
-        rr = d[d[row_col] == r].sort_values("pct_row", ascending=False)
-        if rr.empty:
+        v = sels.get(col, all_label)
+        if v is None or str(v) == all_label:
             continue
 
-        c1 = rr.iloc[0][col_col]
-        v1 = float(rr.iloc[0]["pct_row"])
-        v2 = float(rr.iloc[1]["pct_row"]) if len(rr) > 1 else 0.0
+        out = out[out[col].astype("string").fillna("").str.strip() == str(v)]
+    return out
 
-        if (v1 >= strong_pct) or ((v1 - v2) >= gap_pct):
-            lines.append(f"- **{r}**에서는 **{c1}**이(가) {v1:.0f}%로 가장 많이 나타납니다.")
 
-    top1 = str(col_sum.index[0])
-    top1_pct = float(col_sum.iloc[0] / total * 100)
-    if top1_pct >= 40:
-        lines.append(f"- 전체적으로 **{top1}** 중심으로 구성되어 있습니다. ({top1_pct:.0f}%)")
+def get_dim_options(
+    df: pd.DataFrame,
+    col: str,
+    *,
+    all_label: str = "전체",
+) -> list[str]:
+    """
+    옵션 생성: [전체] + 정렬된 유니크
+    - 공백/빈값은 "기타"로 치환
+    """
+    if df is None or df.empty or col not in df.columns:
+        return [all_label]
+    s = df[col].astype("string").fillna("").str.strip().replace("", "기타")
+    o = sorted(s.dropna().unique().astype(str).tolist())
+    return [all_label] + o
 
-    return lines
+
+# def write_mutable_insight(
+#     agg: pd.DataFrame,
+#     row_col: str,
+#     col_col: str,
+#     row_label: str,
+#     col_label: str,
+#     row_order: list[str],
+#     col_order: list[str],
+#     min_row_total: int = 5,
+#     strong_pct: float = 50.0,
+#     gap_pct: float = 20.0,
+#     topk: int = 3,
+# ):
+#     if agg is None or agg.empty:
+#         return ["선택한 조건에 해당하는 데이터가 없습니다."]
+
+#     d = agg[[row_col, col_col, "value"]].copy()
+#     d[row_col] = d[row_col].astype(str)
+#     d[col_col] = d[col_col].astype(str)
+#     d["value"] = pd.to_numeric(d["value"], errors="coerce").fillna(0)
+
+#     col_sum = d.groupby(col_col, dropna=False)["value"].sum().sort_values(ascending=False)
+#     if col_sum.empty:
+#         return ["선택한 조건에 해당하는 데이터가 없습니다."]
+
+#     total = float(col_sum.sum()) if float(col_sum.sum()) != 0 else 1.0
+#     top_cols = [c for c in col_order if c in col_sum.index][:topk] or col_sum.index.astype(str).tolist()[:topk]
+
+#     lines = []
+#     lines.append(
+#         f"전체적으로 **{col_label}**에서는 "
+#         + ", ".join([f"**{c}**({col_sum[c]/total*100:.0f}%)" for c in top_cols])
+#         + " 순으로 많이 나타납니다."
+#     )
+
+#     row_tot = d.groupby(row_col, dropna=False)["value"].sum()
+#     d["_row_sum"] = d.groupby(row_col, dropna=False)["value"].transform("sum").replace(0, np.nan)
+#     d["pct_row"] = (d["value"] / d["_row_sum"] * 100).fillna(0)
+#     d = d.drop(columns=["_row_sum"])
+
+#     for r in row_order:
+#         if r not in row_tot.index:
+#             continue
+#         if float(row_tot[r]) < float(min_row_total):
+#             continue
+
+#         rr = d[d[row_col] == r].sort_values("pct_row", ascending=False)
+#         if rr.empty:
+#             continue
+
+#         c1 = rr.iloc[0][col_col]
+#         v1 = float(rr.iloc[0]["pct_row"])
+#         v2 = float(rr.iloc[1]["pct_row"]) if len(rr) > 1 else 0.0
+
+#         if (v1 >= strong_pct) or ((v1 - v2) >= gap_pct):
+#             lines.append(f"- **{r}**에서는 **{c1}**이(가) {v1:.0f}%로 가장 많이 나타납니다.")
+
+#     top1 = str(col_sum.index[0])
+#     top1_pct = float(col_sum.iloc[0] / total * 100)
+#     if top1_pct >= 40:
+#         lines.append(f"- 전체적으로 **{top1}** 중심으로 구성되어 있습니다. ({top1_pct:.0f}%)")
+
+#     return lines
 
 
 # ──────────────────────────────────
@@ -635,127 +688,291 @@ def main():
 
 
     # ──────────────────────────────────
-    # 1) 조회·예약·방문 추이
+    # 1) 전체 추이 
     # ──────────────────────────────────
+    # 예약방문만 볼수있게 토글 ?
+    
     st.markdown(" ")
-    st.markdown("<h5 style='margin:0'>쇼룸 현황</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'> 전체 추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ조회 -> 예약신청 -> 예약 -> 방문", unsafe_allow_html=True)
 
-    # 방문(df1) + 조회/예약(df2) --> long 통합
-    base_cols = [c for c in ["event_date", "shrm_name", "shrm_type", "shrm_region", "shrm_branch"] if c in df1.columns]
-    v = df1.loc[:, base_cols].assign(event_type="방문", cnt=1)
+    st.markdown(
+        """
+        <style>
+        .kpi-card{
+            background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;
+        }
+        .kpi-title{font-size:15px;color:#64748b;margin:0 0 8px}
+        .kpi-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+        .kpi-value{font-size:25px;font-weight:500;line-height:1.05;margin:0;white-space:nowrap}
+        .kpi-delta{font-size:12px;margin:0;white-space:nowrap}
 
-    m_cols = [c for c in ["look_cnt", "bookConfirmed_cnt"] if c in df2.columns]
-    if not m_cols:
-        df2["look_cnt"] = 0
-        df2["bookConfirmed_cnt"] = 0
-        m_cols = ["look_cnt", "bookConfirmed_cnt"]
-
-    m_base_cols = [c for c in ["event_date", "shrm_name", "shrm_type", "shrm_region", "shrm_branch"] if c in df2.columns]
-    m = df2.loc[:, m_base_cols + m_cols]
-    m[m_cols] = m[m_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-
-    m = m.melt(
-        id_vars=m_base_cols,
-        value_vars=m_cols,
-        var_name="event_type",
-        value_name="cnt",
+        /* QUICK INSIGHT 이벤트 카드 컨테이너(카드 테두리/배경) */
+        .st-key-ins_kpi_card_evt{
+            background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;
+        }
+        .st-key-ins_kpi_card_evt div[data-testid="stSelectbox"]{margin-bottom:-10px}
+        .st-key-ins_kpi_card_evt div[data-testid="stSelectbox"]>div{margin-top:-6px}
+        .st-key-ins_kpi_card_evt .kpi-value{margin-bottom:10px}
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
-    m["event_type"] = m["event_type"].replace({"look_cnt": "조회", "bookConfirmed_cnt": "예약"})
+
+    # ✅ 컬럼 세트
+    key_cols  = ["event_date", "shrm_name", "shrm_type", "shrm_region", "shrm_branch"]
+    src_cols  = ["look_cnt", "bookreq_cnt", "res_cnt"]
+    evt_cols  = src_cols + ["visit"]
+    rate_cols = ["BPL", "VPL", "VPR"]
+    
+    # 방문(df1)
+    base1 = [c for c in key_cols if c in df1.columns]
+    v = df1.loc[:, base1].assign(event_type="visit", cnt=1)
+
+    # 조회/예약(df2)
+    base2 = [c for c in key_cols if c in df2.columns]
+    m_cols = [c for c in src_cols if c in df2.columns]
+    m = df2.loc[:, base2 + m_cols]
+    m[m_cols] = m[m_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+    m = m.melt(id_vars=base2, value_vars=m_cols, var_name="event_type", value_name="cnt")
     m["cnt"] = pd.to_numeric(m["cnt"], errors="coerce").fillna(0)
 
+    # long data
     df_evt = pd.concat([v, m], ignore_index=True)
     df_evt["event_date"] = pd.to_datetime(df_evt["event_date"], errors="coerce").dt.normalize()
     df_evt["event_type"] = df_evt["event_type"].astype(str).str.strip().replace("", "기타")
     df_evt["cnt"] = pd.to_numeric(df_evt["cnt"], errors="coerce").fillna(0)
-
-    # ✅ 공통 필터
+    
+    # ※ 필터 (공통 함수로 묶음)
     with st.expander("Filter", expanded=True):
-        c1, c2, c3, c4 = st.columns(4)
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            sel_type = st.selectbox("쇼룸형태", get_dim_options(df_evt, "shrm_type"), 0, key="flow__type")
+        with f2:
+            sel_reg  = st.selectbox("쇼룸권역", get_dim_options(df_evt, "shrm_region"), 0, key="flow__region")
+        with f3:
+            sel_br   = st.selectbox("쇼룸지점", get_dim_options(df_evt, "shrm_branch"), 0, key="flow__branch")
 
-        def _opts(col, all_label="전체"):
-            s = df_evt[col].astype("string").fillna("").str.strip().replace("", "기타") if col in df_evt.columns else pd.Series([], dtype="string")
-            o = sorted(s.dropna().unique().astype(str).tolist())
-            return ([all_label] + o) if all_label else o
+    dims = ["shrm_type", "shrm_region", "shrm_branch"]
+    sels = {"shrm_type": sel_type, "shrm_region": sel_reg, "shrm_branch": sel_br}
+    df_evt_f = apply_dim_filter(df_evt, dims=dims, sels=sels)
 
-        evt_opts = _opts("event_type", all_label=None)
-        
-        # evt_idx = evt_opts.index("방문") if "방문" in evt_opts else 0
-        # with c1: sel_evt    = st.radio("이벤트", options=evt_opts, index=evt_idx, horizontal=True, key="df_evt_filter__evt")
-        
-        with c1:
-            evt_opts_raw = _opts("event_type", all_label=None)
-            _ord = [k for k in ["조회","예약","방문"] if k in evt_opts_raw]
-            sel_evt = st.radio("이벤트", options=_ord, index=_ord.index("방문") if "방문" in _ord else 0, horizontal=True, key="df_evt_filter__evt")
-        with c2: sel_type   = st.selectbox("쇼룸형태",  _opts("shrm_type"),   0, key="df_evt_filter__type")
-        with c3: sel_region = st.selectbox("쇼룸권역",  _opts("shrm_region"), 0, key="df_evt_filter__region")
-        with c4: sel_branch = st.selectbox("쇼룸지점",  _opts("shrm_branch"), 0, key="df_evt_filter__branch")
+    # wide data
+    df_evt_f = (
+        df_evt_f
+        .groupby(["event_date", "event_type"], dropna=False)["cnt"].sum()
+        .reset_index()
+        .pivot(index="event_date", columns="event_type", values="cnt")
+        .fillna(0)
+        .reset_index()
+        .rename(columns={"event_date": "날짜"})
+        .sort_values("날짜")
+        .reset_index(drop=True)
+    )
 
-        df_evt_f = df_evt[df_evt["event_type"] == sel_evt]
-        for col, val in [("shrm_type", sel_type), ("shrm_region", sel_region), ("shrm_branch", sel_branch)]:
-            if val != "전체" and col in df_evt_f.columns:
-                df_evt_f = df_evt_f[df_evt_f[col].astype(str) == str(val)]
+    # 없는 컬럼 보정 + 숫자화
+    for c in evt_cols:
+        if c not in df_evt_f.columns:
+            df_evt_f[c] = 0
+    df_evt_f[evt_cols] = df_evt_f[evt_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+
+    # 파생 컬럼 
+    df_evt_f["BPL"] = np.where(df_evt_f["look_cnt"] > 0, df_evt_f["bookreq_cnt"] / df_evt_f["look_cnt"] * 100, 0)
+    df_evt_f["VPL"] = np.where(df_evt_f["look_cnt"] > 0, df_evt_f["visit"] / df_evt_f["look_cnt"] * 100, 0)
+    df_evt_f["VPR"] = np.where(df_evt_f["res_cnt"] > 0 , df_evt_f["visit"] / df_evt_f["res_cnt"] * 100, 0)
+    
+    df_evt_f[rate_cols] = df_evt_f[rate_cols].astype(float).round(1)
 
 
-    DIM_MAP = {
-        "쇼룸형태": {
-            "pie": "shrm_type",
-            "stack_x": "event_date",
-            "stack_color": "shrm_type",
-            "raw_cols": ["event_date", "shrm_type"],
-        },
-        "쇼룸권역": {
-            "pie": "shrm_region",
-            "stack_x": "event_date",
-            "stack_color": "shrm_region",
-            "raw_cols": ["event_date", "shrm_region"],
-        },
-        "쇼룸지점": {
-            "pie": "shrm_branch",
-            "stack_x": "event_date",
-            "stack_color": "shrm_branch",
-            "raw_cols": ["event_date", "shrm_branch"],
-        },
-    }
+    # ✅ Summary Card (최근 7일 / 전주 대비) 
+    # 기간 분리
+    if df_evt_f is not None and not df_evt_f.empty:
+        max_dt = pd.to_datetime(df_evt_f["날짜"]).max().normalize()
 
-    tabs = st.tabs(list(DIM_MAP.keys()))
-    for tab, name in zip(tabs, DIM_MAP.keys()):
-        with tab:
-            render_shrm_tabs(
-                df=df_evt_f,               # 필터 적용
-                df_aw=None,
-                title=name,
-                conf=DIM_MAP[name],
-                key_tag="status",          
-                agg_mode="sum",            # cnt 합계
-                agg_value_col="cnt",
-            )
+        cur_start  = max_dt - pd.Timedelta(days=6)
+        prev_start = max_dt - pd.Timedelta(days=13)
+        prev_end   = max_dt - pd.Timedelta(days=7)
+
+        df_cur  = df_evt_f[(df_evt_f["날짜"] >= cur_start) & (df_evt_f["날짜"] <= max_dt)]
+        df_prev = df_evt_f[(df_evt_f["날짜"] >= prev_start) & (df_evt_f["날짜"] <= prev_end)]
+    else:
+        df_cur = df_evt_f
+        df_prev = None
+
+    def _safe_sum(df, col):
+        if df is None or df.empty or col not in df.columns:
+            return 0.0
+        return float(pd.to_numeric(df[col], errors="coerce").fillna(0).sum())
+
+    def _rate(n, d):
+        return (n / d * 100.0) if d > 0 else 0.0
+
+    def _delta(v, v0):
+        if v0 in (0, None) or (isinstance(v0, float) and np.isnan(v0)):
+            return np.nan
+        return (v - v0) / v0 * 100
+
+    def _fmt_delta(d):
+        if d is None or (isinstance(d, float) and (np.isnan(d) or np.isinf(d))):
+            return "", "#64748b"
+        txt = f"{d:+.1f}%"
+        color = "#16a34a" if d > 0 else ("#ef4444" if d < 0 else "#64748b")
+        return txt, color
+
+    # 이번주
+    look   = _safe_sum(df_cur, "look_cnt")
+    bookrq = _safe_sum(df_cur, "bookreq_cnt")
+    res    = _safe_sum(df_cur, "res_cnt")
+    visit  = _safe_sum(df_cur, "visit")
+    bpl = _rate(bookrq, look)
+    vpl = _rate(visit, look)
+    vpr = _rate(visit, res)
+
+    # 전주
+    look_p   = _safe_sum(df_prev, "look_cnt")
+    bookrq_p = _safe_sum(df_prev, "bookreq_cnt")
+    res_p    = _safe_sum(df_prev, "res_cnt")
+    visit_p  = _safe_sum(df_prev, "visit")
+    bpl_p = _rate(bookrq_p, look_p)
+    vpl_p = _rate(visit, look)
+    vpr_p = _rate(visit_p, res_p)
+
+    # 증감
+    t_look, col_look     = _fmt_delta(_delta(look, look_p))
+    t_res, col_res       = _fmt_delta(_delta(res, res_p))
+    t_visit, col_visit   = _fmt_delta(_delta(visit, visit_p))
+    t_bpl, col_bpl       = _fmt_delta(_delta(bpl, bpl_p))
+    t_vpl, col_vpl       = _fmt_delta(_delta(vpl, vpl_p))
+    t_vpr, col_vpr       = _fmt_delta(_delta(vpr, vpr_p))
+
+    st.markdown(f"###### 📊 Summary (최근 7일 VS 전주 대비)") #{cur_start:%m/%d} ~ {max_dt:%m/%d}
+    c1, c2, c3, c4, c5, c6 = st.columns(6, vertical_alignment="top")
+
+    with c1:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">조회</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{look:,.0f}</div>
+                <div class="kpi-delta" style="color:{col_look};">{t_look}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with c2:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">예약</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{res:,.0f}</div>
+                <div class="kpi-delta" style="color:{col_res};">{t_res}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with c3:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">방문</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{visit:,.0f}</div>
+                <div class="kpi-delta" style="color:{col_visit};">{t_visit}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with c4:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">BPL (조회→신청률)</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{bpl:.1f}%</div>
+                <div class="kpi-delta" style="color:{col_bpl};">{t_bpl}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with c5:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">VPL (조회→방문률)</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{vpl:.1f}%</div>
+                <div class="kpi-delta" style="color:{col_vpl};">{t_vpl}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with c6:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+            <div class="kpi-title">VPR (예약→방문률)</div>
+            <div class="kpi-row">
+                <div class="kpi-value">{vpr:.1f}%</div>
+                <div class="kpi-delta" style="color:{col_vpr};">{t_vpr}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+    # ✅ 그래프
+    daily_dt = df_evt_f.rename(columns={k: LBL[k] for k in evt_cols})
+    ui.render_line_graph(
+        daily_dt,
+        x="날짜",
+        y=[LBL[k] for k in evt_cols],
+        height=360,
+        key=f"flow::{sel_type}::{sel_reg}::{sel_br}",
+    )
+
+    # ✅ 표
+    daily_tbl = df_evt_f.copy()
+    daily_tbl["날짜"] = pd.to_datetime(daily_tbl["날짜"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+    tbl = (
+        daily_tbl
+        .set_index("날짜")[evt_cols + rate_cols]
+        .rename(columns={k: LBL[k] for k in (evt_cols + rate_cols)})
+        .T
+        .reset_index().rename(columns={"index": "구분"})
+    )
+    st.dataframe(tbl, use_container_width=True, hide_index=True, row_height=30)
 
 
     # ──────────────────────────────────
-    # 2) Tabs
+    # 2) 방문 현황
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>방문 현황 </h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
 
-    # ✅ 공통 필터
+    # ※ 필터 (공통 함수로 묶음)
     with st.expander("Filter", expanded=True):
         f1, f2, f3 = st.columns(3)
-
-        def _opts2(d: pd.DataFrame, col: str, all_label: str = "전체"):
-            if d is None or d.empty or col not in d.columns:
-                return [all_label]
-            s = d[col].astype("string").fillna("").str.strip().replace("", "기타")
-            o = sorted(s.dropna().unique().astype(str).tolist())
-            return [all_label] + o
-
         with f1:
-            sel_type2 = st.selectbox("쇼룸형태", _opts2(df1, "shrm_type"), 0, key="visit_filter__type")
+            sel_type2   = st.selectbox("쇼룸형태", get_dim_options(df1, "shrm_type"), 0, key="visit_filter__type")
         with f2:
-            sel_region2 = st.selectbox("쇼룸권역", _opts2(df1, "shrm_region"), 0, key="visit_filter__region")
+            sel_region2 = st.selectbox("쇼룸권역", get_dim_options(df1, "shrm_region"), 0, key="visit_filter__region")
         with f3:
-            sel_branch2 = st.selectbox("쇼룸지점", _opts2(df1, "shrm_branch"), 0, key="visit_filter__branch")
+            sel_branch2 = st.selectbox("쇼룸지점", get_dim_options(df1, "shrm_branch"), 0, key="visit_filter__branch")
 
     # awareness_type: 콤마 멀티값 분해 + weight + (괄호)/(괄호제외) 분리
     df_aw = None
@@ -789,20 +1006,31 @@ def main():
 
         df_aw = df_aw.drop(columns=["awareness_type_list", "_n"])
 
-    # ✅ 필터 적용
-    df1_f = df1
-    if df1_f is not None and not df1_f.empty:
-        for col, val in [("shrm_type", sel_type2), ("shrm_region", sel_region2), ("shrm_branch", sel_branch2)]:
-            if val != "전체" and col in df1_f.columns:
-                df1_f = df1_f[df1_f[col].astype(str) == str(val)]
+    dims2 = ["shrm_type", "shrm_region", "shrm_branch"]
+    sels2 = {"shrm_type": sel_type2, "shrm_region": sel_region2, "shrm_branch": sel_branch2}
 
-    df_aw_f = df_aw
-    if df_aw_f is not None and not df_aw_f.empty:
-        for col, val in [("shrm_type", sel_type2), ("shrm_region", sel_region2), ("shrm_branch", sel_branch2)]:
-            if val != "전체" and col in df_aw_f.columns:
-                df_aw_f = df_aw_f[df_aw_f[col].astype(str) == str(val)]
+    df1_f  = apply_dim_filter(df1,  dims=dims2, sels=sels2)
+    df_aw_f = apply_dim_filter(df_aw, dims=dims2, sels=sels2)
 
     DIM_MAP = {
+        "쇼룸형태": {
+            "pie": "shrm_type",
+            "stack_x": "event_date",
+            "stack_color": "shrm_type",
+            "raw_cols": ["event_date", "shrm_type"],
+        },
+        "쇼룸권역": {
+            "pie": "shrm_region",
+            "stack_x": "event_date",
+            "stack_color": "shrm_region",
+            "raw_cols": ["event_date", "shrm_region"],
+        },
+        "쇼룸지점": {
+            "pie": "shrm_branch",
+            "stack_x": "event_date",
+            "stack_color": "shrm_branch",
+            "raw_cols": ["event_date", "shrm_branch"],
+        },
         "방문유형": {
             "pie": "visit_type",
             "stack_x": "event_date",
@@ -914,7 +1142,8 @@ def main():
         else:
             agg[row_col] = _clean_cat(agg[row_col])
             agg[col_col] = _clean_cat(agg[col_col])
-            agg["value"] = pd.to_numeric(agg["value"], errors="coerce").fillna(0)
+            # agg["value"] = pd.to_numeric(agg["value"], errors="coerce").fillna(0)
+            agg["value"] = pd.to_numeric(agg["value"], errors="coerce").fillna(0).round(0).astype(int)
 
             # ✅ clean 후 라벨 합쳐질 수 있으니 키 기준 재집계(중복 제거)
             agg = agg.groupby([row_col, col_col], dropna=False, as_index=False)["value"].sum()
@@ -1039,6 +1268,111 @@ def main():
             # st.write("시범기능입니다..")
             # st.success("\n".join(insight_lines), icon="✅")
 
+            # # ──────────────────────────────────
+            # # 3-1) RELATIONSHIP INSIGHT (Lift)
+            # # ──────────────────────────────────
+            # st.markdown(" ")
+            # st.markdown("<h6 style='margin:0'>RELATIONSHIP INSIGHT</h6>", unsafe_allow_html=True)
+            # st.markdown(
+            #     f":gray-badge[:material/Info: Info]ㅤ{row_label} × {col_label} 연결 강도(Lift)",
+            #     unsafe_allow_html=True
+            # )
 
+            # if agg is None or agg.empty:
+            #     st.warning("표시할 데이터가 없습니다.")
+            # else:
+            #     _rel = agg[[row_col, col_col, "value"]].copy()
+            #     _rel["value"] = pd.to_numeric(_rel["value"], errors="coerce").fillna(0)
+
+            #     total = float(_rel["value"].sum())
+            #     if total == 0:
+            #         st.warning("표시할 데이터가 없습니다.")
+            #     else:
+            #         # ── Lift 계산
+            #         col_sum = _rel.groupby(col_col)["value"].sum()
+            #         base_pct = col_sum / total
+
+            #         _rel["_row_sum"] = _rel.groupby(row_col)["value"].transform("sum").replace(0, np.nan)
+            #         _rel["pct_in_row"] = (_rel["value"] / _rel["_row_sum"]).fillna(0)
+            #         _rel.drop(columns="_row_sum", inplace=True)
+
+            #         _rel["base_pct"] = _rel[col_col].map(base_pct).fillna(0)
+            #         _rel["Lift"] = np.where(
+            #             _rel["base_pct"] == 0,
+            #             np.nan,
+            #             _rel["pct_in_row"] / _rel["base_pct"]
+            #         )
+
+            #         _rel = _rel.replace([np.inf, -np.inf], np.nan).dropna(subset=["Lift"])
+
+            #         # 히트맵
+            #         pv_lift = (
+            #             _rel
+            #             .pivot(index=row_col, columns=col_col, values="Lift")
+            #             .reindex(row_order)
+            #         )
+            #         pv_lift = pv_lift[[c for c in col_order if c in pv_lift.columns]]
+
+            #         fig_hm = px.imshow(
+            #             pv_lift,
+            #             aspect="auto",
+            #             color_continuous_scale="RdYlBu_r",   # 높을수록 빨강
+            #             zmin=0,
+            #             zmax=max(2, np.nanmax(pv_lift.values)),
+            #         )
+            #         fig_hm.update_layout(
+            #             height=300,
+            #             margin=dict(l=10, r=10, t=20, b=10),
+            #             coloraxis_colorbar_title="Lift"
+            #         )
+
+            #         st.plotly_chart(fig_hm, use_container_width=True, key="rel_lift_heatmap")
+
+            #         # 탭
+            #         _show = _rel.rename(columns={
+            #             row_col: row_label,
+            #             col_col: col_label,
+            #             "value": "건수",
+            #             "pct_in_row": "행내비중",
+            #             "base_pct": "전체비중",
+            #             "Lift": "Lift"
+            #         })
+
+            #         _show["건수"] = _show["건수"].round(1)
+            #         _show["행내비중"] = (_show["행내비중"] * 100).round(1)
+            #         _show["전체비중"] = (_show["전체비중"] * 100).round(1)
+            #         _show["Lift"] = _show["Lift"].round(2)
+
+            #         strong = _show[_show["Lift"] >= 1.3].sort_values("Lift", ascending=False)
+            #         weak   = _show[_show["Lift"] < 1.3].sort_values("Lift")
+
+            #         c1, c2 = st.columns(2)
+
+            #         with c1:
+            #             st.markdown("**Lift ≥ 1.3 (강한 연결)**")
+            #             if strong.empty:
+            #                 st.warning("표시할 데이터가 없습니다.")
+            #             else:
+            #                 st.dataframe(
+            #                     strong[[row_label, col_label, "Lift", "행내비중", "전체비중", "건수"]],
+            #                     use_container_width=True,
+            #                     hide_index=True,
+            #                     row_height=30
+            #                 )
+
+            #         with c2:
+            #             st.markdown("**Lift < 1.3 (평균 또는 약한 연결)**")
+            #             if weak.empty:
+            #                 st.warning("표시할 데이터가 없습니다.")
+            #             else:
+            #                 st.dataframe(
+            #                     weak[[row_label, col_label, "Lift", "행내비중", "전체비중", "건수"]],
+            #                     use_container_width=True,
+            #                     hide_index=True,
+            #                     row_height=30
+            #                 )
+
+
+            
 if __name__ == "__main__":
     main()
