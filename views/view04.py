@@ -783,8 +783,8 @@ def main():
     
     df_evt_f[rate_cols] = df_evt_f[rate_cols].astype(float).round(1)
 
-
-    # ✅ Summary Card (최근 7일 / 전주 대비) 
+    
+    # ✅ 써머리 카드 
     # 기간 분리
     if df_evt_f is not None and not df_evt_f.empty:
         max_dt = pd.to_datetime(df_evt_f["날짜"]).max().normalize()
@@ -845,6 +845,7 @@ def main():
     t_vpl, col_vpl       = _fmt_delta(_delta(vpl, vpl_p))
     t_vpr, col_vpr       = _fmt_delta(_delta(vpr, vpr_p))
 
+    st.markdown(" ")
     st.markdown(f"###### 📊 Summary (최근 7일 VS 전주 대비)") #{cur_start:%m/%d} ~ {max_dt:%m/%d}
     c1, c2, c3, c4, c5, c6 = st.columns(6, vertical_alignment="top")
 
@@ -932,29 +933,139 @@ def main():
             unsafe_allow_html=True,
         )
 
-
     # ✅ 그래프
     daily_dt = df_evt_f.rename(columns={k: LBL[k] for k in evt_cols})
     ui.render_line_graph(
         daily_dt,
         x="날짜",
         y=[LBL[k] for k in evt_cols],
-        height=360,
         key=f"flow::{sel_type}::{sel_reg}::{sel_br}",
     )
 
-    # ✅ 표
-    daily_tbl = df_evt_f.copy()
-    daily_tbl["날짜"] = pd.to_datetime(daily_tbl["날짜"], errors="coerce").dt.strftime("%Y-%m-%d")
+    tab1, tab2 = st.tabs(["전체 데이터", "🚨이상치 탐색"])
+    
+    with tab1: 
+        # ✅ 표
+        daily_tbl = df_evt_f.copy()
+        daily_tbl["날짜"] = pd.to_datetime(daily_tbl["날짜"], errors="coerce").dt.strftime("%Y-%m-%d")
 
-    tbl = (
-        daily_tbl
-        .set_index("날짜")[evt_cols + rate_cols]
-        .rename(columns={k: LBL[k] for k in (evt_cols + rate_cols)})
-        .T
-        .reset_index().rename(columns={"index": "구분"})
-    )
-    st.dataframe(tbl, use_container_width=True, hide_index=True, row_height=30)
+        tbl = (
+            daily_tbl
+            .set_index("날짜")[evt_cols + rate_cols]
+            .rename(columns={k: LBL[k] for k in (evt_cols + rate_cols)})
+            .T
+            .reset_index().rename(columns={"index": "구분"})
+        )
+        st.dataframe(tbl, use_container_width=True, hide_index=True, row_height=30)
+
+    with tab2:
+        # ✅ 동요일 급증 감지
+        
+        with st.expander("Filter", expanded=True):
+            cA, cB, cC = st.columns([1, 1, 2], vertical_alignment="center")
+            with cA:
+                metric_map = {
+                    "조회": "look_cnt",
+                    "예약신청": "bookreq_cnt",
+                    "예약": "res_cnt",
+                    "방문": "visit",
+                }
+
+                sel_metric_label = st.pills(
+                    "선택 단위",
+                    options=list(metric_map.keys()),
+                    selection_mode="single",
+                    default="방문",
+                    key="spike_metric",
+                )
+                spike_metric = metric_map.get(sel_metric_label, "look_cnt")
+
+            with cB:
+                spike_pct_th = st.number_input(
+                    "이상치 기준 (%)",
+                    min_value=10,
+                    max_value=300,
+                    value=30,
+                    step=5,
+                    key="spike_pct_th",
+                )
+
+        # 최근 7일만 대상으로 "7일 전"과 매칭
+        d = df_evt_f.copy()
+        d["날짜"] = pd.to_datetime(d["날짜"], errors="coerce").dt.normalize()
+        d = d.dropna(subset=["날짜"]).sort_values("날짜").reset_index(drop=True)
+
+        # 선택 단위 컬럼 보정
+        if spike_metric not in d.columns:
+            d[spike_metric] = 0
+        d[spike_metric] = pd.to_numeric(d[spike_metric], errors="coerce").fillna(0)
+
+        # 최근 7일 (데이터가 7일 미만이면 있는 만큼)
+        last_date = d["날짜"].max()
+        win_start = last_date - pd.Timedelta(days=6)
+        cur = d[(d["날짜"] >= win_start) & (d["날짜"] <= last_date)][["날짜", spike_metric]].copy()
+
+        # 7일 전 값 붙이기
+        prev = d[["날짜", spike_metric]].copy()
+        prev["날짜"] = prev["날짜"] + pd.Timedelta(days=7)   # prev의 날짜를 +7 해서 cur와 join
+        prev = prev.rename(columns={spike_metric: "prev"})
+
+        cur = cur.rename(columns={spike_metric: "cur"}).merge(prev, on="날짜", how="left")
+        cur["prev"] = pd.to_numeric(cur["prev"], errors="coerce").fillna(0)
+
+        # 증감 계산
+        cur["diff"] = cur["cur"] - cur["prev"]
+        cur["pct"]  = np.where(cur["prev"] > 0, cur["diff"] / cur["prev"] * 100, np.nan)
+
+        # 요일 라벨
+        wk_map = {0:"월",1:"화",2:"수",3:"목",4:"금",5:"토",6:"일"}
+        cur["요일"] = cur["날짜"].dt.dayofweek.map(wk_map)
+
+        # 급증 플래그
+        # - prev=0이면 pct가 NaN이므로, "cur>0"이면 급증 후보로 볼지 말지는 선택.
+        #   여기서는 prev=0인 날은 pct 판단 제외하고, diff만으로는 감지하지 않음(오탐 방지).
+        cur["급증"] = (cur["pct"] >= float(spike_pct_th))
+        cur["급락"] = (cur["pct"] <= -float(spike_pct_th))
+
+        # 표시용
+        show = cur.copy()
+        show["날짜"] = show["날짜"].dt.strftime("%Y-%m-%d")
+        show["pct"] = show["pct"].round(1)
+
+        show = show.rename(columns={
+            "cur": "이번주",
+            "prev": "지난주",
+            "diff": "증감",
+            "pct": "증감률(%)",
+        })
+
+        spikes = show[show["급증"]].sort_values(["증감률(%)", "증감"], ascending=False)
+        drops  = show[show["급락"]].sort_values(["증감률(%)", "증감"])
+
+        # 급증 / 급락 표시
+        c1, c2 = st.columns(2, vertical_alignment="top")
+
+        cols_show = ["날짜","요일","지난주","이번주","증감","증감률(%)"]
+
+        with c1:
+            st.markdown(f"###### 🙂 급증했어요 (+{spike_pct_th:.0f}%)")
+            st.dataframe(
+                spikes[cols_show] if not spikes.empty else pd.DataFrame(columns=cols_show),
+                use_container_width=True,
+                hide_index=True,
+                height = 162,
+                row_height=30,
+            )
+
+        with c2:
+            st.markdown(f"###### 🙁 급락했어요 (-{spike_pct_th:.0f}%)")
+            st.dataframe(
+                drops[cols_show] if not drops.empty else pd.DataFrame(columns=cols_show),
+                use_container_width=True,
+                hide_index=True,
+                height = 162,
+                row_height=30,
+            )
 
 
     # ──────────────────────────────────
