@@ -47,13 +47,13 @@ class BigQuery():
         self.credentialPath = json_data[self.projectCode]['credentialPath']
         
         # 테이블 추가
-        self.tb_sleeper_flatten       = json_data[self.projectCode]['tb_sleeper_flatten']
-        self.tb_sleeper_psi           = json_data[self.projectCode]['tb_sleeper_psi']
-        self.tb_sleeper_e_pdp         = json_data[self.projectCode]['tb_sleeper_e_pdp']
-        self.tb_sleeper_e_cart        = json_data[self.projectCode]['tb_sleeper_e_cart']
-        self.tb_media                 = json_data[self.projectCode]['tb_media']
-        self.tb_sleeper_sessionCMP    = json_data[self.projectCode]['tb_sleeper_sessionCMP']
-        self.raw_geo_city_kr          = json_data[self.projectCode]['raw_geo_city_kr']
+        self.tb_sleeper_flatten  = json_data[self.projectCode]['tb_sleeper_flatten']
+        self.tb_sleeper_psi      = json_data[self.projectCode]['tb_sleeper_psi']
+        self.tb_sleeper_e_pdp    = json_data[self.projectCode]['tb_sleeper_e_pdp']
+        self.tb_sleeper_e_cart   = json_data[self.projectCode]['tb_sleeper_e_cart']
+        self.tb_media            = json_data[self.projectCode]['tb_media']
+        self.tb_sleeper_f_cmp    = json_data[self.projectCode]['tb_sleeper_f_cmp']
+        self.raw_geo_city_kr     = json_data[self.projectCode]['raw_geo_city_kr']
 
 
         try:

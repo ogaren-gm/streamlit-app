@@ -415,7 +415,6 @@ def main():
 
     # ------------------------------
     # 표 (pivot)
-    # ------------------------------
     tbl1 = base1.copy()
 
     den = pd.to_numeric(tbl1["세션수"], errors="coerce").replace(0, np.nan)
