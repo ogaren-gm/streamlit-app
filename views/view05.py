@@ -575,10 +575,10 @@ def main():
     # 3) 
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>페이지 내 Action</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>CMP 페이지 반응</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤCMP 페이지 내에서 발생한 스크롤과 CTA 액션을 분석합니다. ", unsafe_allow_html=True)
 
-    # 필터
+    # -- 필터
     with st.expander("Filter", expanded=True):
         f1, f2, f3, f4 = st.columns([1, 2, 1.2, 1.2], vertical_alignment="bottom")
 
@@ -735,7 +735,7 @@ def main():
     # 렌더링
     st.info(f"선택된 {base_label} 모수는ㅤ**{base_total:,}**ㅤ입니다. ") # 숫자 양쪽으로 넓은 공백 붙어있음 
     st.markdown(" ")
- 
+
     c1, _p, c2 = st.columns([1, 0.03, 1], vertical_alignment="top")
     with c1:
         st.markdown("""
@@ -787,13 +787,14 @@ def main():
         )
         st.plotly_chart(fig, use_container_width=True)        
         st.dataframe(df_scroll_funnel, use_container_width=True, row_height=30, hide_index=True)
-
+    
+    st.markdown(" ")
     c3, _p, c4 = st.columns([1, 0.03, 1], vertical_alignment="top")
     with c3:
         st.markdown("""
                     <h6 style="margin:0;">📊 CTA 1. TYPE별 클릭률</h6>
                     <p style="margin:-10px 0 12px 0; color:#6c757d; font-size:13px;">CTA를 "유형" 기준으로 묶어, 반응도를 확인합니다.
-                    (* 체크박스를 클릭하여 선택한 유형의 TEXT만 확인합니다.) </p>
+                    (☑체크박스를 클릭해 오른쪽 표를 선택 유형들로 필터링합니다.) </p>
                     """,
                     unsafe_allow_html=True)   
 
@@ -886,8 +887,7 @@ def main():
     with c4:
         st.markdown("""
                     <h6 style="margin:0;">📊 CTA 2. TEXT별 클릭률</h6>
-                    <p style="margin:-10px 0 12px 0; color:#6c757d; font-size:13px;">유형별 "문구" 기준으로 풀어, 반응도를 확인합니다.
-                    (* 체크박스를 클릭하여 선택한 유형의 TEXT만 확인합니다.)</p>
+                    <p style="margin:-10px 0 12px 0; color:#6c757d; font-size:13px;">유형별 "문구" 기준으로 풀어, 반응도를 확인합니다.</p>
                     """,
                     unsafe_allow_html=True)   
 
@@ -902,86 +902,363 @@ def main():
     # 4) 
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>이동 페이지 Action (TBD)</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤFlow without sequence", unsafe_allow_html=True)
-    st.header(" ");st.header(" ");st.header(" ")
+    st.markdown("<h5 style='margin:0'>이후 확장 행동</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤCMP를 거친 사용자가 어떤 페이지에서 행동하고, 어떤 행동을 하는지 분석합니다. ", unsafe_allow_html=True)
 
-    # m_every_scroll = df_cmp["event_name"].astype(str).str.match(
-    #     r"^everyone_page_scroll_(10|20|30|40|50|60|70|80|90|100)$", na=False
-    # )
-    # d_evt = df_cmp.loc[~m_every_scroll, ["event_name", "pseudo_session_id", "event_cnt", "product_no", "page_location"]]
-    # d_evt["event_cnt"] = pd.to_numeric(d_evt["event_cnt"], errors="coerce").fillna(0)
+    # ── Filter
+    with st.expander("Filter", expanded=True):
+        a1, a2, a3, a4 = st.columns([1, 2, 1.2, 1.2], vertical_alignment="bottom")
 
-    # df_evt_top = (
-    #     d_evt.groupby("event_name", as_index=False)
-    #         .agg(
-    #             세션수=("pseudo_session_id", "nunique"),
-    #             이벤트수=("event_cnt", "sum"),
-    #         )
-    #         .sort_values(["세션수", "이벤트수"], ascending=False)
-    #         .reset_index(drop=True)
-    # )
+        with a1:
+            act_unit = st.radio(
+                "집계 단위",
+                ["유저수", "세션수"],
+                index=1,
+                horizontal=True,
+                key="act_unit",
+            )
 
-    # d_prod = d_evt.copy()
-    # d_prod["product_no"] = d_prod["product_no"].astype(str).replace("nan", "").fillna("").str.strip()
-    # d_prod = d_prod[d_prod["product_no"].ne("")]
+        with a2:
+            act_flag_sel = st.multiselect(
+                "CMP 유형",
+                options=["CMP 랜딩+", "CMP 랜딩-", "CMP 경유", "기타"],
+                default=["CMP 랜딩+", "CMP 랜딩-", "CMP 경유"],
+                key="act_flag_sel",
+            )
 
-    # df_prod_top = (
-    #     d_prod.groupby("product_no", as_index=False)
-    #         .agg(
-    #             세션수=("pseudo_session_id", "nunique"),
-    #             이벤트수=("event_cnt", "sum"),
-    #         )
-    #         .sort_values(["세션수", "이벤트수"], ascending=False)
-    #         .reset_index(drop=True)
-    # )
+        with a3:
+            sel_dim_act = st.selectbox(
+                "유입 단위",
+                ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"],
+                index=0,
+                key="act_dim",
+            )
 
-    # # (추가) 관심 제품 vs 전환 제품 (event_name 기준 분리)
-    # evt_interest = ["view_item", "select_item", "view_item_list", "product_option_price", "product_page_scroll_50"]
-    # evt_convert = ["add_to_cart", "view_cart", "begin_checkout", "purchase_button_click", "purchase"]
+        with a4:
+            dim_col_act, dim_label_act = _get_src_dim(sel_dim_act)
+            sel_act = _select_opt(df, dim_col_act, f"{dim_label_act} 선택", "act_dim_v")
 
-    # d_prod_evt = d_prod.copy()
-    # d_prod_evt["event_name"] = d_prod_evt["event_name"].astype(str)
+    # 0) Prep
+    cnt_key = "pseudo_session_id" if act_unit == "세션수" else "user_pseudo_id"
+    base_label = "세션" if act_unit == "세션수" else "유저"
 
-    # d_interest = d_prod_evt[d_prod_evt["event_name"].isin(evt_interest)]
-    # d_convert = d_prod_evt[d_prod_evt["event_name"].isin(evt_convert)]
+    d0 = df
+    if act_flag_sel:
+        d0 = d0[d0["flag_type"].astype(str).isin([str(x) for x in act_flag_sel])]
 
-    # df_prod_interest = (
-    #     d_interest.groupby("product_no", as_index=False)
-    #             .agg(
-    #                 세션수=("pseudo_session_id", "nunique"),
-    #                 이벤트수=("event_cnt", "sum"),
-    #             )
-    #             .sort_values(["세션수", "이벤트수"], ascending=False)
-    #             .reset_index(drop=True)
-    # )
+    if str(sel_act) != "전체":
+        if dim_col_act in d0.columns:
+            d0 = d0[d0[dim_col_act].astype(str) == str(sel_act)]
+        else:
+            d0 = d0.iloc[0:0]
 
-    # df_prod_convert = (
-    #     d_convert.groupby("product_no", as_index=False)
-    #             .agg(
-    #                 세션수=("pseudo_session_id", "nunique"),
-    #                 이벤트수=("event_cnt", "sum"),
-    #             )
-    #             .sort_values(["세션수", "이벤트수"], ascending=False)
-    #             .reset_index(drop=True)
-    # )
+    tot = int(d0[cnt_key].nunique())
+    if tot == 0:
+        st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
+        return
 
-    # c1, c2 = st.columns([1, 1], vertical_alignment="top")
-    # with c1:
-    #     st.markdown("**CMP 세션 내 이벤트 Top (스크롤 제외)**")
-    #     st.dataframe(df_evt_top.head(50), use_container_width=True, hide_index=True)
-    # with c2:
-    #     st.markdown("**CMP 세션 내 product_no Top (전체)**")
-    #     st.dataframe(df_prod_top.head(50), use_container_width=True, hide_index=True)
+    if "event_name" not in d0.columns:
+        st.error("'event_name' 컬럼이 없습니다.")
+        return
+    if "product_name" not in d0.columns:
+        st.error("'product_name' 컬럼이 없습니다.")
+        return
 
-    # c3, c4 = st.columns([1, 1], vertical_alignment="top")
-    # with c3:
-    #     st.markdown("**관심 제품 Top (view_item/option/scroll 등)**")
-    #     st.dataframe(df_prod_interest.head(50), use_container_width=True, hide_index=True)
-    # with c4:
-    #     st.markdown("**전환 제품 Top (add_to_cart/view_cart/purchase 등)**")
-    #     st.dataframe(df_prod_convert.head(50), use_container_width=True, hide_index=True)
+    if "event_cnt" in d0.columns:
+        d0["_evt_cnt"] = pd.to_numeric(d0["event_cnt"], errors="coerce").fillna(0)
+    else:
+        d0["_evt_cnt"] = 1
 
+    d0["_evt"] = d0["event_name"].astype(str).replace("nan", "").fillna("").str.strip()
+
+    base_events = ["view_item", "product_option_price", "add_to_cart", "find_nearby_showroom", "purchase"] #click_category_depth_
+
+    # 렌더링
+    st.info(f"선택된 {base_label} 모수는ㅤ**{tot:,}**ㅤ입니다. ") # 숫자 양쪽으로 넓은 공백 붙어있음 
+    st.markdown(" ")
+
+
+    # 1
+    d1, _p, d2 = st.columns([1, 0.03, 1], vertical_alignment="top")
+    with _p: pass
+
+    with d1:
+        st.markdown("<h6 style='margin:0;'>📊 Event 1. 상위 방문 페이지</h6>", unsafe_allow_html=True)
+        st.markdown(
+            "<p style='margin:-10px 0 12px 0; color:#6c757d; font-size:13px;'>"
+            "PLP나 PDP 등 어떤 페이지로 방문이 확장되는지 파악합니다."
+            "</p>",
+            unsafe_allow_html=True
+        )
+
+        if "page_location" not in d0.columns:
+            st.warning("page_location 컬럼이 없습니다.")
+        else:
+            d0["page_location"] = (
+                d0["page_location"].astype(str)
+                .replace("nan", "")
+                .fillna("")
+                .str.strip()
+            )
+            d0.loc[d0["page_location"].eq(""), "page_location"] = "(not set)"
+
+            # ✅ 캠페인(CMP) 페이지 제외
+            # - 예: https://sleeper.co.kr/campaign/promotion.html
+            m_cmp = d0["page_location"].astype(str).str.contains(r"/campaign/", case=False, na=False)
+            d1_src = d0[~m_cmp]
+
+            if d1_src.empty:
+                st.warning("캠페인 페이지를 제외하면 분석할 이동 페이지가 없습니다.")
+            else:
+                # ✅ 집계수: 해당 페이지에서 1번이라도 행동한 세션/유저 수
+                p_base = (
+                    d1_src.groupby("page_location", dropna=False)
+                        .agg(집계수=(cnt_key, "nunique"))
+                        .reset_index()
+                )
+                p_base["비중(%)"] = (p_base["집계수"] / max(tot, 1) * 100).round(2)
+
+                # ✅ 이벤트수: (세션/유저, 페이지) 단위로 distinct event_name 개수
+                # p_dist = (
+                #     d1_src.groupby([cnt_key, "page_location"], dropna=False)["event_name"]
+                #         .nunique()
+                #         .reset_index()
+                #         .rename(columns={"event_name": "_distinct_evt"})
+                # )
+
+                # p_evt = (
+                #     p_dist.groupby("page_location", dropna=False)["_distinct_evt"]
+                #         .sum()
+                #         .reset_index()
+                #         .rename(columns={"_distinct_evt": "이벤트수"})
+                # )
+
+                # ✅✅✅ 이벤트수(빈도): page_location별 이벤트 발생 총합
+                # - _evt_cnt는 event_cnt(있으면) 숫자화, 없으면 1로 이미 위에서 세팅되어 있어야 함
+                p_evt = (
+                    d1_src.groupby("page_location", dropna=False)["_evt_cnt"]
+                        .sum()
+                        .reset_index()
+                        .rename(columns={"_evt_cnt": "이벤트수"})
+                )
+
+                p = p_base.merge(p_evt, on="page_location", how="left")
+                p["이벤트수"] = pd.to_numeric(p["이벤트수"], errors="coerce").fillna(0).astype(int)
+                p["평균이벤트수"] = (p["이벤트수"] / p["집계수"].replace(0, np.nan)).fillna(0).round(2)
+
+                p = p.sort_values(["집계수", "이벤트수"], ascending=False).reset_index(drop=True)
+
+                top_n = 30
+                if len(p) > top_n:
+                    p = p.head(top_n)
+
+                st.dataframe(
+                    p[["page_location", "집계수", "비중(%)", "이벤트수", "평균이벤트수"]],
+                    use_container_width=True,
+                    hide_index=True,
+                    row_height=30,
+                    height=217
+                )
+
+    with d2:
+        st.markdown("<h6 style='margin:0;'>📊 Event 2. 상위 발생 이벤트</h6>", unsafe_allow_html=True)
+        st.markdown(
+            "<p style='margin:-10px 0 12px 0; color:#6c757d; font-size:13px;'>"
+            "탐색이나 전환 등 어떤 이벤트가 발생하는지 파악합니다."
+            "</p>",
+            unsafe_allow_html=True
+        )
+
+        # ✅ 전체 이벤트 대상 + 시스템 이벤트 제외
+        src = d0[d0["_evt"].notna()]
+        src = src[src["_evt"].astype(str).str.strip() != ""]
+
+        # 제외 조건
+        src = src[
+            (~src["_evt"].isin(["user_engagement", "session_start", "click_cta_everyone"])) &
+            (~src["_evt"].astype(str).str.contains("scroll", case=False, na=False))
+        ]
+
+        if src.empty:
+            st.warning("분석할 이벤트가 없습니다.")
+        else:
+            # 이벤트별 발생 세션/유저수
+            e_cnt = (
+                src.groupby("_evt", dropna=False)
+                .agg(집계수=(cnt_key, "nunique"))
+                .reset_index()
+                .rename(columns={"_evt": "event_name"})
+            )
+
+            # 이벤트수
+            if "_evt_cnt" in src.columns:
+                src["_evt_cnt"] = pd.to_numeric(src["_evt_cnt"], errors="coerce").fillna(0)
+            else:
+                src["_evt_cnt"] = 1
+
+            e_evt = (
+                src.groupby("_evt", dropna=False)["_evt_cnt"]
+                .sum()
+                .reset_index()
+                .rename(columns={"_evt": "event_name", "_evt_cnt": "이벤트수"})
+            )
+
+            e = e_cnt.merge(e_evt, on="event_name", how="left")
+
+            e["집계수"] = pd.to_numeric(e["집계수"], errors="coerce").fillna(0).astype(int)
+            e["이벤트수"] = pd.to_numeric(e["이벤트수"], errors="coerce").fillna(0).astype(int)
+
+            e["비중(%)"] = (e["집계수"] / max(tot, 1) * 100).round(2)
+            e["평균이벤트수"] = (e["이벤트수"] / e["집계수"].replace(0, np.nan)).fillna(0).round(2)
+
+            e = e.sort_values("집계수", ascending=False).reset_index(drop=True)
+
+            st.dataframe(
+                e[["event_name", "집계수", "비중(%)", "이벤트수", "평균이벤트수"]],
+                use_container_width=True,
+                hide_index=True,
+                row_height=30,
+                height=217
+                )
+
+    st.markdown(" ")
+    d3, _p, d4 = st.columns([1, 0.03, 1], vertical_alignment="top")
+    with _p:
+        pass
+
+    with d3:
+        st.markdown("<h6 style='margin:0;'>📊 Product 1. 상위 조회 제품</h6>", unsafe_allow_html=True)
+        st.markdown(
+            "<p style='margin:-10px 0 12px 0; color:#6c757d; font-size:13px;'>"
+            "사용자가 어떤 제품을 많이 조회했는지 확인합니다. "
+            "(☑체크박스를 클릭해 오른쪽 표를 선택 제품들로 필터링합니다.)"
+            "</p>",
+            unsafe_allow_html=True
+        )
+
+        # ✅ view_item 발생 세션/유저 기준으로 집계수 계산
+        d_view = d0[d0["_evt"].eq("view_item")]
+        tot_view = int(d_view[cnt_key].nunique())
+
+        if tot_view == 0:
+            st.warning("선택된 조건에서 view_item 발생이 없습니다.")
+            edited = st.data_editor(
+                pd.DataFrame(columns=["product_name", "집계수", "비중(%)", "이벤트수", "평균조회수", "제품 선택"]),
+                use_container_width=True,
+                hide_index=True,
+                row_height=30,
+                key="act_prod_top_editor_empty",
+            )
+            sel_products = []
+        else:
+            t_base = (
+                d_view.groupby("product_name", dropna=False)
+                      .agg(집계수=(cnt_key, "nunique"))
+                      .reset_index()
+            )
+            t_base["비중(%)"] = (t_base["집계수"] / max(tot_view, 1) * 100).round(2)
+
+            t_view = (
+                d_view.groupby("product_name", dropna=False)["_evt_cnt"]
+                      .sum()
+                      .reset_index()
+                      .rename(columns={"_evt_cnt": "이벤트수"})
+            )
+
+            t = t_base.merge(t_view, on="product_name", how="left")
+            t["이벤트수"] = pd.to_numeric(t["이벤트수"], errors="coerce").fillna(0).astype(int)
+            t["평균조회수"] = (t["이벤트수"] / t["집계수"].replace(0, np.nan)).fillna(0).round(2)
+
+            t = t.sort_values(["집계수", "이벤트수"], ascending=False).reset_index(drop=True)
+
+            top_n = 30
+            if len(t) > top_n:
+                t = t.head(top_n)
+
+            # 체크박스는 항상 맨 오른쪽
+            t["제품 선택"] = False
+
+            edited = st.data_editor(
+                t[["product_name", "집계수", "비중(%)", "이벤트수", "평균조회수", "제품 선택"]],
+                use_container_width=True,
+                hide_index=True,
+                row_height=30,
+                height=217,
+                key="act_prod_top_editor",
+                column_config={"제품 선택": st.column_config.CheckboxColumn("제품 선택")},
+                disabled=["product_name", "집계수", "비중(%)", "이벤트수", "평균조회수"],
+            )
+
+            sel_products = edited.loc[edited["제품 선택"] == True, "product_name"].astype(str).tolist()
+            if len(sel_products) == 0:
+                sel_products = t["product_name"].astype(str).tolist()
+
+    with d4:
+        st.markdown("<h6 style='margin:0;'>📊 Product 2. 제품별 이벤트</h6>", unsafe_allow_html=True)
+        st.markdown(
+            "<p style='margin:-10px 0 12px 0; color:#6c757d; font-size:13px;'>"
+            "제품 조회 이후 어떤 행동까지 이어졌는지 확인합니다. "
+            "</p>",
+            unsafe_allow_html=True
+        )
+
+        d1_f = d0[d0["product_name"].astype(str).isin([str(x) for x in sel_products])]
+        if d1_f.empty:
+            st.warning("선택된 제품 조건에 해당하는 데이터가 없습니다.")
+        else:
+            all_events = base_events
+
+            # 집계단위별: 이벤트 발생 {세션/유저} 수만
+            out = (
+                d1_f.groupby("product_name", dropna=False)
+                    .agg(**{ev: (cnt_key, "nunique") for ev in all_events})  # placeholder (아래에서 덮어씀)
+            )
+
+            # 위 agg은 event 조건이 없어서 의미 없음 -> 이벤트별로 조건부 집계해서 merge로 붙임
+            out = out.iloc[0:0]  # 빈 틀 제거
+
+            out = (
+                d1_f.groupby("product_name", dropna=False)
+                    .agg(집계수=(cnt_key, "nunique"))
+                    .reset_index()
+            )
+
+            for ev in all_events:
+                sub = d1_f[d1_f["_evt"].eq(ev)]
+                if sub.empty:
+                    out[ev] = 0
+                    continue
+
+                hit = (
+                    sub.groupby("product_name", dropna=False)[cnt_key]
+                       .nunique()
+                       .reset_index()
+                       .rename(columns={cnt_key: ev})
+                )
+                out = out.merge(hit, on="product_name", how="left")
+
+            # 숫자 정리
+            for ev in all_events:
+                if ev in out.columns:
+                    out[ev] = pd.to_numeric(out[ev], errors="coerce").fillna(0).astype(int)
+
+            # 정렬 기준: 집계수 desc, purchase desc, view_item desc(있으면)
+            sort_cols = ["집계수"]
+            if "purchase" in out.columns:
+                sort_cols.append("purchase")
+            if "view_item" in out.columns:
+                sort_cols.append("view_item")
+            out = out.sort_values(sort_cols, ascending=False).reset_index(drop=True)
+
+            # 표: product_name + 이벤트 컬럼만(집계단위 선택값만 반영된 수치)
+            show_cols = ["product_name"] + [ev for ev in all_events if ev in out.columns]
+            st.dataframe(
+                out[show_cols],
+                use_container_width=True,
+                hide_index=True,
+                row_height=30,
+                height=217
+            )
 
 if __name__ == "__main__":
     main()

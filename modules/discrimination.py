@@ -83,7 +83,7 @@ def build_scroll_exit_fig(
     # [ 전반 탐지 ]
     # - 전반부 범위 (기본 70)에 해당하는 dy만 보아서 배열로 만들고,  
     # - 전반부 변화량의 평균/표준편차/임계값(z_k) 계산 
-    # - 전반부에서 임계값 초과하는 dy 지점들을 찾고 그 중 가장 첫 번째 지점을 병목으로 채택
+    # - 전반부에서 임계값 초과하는 dy 지점들을 찾고,  dy의 local peak(국소 최대) 중 최대를 병목으로 선택
     # - 임계값 초과가 하나도 없으면 dy가 가장 큰 지점을 병목으로 강제 
     early_idx = [i for i, xi in enumerate(x) if (xi <= early_max) and (i >= 1)]
     first_i = None
