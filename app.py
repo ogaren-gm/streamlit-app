@@ -13,9 +13,13 @@ st.set_page_config(
 # ---------------------------------------------------------------
 # LOGO
 # ---------------------------------------------------------------
-# st.logo("https://twemoji.maxcdn.com/v/latest/svg/1f34a.svg")
-st.logo("https://www.svgrepo.com/show/484669/orange.svg")
+# st.logo("https://www.svgrepo.com/show/484669/orange.svg")
 
+st.logo(
+    "assets/logo.png",
+    icon_image="assets/logo_s.png",
+    size="large"
+)
 
 # ---------------------------------------------------------------
 # MARKDOWN
