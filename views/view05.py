@@ -54,6 +54,14 @@ CFG = {
     """,
 }
 
+THEME_CFG = {    
+    "01 에브리원" : "2025-08-25",
+    "02 홀리데이" : "2025-12-01",
+    "03 뉴이어"  : "2025-12-29",
+    "04 모잘삶"  : "2026-02-11",
+    "05 뉴슬립"  : "2026-02-23",
+    
+}
 
 # ──────────────────────────────────
 # HELPER
@@ -145,6 +153,22 @@ def main():
     st.markdown(CFG["CSS_BLOCK_CONTAINER"], unsafe_allow_html=True)
     st.markdown(CFG["CSS_TABS"], unsafe_allow_html=True)
 
+    # # ──────────────────────────────────
+    # # B) Sidebar / Filter
+    # # ──────────────────────────────────
+    # st.sidebar.header("Filter")
+    # today = datetime.now().date()
+    # default_end = today - timedelta(days=1)
+    # default_start = today - timedelta(days=CFG["DEFAULT_LOOKBACK_DAYS"])
+
+    # start_date, end_date = st.sidebar.date_input(
+    #     "기간 선택",
+    #     value=[default_start, default_end],
+    #     max_value=default_end
+    # )
+    # cs = start_date.strftime("%Y%m%d")
+    # ce = (end_date + timedelta(days=1)).strftime("%Y%m%d")
+
     # ──────────────────────────────────
     # B) Sidebar / Filter
     # ──────────────────────────────────
@@ -153,11 +177,42 @@ def main():
     default_end = today - timedelta(days=1)
     default_start = today - timedelta(days=CFG["DEFAULT_LOOKBACK_DAYS"])
 
+    # ✅ (NEW) 테마 선택 → 날짜 자동 세팅 (THEME_CFG 사용)
+    _theme_map = {k: pd.to_datetime(v).date() for k, v in THEME_CFG.items()}
+    _theme_items = sorted(_theme_map.items(), key=lambda x: x[1])  # 시작일 오름차순
+    _theme_names = [k for k, _ in _theme_items]
+
+    # ✅ date_input key는 sb_period 유지 (하지만 value=는 절대 안 줌)
+    if "sb_period" not in st.session_state:
+        st.session_state["sb_period"] = [default_start, default_end]
+
+    sel_theme = st.sidebar.selectbox(
+        "테마 선택 (선택 시 기간 자동)",
+        options=["선택 안함"] + _theme_names,
+        index=0,
+        key="sb_theme",
+    )
+
+    # 테마 선택 시 날짜 강제 세팅
+    if sel_theme != "선택 안함":
+        idx = _theme_names.index(sel_theme)
+        st_s = _theme_items[idx][1]
+        st_e = (_theme_items[idx + 1][1] - timedelta(days=1)) if idx < len(_theme_items) - 1 else default_end
+
+        if st_e > default_end:
+            st_e = default_end
+        if st_s > default_end:
+            st_s = default_end
+            st_e = default_end
+
+        st.session_state["sb_period"] = [st_s, st_e]
+
     start_date, end_date = st.sidebar.date_input(
         "기간 선택",
-        value=[default_start, default_end],
-        max_value=default_end
+        max_value=default_end,
+        key="sb_period",
     )
+
     cs = start_date.strftime("%Y%m%d")
     ce = (end_date + timedelta(days=1)).strftime("%Y%m%d")
 
@@ -230,7 +285,7 @@ def main():
         st.markdown(
             """
             <div style="font-size:14px; line-height:1.5;">
-            GA 기준 <br>
+            GA 기준 <b>CMP 트래픽 </b>추이와 <b>유입경로, 페이지 내 액션, 이후 확장 행동</b> 을 종합적으로 확인할 수 있는 대시보드입니다. <br>
             </div>
             <div style="color:#6c757d; font-size:14px; line-height:2.0;">
             ※ GA D-1 데이터의 세션 수치는 <b>오전에 1차</b> 집계되나 , 세션의 유입출처는 <b>오후에 2차</b> 반영됩니다.
@@ -265,7 +320,7 @@ def main():
     # ──────────────────────────────────
     st.markdown(" ")
     st.markdown("<h5 style='margin:0'>CMP 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 트래픽 대비 CMP 트래픽의 증감 추이를 확인합니다.")
 
     with st.popover("🤔 CMP 랜딩 VS CMP 경유"):
         st.markdown("""
@@ -416,7 +471,7 @@ def main():
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>CMP 유입매체</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤCMP 트래픽의 매체별 비중을 확인합니다.")
     
     def _select_opt(df0, col, label, key):
         s = _safe_dim_series(df0, col)
@@ -828,6 +883,7 @@ def main():
             use_container_width=True,
             hide_index=True,
             row_height=30,
+            height=216,
             key="cmp_cta_type_editor",
             column_config={
                 "유형 선택": st.column_config.CheckboxColumn("유형 선택"),

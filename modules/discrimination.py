@@ -83,7 +83,7 @@ def build_scroll_exit_fig(
     # [ 전반 탐지 ]
     # - 전반부 범위 (기본 70)에 해당하는 dy만 보아서 배열로 만들고,  
     # - 전반부 변화량의 평균/표준편차/임계값(z_k) 계산 
-    # - 전반부에서 임계값 초과하는 dy 지점들을 찾고,  dy의 local peak(국소 최대) 중 최대를 병목으로 선택
+    # - 전반부에서 임계값 초과하는 dy 지점들을 찾고, 
     # - 임계값 초과가 하나도 없으면 dy가 가장 큰 지점을 병목으로 강제 
     early_idx = [i for i, xi in enumerate(x) if (xi <= early_max) and (i >= 1)]
     first_i = None
@@ -97,32 +97,34 @@ def build_scroll_exit_fig(
         early_sd = float(np.nanstd(early_dy))
         early_th = float(early_mu + (z_k * early_sd))
 
-    # (수정 Gemini)  dy의 local peak(국소 최대) 중 최대를 병목으로 선택
+    # (수정2) dy의 local peak(국소 최대) 중 최대를 병목으로 선택
     first_i = None
 
-    if len(early_idx) >= 3:
+    if len(early_idx) >= 2:
         peaks = []
         for i in early_idx:
-            # i는 dy 인덱스. local peak 판별은 i-1, i, i+1 비교가 필요
-            if (i - 1) < 1 or (i + 1) >= len(dy):  # 범위 보호
+            # i+1은 필요 (오른쪽 비교)
+            if (i + 1) >= len(dy):
                 continue
-            if np.isnan(dy[i - 1]) or np.isnan(dy[i]) or np.isnan(dy[i + 1]):
+            if np.isnan(dy[i]) or np.isnan(dy[i + 1]):
                 continue
 
-            # ✅ local peak: 직전보다 크고, 직후보다 크고, 상승(>0)인 지점
+            # ✅ i=1(=depth 10)도 후보로 허용: dy[0]=nan이므로 왼쪽 비교는 생략
+            if i == 1:
+                if (dy[i] > 0) and (dy[i] > dy[i + 1]):
+                    peaks.append(i)
+                continue
+
+            # ✅ 일반 케이스: i-1, i, i+1 비교
+            if np.isnan(dy[i - 1]):
+                continue
             if (dy[i] > 0) and (dy[i] > dy[i - 1]) and (dy[i] > dy[i + 1]):
                 peaks.append(i)
 
-        # local peak 중 dy가 가장 큰 지점
         if len(peaks) > 0:
             first_i = max(peaks, key=lambda j: dy[j])
-
-    # 폴백: local peak 없으면(단조/평탄) dy 최대
-    if first_i is None and len(early_idx) > 0:
-        first_i = max(early_idx, key=lambda i: (-1e18 if np.isnan(dy[i]) else dy[i]))
-
+    
     first_depth = x[first_i] if first_i is not None else x[0]
-
 
     # [ 후반 탐지 ]
     # - 후반부 범위 (기본 60)에 해당하는 후보 인덱스 추림
