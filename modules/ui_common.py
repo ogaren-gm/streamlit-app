@@ -8,7 +8,6 @@ import numpy as np
 import plotly.express as px
 from datetime import datetime, timedelta
 
-
 # ──────────────────────────────────
 # TRANSFORM (데이터 변환/정렬)
 # ──────────────────────────────────
@@ -98,23 +97,58 @@ def get_topk_values(s: pd.Series, k: int) -> list[str]:
 # ──────────────────────────────────
 # VIZ (Plotly)
 # ──────────────────────────────────
+# def add_weekend_shading(fig, x_vals: pd.Series):
+#     """
+#     주말 셰이딩 (이전)
+#     - x축 날짜를 기준
+#     - 토/일요일에 정오~정오 구간으로 vrect 음영 넣음
+#     """
+#     xs = pd.to_datetime(pd.Series(x_vals), errors="coerce").dropna().dt.floor("D").unique()
+
+#     for d in xs:
+#         d = pd.Timestamp(d).date()
+#         start = datetime.combine(d, datetime.min.time()) + timedelta(hours=12)
+#         end = start + timedelta(hours=24)
+
+#         if d.weekday() == 4:
+#             fig.add_vrect(x0=start, x1=end, fillcolor="blue", opacity=0.05, layer="below", line_width=0)
+#         elif d.weekday() == 5:
+#             fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.05, layer="below", line_width=0)
+
+
 def add_weekend_shading(fig, x_vals: pd.Series):
     """
-    주말 셰이딩
-    
-    - x축 날짜를 기준
-    - 토/일요일에 정오~정오 구간으로 vrect 음영 넣음
+    주말 셰이딩 (최종본)
+    - 범위 밖 불필요한 주말 음영 원천 차단
     """
-    xs = pd.to_datetime(pd.Series(x_vals), errors="coerce").dropna().dt.floor("D").unique()
+    valid_dates = pd.to_datetime(pd.Series(x_vals), errors="coerce").dropna().dt.floor("D")
+    
+    if valid_dates.empty:
+        return  
+        
+    min_date = valid_dates.min()
+    max_date = valid_dates.max()
+
+    # 토요일 음영은 금요일부터 그려야 하므로, 시작일을 하루 전으로 넉넉히 잡음
+    xs_start = min_date - pd.Timedelta(days=1)
+    xs_end = max_date
+    xs = pd.date_range(start=xs_start.date(), end=xs_end.date(), freq='D')
 
     for d in xs:
-        d = pd.Timestamp(d).date()
-        start = datetime.combine(d, datetime.min.time()) + timedelta(hours=12)
+        # [핵심] 타겟 날짜: 현재 반복문이 실제로 칠하려고 하는 주말 날짜 (d의 다음날)
+        target_date = d.date() + timedelta(days=1)
+        
+        # 타겟 날짜가 우리가 조회한 데이터 범위를 벗어나면? -> 아예 그리지 말고 패스!
+        if target_date < min_date.date() or target_date > max_date.date():
+            continue
+
+        d_date = d.date()
+        start = datetime.combine(d_date, datetime.min.time()) + timedelta(hours=12)
         end = start + timedelta(hours=24)
 
-        if d.weekday() == 4:
+        if d.weekday() == 4: # 금요일이 그리는 -> 토요일 파란색 음영
             fig.add_vrect(x0=start, x1=end, fillcolor="blue", opacity=0.05, layer="below", line_width=0)
-        elif d.weekday() == 5:
+        elif d.weekday() == 5: # 토요일이 그리는 -> 일요일 빨간색 음영
             fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.05, layer="below", line_width=0)
 
 

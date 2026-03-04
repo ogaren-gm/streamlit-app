@@ -1,39 +1,36 @@
-# SEOHEE
-# 2026-02-10 ver.
+# 서희_최신수정일_25-08-19
 
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
 import importlib
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-
 import modules.bigquery
 importlib.reload(modules.bigquery)
 from modules.bigquery import BigQuery
+from st_aggrid import AgGrid, GridOptionsBuilder
+from st_aggrid.shared import JsCode
+import io
+from google.oauth2.service_account import Credentials
+import gspread
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import re
+import math
 
 import modules.ui_common as ui
 importlib.reload(ui)
-from modules.ui_common import style_format, style_cmap
-
-from google.oauth2.service_account import Credentials
-import gspread
+from zoneinfo import ZoneInfo
 
 
-# ──────────────────────────────────
-# CONFIG
-# ──────────────────────────────────
-CFG = {
-    # 기본
-    "TZ": "Asia/Seoul",
-    "CACHE_TTL": 3600,
-    "DEFAULT_LOOKBACK_DAYS": 14,
-    "HEADER_UPDATE_AM": 850,
-    "HEADER_UPDATE_PM": 1535,
 
-    "TOPK_OPTS": [5, 10, 15, 20],
-
-    "CSS_BLOCK_CONTAINER": """
+def main():
+    # ──────────────────────────────────
+    # 스트림릿 페이지 설정
+    # ──────────────────────────────────
+    st.markdown(
+        """
         <style>
             .block-container {
                 max-width: 100% !important;
@@ -43,457 +40,677 @@ CFG = {
                 padding-right: 4.5rem;
             }
         </style>
-    """,
-    "CSS_TABS": """
-        <style>
-            [role="tablist"] [role="tab"] { margin-right: 1rem; }
-        </style>
-    """,
-}
-
-
-# ──────────────────────────────────
-# CONSTANTS
-# ──────────────────────────────────
-HEADER_MAP = {
-    "event_date": "날짜",
-    "media_name": "매체",
-    "utm_source": "소스",
-    "utm_medium": "미디엄",
-    "brand_type": "브랜드",
-    "funnel_type": "퍼널",
-    "product_type": "품목",
-    "campaign_name": "캠페인",
-    "adgroup_name": "광고그룹",
-    "ad_name": "광고소재",
-    "keyword_name": "키워드",
-    "utm_content": "컨텐츠",
-    "utm_term": "검색어",
-}
-
-AGG_MAP = dict(
-    cost_sum=("cost", "sum"),
-    cost_gross_sum=("cost_gross", "sum"),
-    impressions_sum=("impressions", "sum"),
-    clicks_sum=("clicks", "sum"),
-    view_item_sum=("view_item", "sum"),
-    product_page_scroll_50_sum=("product_page_scroll_50", "sum"),
-    product_option_price_sum=("product_option_price", "sum"),
-    find_nearby_showroom_sum=("find_nearby_showroom", "sum"),
-    showroom_10s_sum=("showroom_10s", "sum"),
-    add_to_cart_sum=("add_to_cart", "sum"),
-    showroom_leads_sum=("showroom_leads", "sum"),
-    purchase_sum=("purchase", "sum"),
-    session_count=("session_start", "sum"),
-    engagement_time_msec_sum=("engagement_time_msec_sum", "sum"),
-)
-
-# ──────────────────────────────────
-# main
-# ──────────────────────────────────
-def main():
-    # ──────────────────────────────────
-    # A) Layout / CSS
-    # ──────────────────────────────────
-    st.markdown(CFG["CSS_BLOCK_CONTAINER"], unsafe_allow_html=True)
-    st.markdown(CFG["CSS_TABS"], unsafe_allow_html=True)
-
-    # ────────────────────────────────────────────────────────────────
-    # B) Sidebar (기간/비교기간)
-    # ────────────────────────────────────────────────────────────────
-    # 기간
-    st.sidebar.header("Filter")
-    today = datetime.now().date()
-    default_end = today - timedelta(days=1)
-    default_start = today - timedelta(days=CFG["DEFAULT_LOOKBACK_DAYS"])
-
-    start_date, end_date = st.sidebar.date_input(
-        "기간 선택",
-        value=[default_start, default_end],
-        max_value=default_end,
-    )
-    cs = start_date.strftime("%Y%m%d")
-    ce = end_date.strftime("%Y%m%d")
+        """,
+        unsafe_allow_html=True
+    )    
+    # # 탭 간격 CSS
+    # st.markdown("""
+    #     <style>
+    #         [role="tablist"] [role="tab"] { margin-right: 1rem; }
+    #     </style>
+    # """, unsafe_allow_html=True)
     
-    # 비교기간
-    use_compare = st.sidebar.checkbox("비교기간 사용")
-    period_len = (end_date - start_date).days + 1
-    default_comp_e = start_date - timedelta(days=1)
-    default_comp_s = default_comp_e - timedelta(days=period_len - 1)
+    
+    # ────────────────────────────────────────────────────────────────
+    # 사이드바 필터 설정
+    # ────────────────────────────────────────────────────────────────    
+    @st.cache_data(ttl=3600)
+    def load_data():
+        scope = [
+            'https://spreadsheets.google.com/feeds',
+            'https://www.googleapis.com/auth/drive'
+        ]
 
-    if use_compare:
-        comp_start, comp_end = st.sidebar.date_input(
-            "비교 기간 선택",
-            value=[default_comp_s, default_comp_e],
-            max_value=default_comp_e,
-        )
-
-    show_totals = st.sidebar.checkbox("기간별 합계 보기")
-
-    # 기간 라벨 (표기형식)
-    start_date_str = start_date.strftime("%m/%d")
-    end_date_str = end_date.strftime("%m/%d")
-    default_comp_s_str = default_comp_s.strftime("%m/%d")
-    default_comp_e_str = default_comp_e.strftime("%m/%d")
-
-    # ──────────────────────────────────
-    # C) Data Load
-    # ──────────────────────────────────
-    @st.cache_data(ttl=CFG["CACHE_TTL"])
-    def load_data(cs: str, ce: str):
-        # 1) tb_media
-        bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
-        df_bq = bq.get_data("tb_media")
-        df_bq["event_date"] = pd.to_datetime(df_bq["event_date"], format="%Y%m%d", errors="coerce")
-
-        parts = df_bq["campaign_name"].astype(str).str.split("_", n=5, expand=True)
-        df_bq["campaign_name_short"] = df_bq["campaign_name"]
-        mask = parts[5].notna()
-        df_bq.loc[mask, "campaign_name_short"] = (
-            parts.loc[mask, :4].apply(lambda r: "_".join(r.dropna().astype(str)), axis=1)
-        )
-
-        # 2) Google Sheet
-        # secrets가 dict/string 어떤 형태든 처리(원 코드 동작 유지)
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive",] 
-        try:
+        try: 
             creds = Credentials.from_service_account_file("C:/_code/auth/sleeper-461005-c74c5cd91818.json", scopes=scope)
-        except:
-            sa_info = st.secrets["sleeper-462701-admin"] 
-            if isinstance(sa_info, str):
-                import json
+        except: # 배포용 (secrets.toml)
+            sa_info = st.secrets["sleeper-462701-admin"]
+            if isinstance(sa_info, str):  # 혹시 문자열(JSON)로 저장했을 경우
                 sa_info = json.loads(sa_info)
             creds = Credentials.from_service_account_info(sa_info, scopes=scope)
 
         gc = gspread.authorize(creds)
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1g2HWpm3Le3t3P3Hb9nm2owoiaxywaXv--L0SHEDx3rQ/edit")
-        df_sheet = pd.DataFrame(sh.worksheet("perf_campaign").get_all_records())
-
-        # 3) merge
-        merged = df_bq.merge(df_sheet, how="left", on="campaign_name_short")
-
-        # [ 하드코딩 전처리 ] cost_gross(v2) 
-        merged["cost_gross"] = np.where(
-            merged["event_date"] < pd.to_datetime("2025-11-06"),
-            np.where(
-                merged["media_name"].isin(["GOOGLE", "META"]),
-                merged["cost"] * 1.1 / 0.98,
-                merged["cost"],
-            ),
-            np.where(
-                merged["media_name"].isin(["GOOGLE", "META"]),
-                merged["cost"] * 1.1 / 0.955,
-                merged["cost"],
-            ),
-        )
-
-        # [ 하드코딩 전처리 ] handle NSA - 기존 로직 유지
-        cond = (
-            (merged["media_name"] == "NSA")
-            & merged["utm_source"].isna()
-            & merged["utm_medium"].isna()
-            & merged["media_name_type"].isin(["RSA_AD", "TEXT_45"])
-        )
-        merged.loc[cond, ["utm_source", "utm_medium"]] = ["naver", "search-nonmatch"]
-
-        # ⚠️ 원 코드와 동일: merged.event_date는 문자열 표기로 변환
-        merged["event_date"] = merged["event_date"].dt.strftime("%Y-%m-%d")
-
-        return merged
-
-    with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        if use_compare:
-            cs_cmp = comp_start.strftime("%Y%m%d")
-            df_merged = load_data(cs_cmp, ce)
-
-            # 비교/선택 분리용 event_date를 datetime으로 복원(원 코드 유지)
-            df_merged["event_date"] = pd.to_datetime(df_merged["event_date"], errors="coerce")
-
-            df_primary = df_merged[
-                (df_merged["event_date"] >= pd.to_datetime(start_date))
-                & (df_merged["event_date"] <= pd.to_datetime(end_date))
-            ]
-            df_compare = df_merged[
-                (df_merged["event_date"] >= pd.to_datetime(comp_start))
-                & (df_merged["event_date"] <= pd.to_datetime(comp_end))
-            ]
-
-            df_filtered = df_primary
-            df_filtered_cmp = df_compare
-        else:
-            df_merged = load_data(cs, ce)
-            df_merged["event_date"] = pd.to_datetime(df_merged["event_date"], errors="coerce")
-            df_filtered = df_merged
-            df_filtered_cmp = None
-
-        # apply_filter_pair에서 옵션은 항상 "선택기간 기준"을 쓰므로 원본 유지
-        df_primary = df_filtered
+        sh = gc.open_by_url('https://docs.google.com/spreadsheets/d/1Li4YzwsxI7rB3Q2Z0gkuGIyANTaxFrVzgsKE-RAAdME/edit?gid=2078920702#gid=2078920702')
+        
+        # 데이터 시트별로 불러오자.
+        PPL_LIST   = pd.DataFrame(sh.worksheet('PPL_LIST').get_all_records())
+        PPL_DATA   = pd.DataFrame(sh.worksheet('PPL_DATA').get_all_records())
+        GA_EVENT_SUMMARY = pd.DataFrame(sh.worksheet('GA_Event_Summary').get_all_records())
+        # --------------------------------------------------------------
+        wsa = sh.worksheet('PPL_ACTION')
+        data = wsa.get('A1:P')  # A열~P열까지 전체
+        PPL_ACTION = pd.DataFrame(data[1:], columns=data[0])  # 1행=헤더
+        # --------------------------------------------------------------
+        query_slp      = pd.DataFrame(sh.worksheet('query_슬립퍼').get_all_records())
+        query_nor      = pd.DataFrame(sh.worksheet('query_누어').get_all_records())
+        query_sum      = pd.DataFrame(sh.worksheet('query_sum').get_all_records())
+        
+        # last_updated_time
+        last_updated_time__query = query_slp['날짜'].max()
+        last_updated_time__GA = GA_EVENT_SUMMARY['event_date'].max()
+        
+        
+        return PPL_LIST, PPL_DATA, PPL_ACTION, query_slp, query_nor, query_sum, last_updated_time__query, last_updated_time__GA
 
 
-    # ──────────────────────────────────
-    # Helpers (이 파일 내부에서만)
-    # ──────────────────────────────────
-    def pivot_perf(df_in: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
-        return df_in.groupby(keys, as_index=False).agg(**AGG_MAP)
+    # PROGRESS BAR
+    import time
+    progress_bar = st.progress(0, text="데이터베이스 연결 확인 중입니다...")
+    time.sleep(0.2)
+    
+    for i in range(1, 80, 5):
+        progress_bar.progress(i, text=f"데이터를 불러오고 있습니다...{i}%")
+        time.sleep(0.1)
 
-    def render_decor_perf(df: pd.DataFrame, pivot_cols: list[str]) -> pd.DataFrame:
-        df2 = df
+    PPL_LIST, PPL_DATA, PPL_ACTION, query_slp, query_nor, query_sum, last_updated_time__query, last_updated_time__GA = load_data()
+    
+    # 로드 완료 직후, 수치를 대폭 점프시켜 보상감 제공
+    progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 증입니다...")
+    time.sleep(0.4)
+    
+    progress_bar.progress(100, text="데이터 로드 완료!")
+    time.sleep(0.6)
+    progress_bar.empty()
 
-        # 자료형 워싱 1
-        if "event_date" in df2.columns:
-            df2 = df2.assign(event_date=pd.to_datetime(df2["event_date"], errors="coerce").dt.strftime("%Y-%m-%d"))
 
-        # 파생 지표 생성(원 로직 유지)
-        df2 = df2.assign(
-            CPC=((df2["cost_gross_sum"] / df2["clicks_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(0)),
-            CTR=((df2["clicks_sum"] / df2["impressions_sum"] * 100).replace([np.inf, -np.inf], 0).fillna(0).round(2)),
-            session_count_CPA=(df2["cost_gross_sum"] / df2["session_count"]).replace([np.inf, -np.inf], 0).fillna(0).round(0),
+    # 날짜 컬럼 타입 변환
+    # ppl_data['날짜']   = pd.to_datetime(ppl_data['날짜'])
+    # ppl_action['날짜'] = pd.to_datetime(ppl_action['날짜'])
+    query_slp['날짜']   = pd.to_datetime(query_slp['날짜'])
+    query_nor['날짜']   = pd.to_datetime(query_nor['날짜'])
+    
+    
+    # 모든 데이터프레임이 동일한 파생 지표를 가...지지 않음
+    # => "채널별 인게이지먼트 및 액션"용
+    def decorate_df_eng(df: pd.DataFrame,
+                    select_option: int = 1,) -> None:
+        # 키에러방지
+        required = ["날짜",
+                    "채널명",
+                    "Cost",
+                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
+                    "session_count","avg_session_duration_sec","view_item_list_sessions","view_item_sessions","scroll_50_sessions","product_option_price_sessions","find_showroom_sessions","add_to_cart_sessions","sign_up_sessions","showroom_10s_sessions","showroom_leads_sessions",
+                    ]
+        for c in required:
+            if c not in df.columns:
+                df[c] = 0  
+        num_cols = ["Cost",
+                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
+                    "session_count","avg_session_duration_sec","view_item_list_sessions","view_item_sessions","scroll_50_sessions","product_option_price_sessions","find_showroom_sessions","add_to_cart_sessions","sign_up_sessions","showroom_10s_sessions","showroom_leads_sessions",
+                    ]
+        df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
-            view_item_CPA=(df2["cost_gross_sum"] / df2["view_item_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(2),
-            product_page_scroll_50_CPA=(df2["cost_gross_sum"] / df2["product_page_scroll_50_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(2),
-            product_option_price_CPA=(df2["cost_gross_sum"] / df2["product_option_price_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(2),
-            find_nearby_showroom_CPA=(df2["cost_gross_sum"] / df2["find_nearby_showroom_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(2),
-            showroom_10s_CPA=(df2["cost_gross_sum"] / df2["showroom_10s_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(2),
-            showroom_leads_CPA=(df2["cost_gross_sum"] / df2["showroom_leads_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(2),
-            add_to_cart_CPA=(df2["cost_gross_sum"] / df2["add_to_cart_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(2),
-            purchase_CPA=(df2["cost_gross_sum"] / df2["purchase_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(2),
-        )
+        # 파생지표 생성 - CVR
+        df['view_item_list_CVR']         = (df['view_item_list_sessions']         / df['session_count']          * 100).round(2)
+        df['view_item_CVR']              = (df['view_item_sessions']              / df['session_count']          * 100).round(2)
+        df['scroll_50_CVR']              = (df['scroll_50_sessions']              / df['session_count']          * 100).round(2)
+        df['product_option_price_CVR']   = (df['product_option_price_sessions']   / df['session_count']          * 100).round(2)
+        df['find_nearby_showroom_CVR']   = (df['find_showroom_sessions']          / df['session_count']          * 100).round(2)
+        df['add_to_cart_CVR']            = (df['add_to_cart_sessions']            / df['session_count']          * 100).round(2)
+        df['sign_up_CVR']                = (df['sign_up_sessions']                / df['session_count']          * 100).round(2)
+        df['showroom_10s_CVR']           = (df['showroom_10s_sessions']           / df['session_count']          * 100).round(2)
+        df['showroom_leads_CVR']         = (df['showroom_leads_sessions']         / df['session_count']          * 100).round(2)  # (25.11.02) view_item_list_CVR 제외하고 view_item_list_sessions가 분모였는데 세션수로 일괄 바꿈
+        # 파생지표 생성 - CPA
+        df['view_item_list_CPA']         = (df['Cost']/10     /  df['view_item_list_sessions']          * 100).round(0)  # (25.11.02) 행별로 분배가 안되고 있어서 하드코딩으로 변경함 
+        df['view_item_CPA']              = (df['Cost']/10     /  df['view_item_sessions']               * 100).round(0)
+        df['scroll_50_CPA']              = (df['Cost']/10     /  df['scroll_50_sessions']               * 100).round(0)
+        df['product_option_price_CPA']   = (df['Cost']/10     /  df['product_option_price_sessions']    * 100).round(0)
+        df['find_nearby_showroom_CPA']   = (df['Cost']/10     /  df['find_showroom_sessions']           * 100).round(0)
+        df['add_to_cart_CPA']            = (df['Cost']/10     /  df['add_to_cart_sessions']             * 100).round(0)
+        df['sign_up_CPA']                = (df['Cost']/10     /  df['sign_up_sessions']                 * 100).round(0)
+        df['showroom_10s_CPA']           = (df['Cost']/10     /  df['showroom_10s_sessions']            * 100).round(0)
+        df['showroom_leads_CPA']         = (df['Cost']/10     /  df['showroom_leads_sessions']          * 100).round(0)
+        
+        # 컬럼 순서 지정
+        if select_option == 1: # min
+            df = df[["날짜",
+                    "채널명",
+                    "Cost",
+                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
+                    "session_count","avg_session_duration_sec",
+                    "view_item_list_sessions",
+                    "view_item_sessions",
+                    "scroll_50_sessions",
+                    "product_option_price_sessions",
+                    "find_showroom_sessions",
+                    "add_to_cart_sessions",
+                    "sign_up_sessions",
+                    "showroom_10s_sessions",
+                    "showroom_leads_sessions"
+                    ]]
+        elif select_option == 2: # CVR
+            df = df[["날짜",
+                    "채널명",
+                    "Cost",
+                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
+                    "session_count","avg_session_duration_sec",
+                    "view_item_list_sessions","view_item_list_CVR",
+                    "view_item_sessions","view_item_CVR",
+                    "scroll_50_sessions","scroll_50_CVR",
+                    "product_option_price_sessions","product_option_price_CVR",
+                    "find_showroom_sessions","find_nearby_showroom_CVR",
+                    "add_to_cart_sessions","add_to_cart_CVR",
+                    "sign_up_sessions","sign_up_CVR",
+                    "showroom_10s_sessions","showroom_10s_CVR",
+                    "showroom_leads_sessions","showroom_leads_CVR"
+                    ]]
+        elif select_option == 3: # CPA
+            df = df[["날짜",
+                    "채널명",
+                    "Cost",
+                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
+                    "session_count","avg_session_duration_sec",
+                    "view_item_list_sessions","view_item_list_CPA",
+                    "view_item_sessions","view_item_CPA",
+                    "scroll_50_sessions","scroll_50_CPA",
+                    "product_option_price_sessions","product_option_price_CPA",
+                    "find_showroom_sessions","find_nearby_showroom_CPA",
+                    "add_to_cart_sessions","add_to_cart_CPA",
+                    "sign_up_sessions","sign_up_CPA",
+                    "showroom_10s_sessions","showroom_10s_CPA",
+                    "showroom_leads_sessions","showroom_leads_CPA"
+                    ]]
+        elif select_option == 4: # max
+            df = df[["날짜",
+                    "채널명",
+                    "Cost",
+                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
+                    "session_count","avg_session_duration_sec",
+                    "view_item_list_sessions","view_item_list_CVR", "view_item_list_CPA",
+                    "view_item_sessions","view_item_CVR","view_item_CPA",
+                    "scroll_50_sessions","scroll_50_CVR","scroll_50_CPA",
+                    "product_option_price_sessions","product_option_price_CVR","product_option_price_CPA",
+                    "find_showroom_sessions","find_nearby_showroom_CVR","find_nearby_showroom_CPA",
+                    "add_to_cart_sessions","add_to_cart_CVR","add_to_cart_CPA",
+                    "sign_up_sessions","sign_up_CVR","sign_up_CPA",
+                    "showroom_10s_sessions","showroom_10s_CVR","showroom_10s_CPA",
+                    "showroom_leads_sessions","showroom_leads_CVR","showroom_leads_CPA"
+                    ]]
 
-        # 자료형 워싱 2
-        num_cols = df2.select_dtypes(include=["number"]).columns
-        if len(num_cols) > 0:
-            df2[num_cols] = df2[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
+        # 자료형 워싱 (event_date 아님)
+        df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
+        num_cols = df.select_dtypes(include=['number']).columns
+        df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))    
+        
+        # 컬럼 이름 변경 - 멀티 인덱스
+        if select_option == 1: # min 
+            df.columns = pd.MultiIndex.from_tuples([
+                ("기본정보",      "날짜"),             # 
+                ("기본정보",      "채널명"),            # 
+                ("COST",         "일할비용"),          # 
+                ("ENGAGEMENT",   "조회수"),            # 
+                ("ENGAGEMENT",   "좋아요수"),          # 
+                ("ENGAGEMENT",   "댓글수"),            # 
+                ("ENGAGEMENT",   "브랜드언급량"),       # 
+                ("ENGAGEMENT",   "링크클릭수"),         # 
+                ("GA",    "유입 세션수"),       # session_count
+                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
+                ("PLP조회",    "Acutal"),          # view_item_list_sessions
+                ("PDP조회",    "Acutal"),          # view_item_sessions
+                ("PDPscr50",    "Acutal"),         # scroll_50_sessions
+                ("가격표시",    "Acutal"),          # product_option_price_sessions
+                ("쇼룸찾기",    "Acutal"),          # find_showroom_sessions
+                ("장바구니",    "Acutal"),          # add_to_cart_sessions
+                ("회원가입",    "Acutal"),          # sign_up_sessions
+                ("쇼룸10초",    "Acutal"),          # showroom_10s_sessions
+                ("쇼룸예약",    "Acutal"),          # showroom_leads_sessions
+            ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)   
+        elif select_option == 2: # CVR
+            df.columns = pd.MultiIndex.from_tuples([
+                ("기본정보",      "날짜"),             # 
+                ("기본정보",      "채널명"),            # 
+                ("COST",         "일할비용"),          # 
+                ("ENGAGEMENT",   "조회수"),            # 
+                ("ENGAGEMENT",   "좋아요수"),          # 
+                ("ENGAGEMENT",   "댓글수"),            # 
+                ("ENGAGEMENT",   "브랜드언급량"),       # 
+                ("ENGAGEMENT",   "링크클릭수"),         # 
+                ("GA",    "유입 세션수"),       # session_count
+                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
+                ("PLP조회",    "Acutal"),          # view_item_list_sessions
+                ("PLP조회",    "CVR"),     
+                ("PDP조회",    "Acutal"),          # view_item_sessions
+                ("PDP조회",    "CVR"),  
+                ("PDPscr50",    "Acutal"),         # scroll_50_sessions
+                ("PDPscr50",    "CVR"),    
+                ("가격표시",    "Acutal"),          # product_option_price_sessions
+                ("가격표시",    "CVR"),   
+                ("쇼룸찾기",    "Acutal"),          # find_showroom_sessions
+                ("쇼룸찾기",    "CVR"), 
+                ("장바구니",    "Acutal"),          # add_to_cart_sessions
+                ("장바구니",    "CVR"),
+                ("회원가입",    "Acutal"),          # sign_up_sessions
+                ("회원가입",    "CVR"),  
+                ("쇼룸10초",    "Acutal"),          # showroom_10s_sessions
+                ("쇼룸10초",    "CVR"),  
+                ("쇼룸예약",    "Acutal"),          # showroom_leads_sessions
+                ("쇼룸예약",    "CVR"),
+            ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)     
+        elif select_option == 3: # CPA
+            df.columns = pd.MultiIndex.from_tuples([
+                ("기본정보",      "날짜"),             # 
+                ("기본정보",      "채널명"),            # 
+                ("COST",         "일할비용"),          # 
+                ("ENGAGEMENT",   "조회수"),            # 
+                ("ENGAGEMENT",   "좋아요수"),          # 
+                ("ENGAGEMENT",   "댓글수"),            # 
+                ("ENGAGEMENT",   "브랜드언급량"),       # 
+                ("ENGAGEMENT",   "링크클릭수"),         # 
+                ("GA",    "유입 세션수"),       # session_count
+                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
+                ("PLP조회",    "Acutal"),          # view_item_list_sessions
+                ("PLP조회",    "CPA"),     
+                ("PDP조회",    "Acutal"),          # view_item_sessions
+                ("PDP조회",    "CPA"),     
+                ("PDPscr50",    "Acutal"),         # scroll_50_sessions
+                ("PDPscr50",    "CPA"),     
+                ("가격표시",    "Acutal"),          # product_option_price_sessions
+                ("가격표시",    "CPA"),    
+                ("쇼룸찾기",    "Acutal"),          # find_showroom_sessions
+                ("쇼룸찾기",    "CPA"), 
+                ("장바구니",    "Acutal"),          # add_to_cart_sessions
+                ("장바구니",    "CPA"), 
+                ("회원가입",    "Acutal"),          # sign_up_sessions
+                ("회원가입",    "CPA"),  
+                ("쇼룸10초",    "Acutal"),          # showroom_10s_sessions
+                ("쇼룸10초",    "CPA"),  
+                ("쇼룸예약",    "Acutal"),          # showroom_leads_sessions
+                ("쇼룸예약",    "CPA"), 
+            ], names=["그룹","지표"])  # 상단 레벨 이름(옵션) 
+        elif select_option == 4: # max
+            df.columns = pd.MultiIndex.from_tuples([
+                ("기본정보",      "날짜"),             # 
+                ("기본정보",      "채널명"),            # 
+                ("COST",         "일할비용"),          # 
+                ("ENGAGEMENT",   "조회수"),            # 
+                ("ENGAGEMENT",   "좋아요수"),          # 
+                ("ENGAGEMENT",   "댓글수"),            # 
+                ("ENGAGEMENT",   "브랜드언급량"),       # 
+                ("ENGAGEMENT",   "링크클릭수"),         # 
+                ("GA",    "유입 세션수"),       # session_count
+                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
+                ("PLP조회",    "Acutal"),          # view_item_list_sessions
+                ("PLP조회",    "CVR"),     
+                ("PLP조회",    "CPA"),     
+                ("PDP조회",    "Acutal"),          # view_item_sessions
+                ("PDP조회",    "CVR"),  
+                ("PDP조회",    "CPA"),     
+                ("PDPscr50",    "Acutal"),         # scroll_50_sessions
+                ("PDPscr50",    "CVR"),    
+                ("PDPscr50",    "CPA"),     
+                ("가격표시",    "Acutal"),          # product_option_price_sessions
+                ("가격표시",    "CVR"),   
+                ("가격표시",    "CPA"),    
+                ("쇼룸찾기",    "Acutal"),          # find_showroom_sessions
+                ("쇼룸찾기",    "CVR"), 
+                ("쇼룸찾기",    "CPA"), 
+                ("장바구니",    "Acutal"),          # add_to_cart_sessions
+                ("장바구니",    "CVR"),
+                ("장바구니",    "CPA"), 
+                ("회원가입",    "Acutal"),          # sign_up_sessions
+                ("회원가입",    "CVR"),  
+                ("회원가입",    "CPA"),  
+                ("쇼룸10초",    "Acutal"),          # showroom_10s_sessions
+                ("쇼룸10초",    "CVR"),  
+                ("쇼룸10초",    "CPA"),  
+                ("쇼룸예약",    "Acutal"),          # showroom_leads_sessions
+                ("쇼룸예약",    "CVR"),
+                ("쇼룸예약",    "CPA"), 
+            ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)
+        
+        return df
 
-        # 컬럼 순서
-        base_info = ["period", "event_date"]
-        pivot_extra = [c for c in pivot_cols if c not in base_info and c in df2.columns]
-
-        metric_cols = [
-            "cost_sum", "cost_gross_sum", "impressions_sum", "clicks_sum", "CPC", "CTR",
-            "session_count", "session_count_CPA",
-            "view_item_sum", "view_item_CPA",
-            "product_page_scroll_50_sum", "product_page_scroll_50_CPA",
-            "product_option_price_sum", "product_option_price_CPA",
-            "find_nearby_showroom_sum", "find_nearby_showroom_CPA",
-            "add_to_cart_sum", "add_to_cart_CPA",
-            "showroom_10s_sum", "showroom_10s_CPA",
-            "showroom_leads_sum", "showroom_leads_CPA",
-            "purchase_sum", "purchase_CPA",
-        ]
-
-        ordered_cols = [c for c in (base_info + pivot_extra + metric_cols) if c in df2.columns]
-        df2 = df2[ordered_cols]
-
-        # 멀티인덱스 컬럼 맵
-        metrics_map_dict = {
-            "cost_sum": ("MEDIA", "광고비"),
-            "cost_gross_sum": ("MEDIA", "광고비(G)"),
-            "impressions_sum": ("MEDIA", "노출수"),
-            "clicks_sum": ("MEDIA", "클릭수"),
-            "CPC": ("MEDIA", "CPC"),
-            "CTR": ("MEDIA", "CTR"),
-            "session_count": ("전체 세션수", "Actual"),
-            "session_count_CPA": ("전체 세션수", "CPA"),
-            "view_item_sum": ("PDP조회", "Actual"),
-            "view_item_CPA": ("PDP조회", "CPA"),
-            "product_page_scroll_50_sum": ("PDPscr50", "Actual"),
-            "product_page_scroll_50_CPA": ("PDPscr50", "CPA"),
-            "product_option_price_sum": ("가격표시", "Actual"),
-            "product_option_price_CPA": ("가격표시", "CPA"),
-            "find_nearby_showroom_sum": ("쇼룸찾기", "Actual"),
-            "find_nearby_showroom_CPA": ("쇼룸찾기", "CPA"),
-            "add_to_cart_sum": ("장바구니", "Actual"),
-            "add_to_cart_CPA": ("장바구니", "CPA"),
-            "showroom_10s_sum": ("쇼룸10초", "Actual"),
-            "showroom_10s_CPA": ("쇼룸10초", "CPA"),
-            "showroom_leads_sum": ("쇼룸예약", "Actual"),
-            "showroom_leads_CPA": ("쇼룸예약", "CPA"),
-            "purchase_sum": ("구매완료", "Actual"),
-            "purchase_CPA": ("구매완료", "CPA"),
-        }
-
-        multi_labels: list[tuple[str, str]] = []
-        for c in ordered_cols:
-            if c == "period":
-                multi_labels.append(("기본정보", "기간"))
-            elif c == "event_date":
-                multi_labels.append(("기본정보", "날짜"))
-            elif c in pivot_extra:
-                multi_labels.append(("기본정보", c))
-            else:
-                multi_labels.append(metrics_map_dict.get(c, ("기본정보", c)))
-
-        df2.columns = pd.MultiIndex.from_tuples(multi_labels, names=["그룹", "지표"])
-        return df2
-
-    def render_style_perf(target_df: pd.DataFrame, pivot_cols: list[str]) -> None:
-        styled = style_format(
-            render_decor_perf(target_df, pivot_cols),
+    def render_style_eng(target_df, select_option):
+        styled = ui.style_format(
+            decorate_df_eng(target_df, select_option=opt),
             decimals_map={
-                ("MEDIA", "광고비"): 0,
-                ("MEDIA", "광고비(G)"): 0,
-                ("MEDIA", "노출수"): 0,
-                ("MEDIA", "클릭수"): 0,
-                ("MEDIA", "CPC"): 0,
-                ("MEDIA", "CTR"): 2,
-                ("전체 세션수", "Actual"): 0,
-                ("전체 세션수", "CPA"): 0,
-                ("PDP조회", "Actual"): 0,
-                ("PDP조회", "CPA"): 0,
-                ("PDPscr50", "Actual"): 0,
-                ("PDPscr50", "CPA"): 0,
-                ("가격표시", "Actual"): 0,
-                ("가격표시", "CPA"): 0,
-                ("쇼룸찾기", "Actual"): 0,
-                ("쇼룸찾기", "CPA"): 0,
-                ("장바구니", "Actual"): 0,
-                ("장바구니", "CPA"): 0,
-                ("쇼룸10초", "Actual"): 0,
-                ("쇼룸10초", "CPA"): 0,
-                ("쇼룸예약", "Actual"): 0,
-                ("쇼룸예약", "CPA"): 0,
-                ("구매완료", "Actual"): 0,
-                ("구매완료", "CPA"): 0,
+                ("COST",         "일할비용"):0,          # 
+                ("ENGAGEMENT",   "조회수"):0,            # 
+                ("ENGAGEMENT",   "좋아요수"):0,          # 
+                ("ENGAGEMENT",   "댓글수"):0,            # 
+                ("ENGAGEMENT",   "브랜드언급량"):0,       # 
+                ("ENGAGEMENT",   "링크클릭수"):0,         # 
+                ("GA",    "유입 세션수"):0,       # session_count
+                ("GA",    "평균체류시간(초)"):0,   # avg_session_duration_sec
+                ("PLP조회",    "Acutal"):0,          # view_item_list_sessions
+                ("PLP조회",    "CVR"):1,     
+                ("PLP조회",    "CPA"):0,     
+                ("PDP조회",    "Acutal"):0,          # view_item_sessions
+                ("PDP조회",    "CVR"):1,  
+                ("PDP조회",    "CPA"):0,     
+                ("PDPscr50",    "Acutal"):0,         # scroll_50_sessions
+                ("PDPscr50",    "CVR"):1,    
+                ("PDPscr50",    "CPA"):0,     
+                ("가격표시",    "Acutal"):0,          # product_option_price_sessions
+                ("가격표시",    "CVR"):1,   
+                ("가격표시",    "CPA"):0,    
+                ("쇼룸찾기",    "Acutal"):0,          # find_showroom_sessions
+                ("쇼룸찾기",    "CVR"):1, 
+                ("쇼룸찾기",    "CPA"):0, 
+                ("장바구니",    "Acutal"):0,          # add_to_cart_sessions
+                ("장바구니",    "CVR"):1,
+                ("장바구니",    "CPA"):0, 
+                ("회원가입",    "Acutal"):0,          # sign_up_sessions
+                ("회원가입",    "CVR"):1,  
+                ("회원가입",    "CPA"):0,  
+                ("쇼룸10초",    "Acutal"):0,          # showroom_10s_sessions
+                ("쇼룸10초",    "CVR"):1,  
+                ("쇼룸10초",    "CPA"):0,  
+                ("쇼룸예약",    "Acutal"):0,          # showroom_leads_sessions
+                ("쇼룸예약",    "CVR"):1,
+                ("쇼룸예약",    "CPA"):0, 
             },
             suffix_map={
-                ("MEDIA", "CTR"): " %",
-            },
+                ("PLP조회",    "CVR"):" %",     
+                ("PDP조회",    "CVR"):" %",  
+                ("PDPscr50",    "CVR"):" %",    
+                ("가격표시",    "CVR"):" %",   
+                ("쇼룸찾기",    "CVR"):" %", 
+                ("장바구니",    "CVR"):" %",
+                ("회원가입",    "CVR"):" %",  
+                ("쇼룸10초",    "CVR"):" %",  
+                ("쇼룸예약",    "CVR"):" %",
+        }
         )
 
-        styled2 = style_cmap(
-            styled,
-            gradient_rules=[
-                {"col": ("MEDIA", "노출수"), "cmap": "YlOrBr", "cmap_span": (0.0, 0.3)},
-                {"col": ("MEDIA", "클릭수"), "cmap": "YlOrBr", "cmap_span": (0.0, 0.3)},
-                {"col": ("전체 세션수", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
-                {"col": ("PDP조회", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
-                {"col": ("PDPscr50", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
-                {"col": ("가격표시", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
-                {"col": ("쇼룸찾기", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
-                {"col": ("장바구니", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
-                {"col": ("쇼룸10초", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
-                {"col": ("쇼룸예약", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
-                {"col": ("구매완료", "CPA"), "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)},
-            ],
-        )
-        st.dataframe(styled2, use_container_width=True, height=500, row_height=30, hide_index=True)
+        st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
 
-    # (26.02.10) 포함 필터에서 정규표현식 필터로 변경 
-    def apply_regex_filter(
-        df: pd.DataFrame,
-        df_cmp: pd.DataFrame | None,
-        column: str,
-        text_filter: bool = False,
-    ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
-        key = f"{column}_{'text' if text_filter else 'multi'}"
 
-        # ── 1) 정규식(텍스트) 필터 ─────────────────
-        if text_filter:
-            expr = st.text_input(
-                f"{HEADER_MAP.get(column, column)} 정규식 검색",
-                key=key
+    # ──────────────────────────────────
+    # 브랜드별 채널명 자동으로 수집. 하드코딩 제거 
+    # ──────────────────────────────────
+    channel_brand = (
+        PPL_LIST.loc[:, ['채널명', '브랜드', 'order']]
+        .dropna(subset=['채널명', '브랜드'])
+        .assign(order=lambda d: pd.to_numeric(d['order'], errors='coerce'))
+        # order가 비어있거나 숫자 변환 실패 시 맨 뒤로 가도록 아주 작은 값으로 대체
+        .assign(order=lambda d: d['order'].fillna(float('-inf')))
+        # 브랜드 내에서 order 내림차순 정렬
+        .sort_values(['브랜드', 'order'], ascending=[True, False])
+        # 중복 채널명/브랜드 조합 있으면 첫 행(=가장 큰 order)만 보존
+        .drop_duplicates(subset=['브랜드', '채널명'], keep='first')
+    )
+
+    CHANNELS_BY_BRAND = {
+        b: g['채널명'].tolist()
+        for b, g in channel_brand.groupby('브랜드', sort=False)
+    }
+    
+
+    # (25.09.18 하드코딩 제거) "채널별 쿼리 기여량"용
+    def decorate_df_ctb(df: pd.DataFrame, brand: str = 'sleeper') -> pd.DataFrame:
+        # 브랜드 라벨 정규화
+        brand_map = {'sleeper': '슬립퍼', 'nooer': '누어'}
+        brand_kor = brand_map.get(brand, brand)  # 이미 한글이면 그대로
+
+        # 채널 목록 자동 로드 (없으면 빈 리스트)
+        channels = CHANNELS_BY_BRAND.get(brand_kor, [])
+
+        # 필요한 기본 컬럼 채우기
+        base_required = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중']
+        # 채널·비중 동적 required
+        dyn_required = [c for ch in channels for c in (ch, f'{ch}_비중')]
+        for c in base_required + dyn_required:
+            if c not in df.columns:
+                df[c] = 0
+
+        # 숫자형 변환
+        num_cols = ['검색량', '기본 검색량', '기본 검색량_비중'] + \
+                [c for ch in channels for c in (ch, f'{ch}_비중')]
+        df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+
+        # 컬럼 순서 동적 구성
+        ordered = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중'] + \
+                [c for pair in [(ch, f'{ch}_비중') for ch in channels] for c in pair]
+        df = df[ordered]
+
+        # 날짜/무한대 처리
+        df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
+        num_cols2 = df.select_dtypes(include=['number']).columns
+        df[num_cols2] = df[num_cols2].replace([np.inf, -np.inf], np.nan).fillna(0)
+
+        # MultiIndex 헤더 구성
+        tuples = [
+            ("기본정보", "날짜"),
+            ("기본정보", "전체 검색량"),
+            ("기본 검색량", "검색량"),
+            ("기본 검색량", "비중(%)"),
+        ]
+        for ch in channels:
+            tuples += [(ch, "검색량"), (ch, "비중(%)")]
+
+        df.columns = pd.MultiIndex.from_tuples(tuples, names=["그룹", "지표"])
+        return df
+
+
+    # (25.09.18 하드코딩 제거) 
+    def render_style_ctb(target_df, brand):
+        # 먼저 데코레이션(여기서 MultiIndex 컬럼 완성됨)
+        decorated = decorate_df_ctb(target_df, brand)
+
+        # 채널 그룹명 동적 추출 (기본정보/기본 검색량 제외)
+        groups = list(decorated.columns.get_level_values(0).unique())
+        channel_groups = [g for g in groups if g not in ["기본정보", "기본 검색량"]]
+
+        # 동적 포맷 맵
+        decimals_map = {
+            ("기본정보", "전체 검색량"): 0,
+            ("기본 검색량", "비중(%)"): 1,
+        }
+        # 채널 비중은 모두 소수 1자리
+        for g in channel_groups:
+            decimals_map[(g, "비중(%)")] = 1
+
+        suffix_map = {
+            ("기본 검색량", "비중(%)"): " %",
+        }
+        for g in channel_groups:
+            suffix_map[(g, "비중(%)")] = " %"
+
+        styled = ui.style_format(decorated, decimals_map=decimals_map, suffix_map=suffix_map)
+        st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
+
+
+    def render_stacked_bar(
+        df, x, y, color,
+        fixed_label="기본 검색량",
+        fixed_color="#D5DAE5",  # 회색 고정, 회색 다신 등장 ㄴㄴ
+    ):
+        # 숫자형 보정
+        def _to_numeric(cols):
+            for c in cols:
+                df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
+        # 회색 제외 팔레트
+        palette = px.colors.qualitative.Plotly
+        color_map = {fixed_label: fixed_color}
+
+        # ← 여기만 변경: fixed_label을 항상 "마지막"으로 보냄
+        def _category_order(series_name):
+            cats = df[series_name].dropna().astype(str).unique().tolist()
+            if fixed_label in cats:
+                cats = [c for c in cats if c != fixed_label] + [fixed_label]
+            return cats
+
+        if isinstance(y, (list, tuple)):
+            _to_numeric(list(y))
+            if color is not None and color in df.columns:
+                long_df = df.melt(id_vars=[x, color], value_vars=list(y),
+                                var_name="__series__", value_name="__value__")
+                order = _category_order("__series__")
+                fig = px.bar(
+                    long_df, x=x, y="__value__", color="__series__", opacity=0.6,
+                    color_discrete_map=color_map,
+                    color_discrete_sequence=palette,
+                    category_orders={"__series__": order},
+                )
+            else:
+                fig = px.bar(df, x=x, y=list(y), opacity=0.6,
+                            color_discrete_sequence=palette)
+        else:
+            _to_numeric([y])
+            order = _category_order(color) if color else None
+            fig = px.bar(
+                df, x=x, y=y, color=color, opacity=0.6,
+                color_discrete_map=color_map,
+                color_discrete_sequence=palette,
+                category_orders=({color: order} if order else None),
             )
 
-            if expr:
-                s = df[column].astype(str)
-
-                if "&" in expr:
-                    terms = [t.strip() for t in expr.split("&") if t.strip()]
-                    mask = pd.Series(True, index=df.index)
-                    for t in terms:
-                        if t.startswith("!"):
-                            mask &= ~s.str.contains(t[1:], regex=True, na=False)
-                        else:
-                            mask &= s.str.contains(t, regex=True, na=False)
-
-                elif "|" in expr:
-                    terms = [t.strip() for t in expr.split("|") if t.strip()]
-                    mask = pd.Series(False, index=df.index)
-                    for t in terms:
-                        if t.startswith("!"):
-                            mask |= ~s.str.contains(t[1:], regex=True, na=False)
-                        else:
-                            mask |= s.str.contains(t, regex=True, na=False)
-
-                else:
-                    if expr.startswith("!"):
-                        mask = ~s.str.contains(expr[1:], regex=True, na=False)
-                    else:
-                        mask = s.str.contains(expr, regex=True, na=False)
-
-                df = df[mask]
-
-                if df_cmp is not None:
-                    s_cmp = df_cmp[column].astype(str)
-
-                    # df에서 만든 mask를 비교기간에도 "동일 조건"으로 적용
-                    if "&" in expr:
-                        terms = [t.strip() for t in expr.split("&") if t.strip()]
-                        mask_cmp = pd.Series(True, index=df_cmp.index)
-                        for t in terms:
-                            if t.startswith("!"):
-                                mask_cmp &= ~s_cmp.str.contains(t[1:], regex=True, na=False)
-                            else:
-                                mask_cmp &= s_cmp.str.contains(t, regex=True, na=False)
-
-                    elif "|" in expr:
-                        terms = [t.strip() for t in expr.split("|") if t.strip()]
-                        mask_cmp = pd.Series(False, index=df_cmp.index)
-                        for t in terms:
-                            if t.startswith("!"):
-                                mask_cmp |= ~s_cmp.str.contains(t[1:], regex=True, na=False)
-                            else:
-                                mask_cmp |= s_cmp.str.contains(t, regex=True, na=False)
-
-                    else:
-                        if expr.startswith("!"):
-                            mask_cmp = ~s_cmp.str.contains(expr[1:], regex=True, na=False)
-                        else:
-                            mask_cmp = s_cmp.str.contains(expr, regex=True, na=False)
-
-                    df_cmp = df_cmp[mask_cmp]
-
-            return df, df_cmp
-
-        # ── 2) 멀티셀렉트 필터(기존 apply_filter_pair 그대로) ─────────
-        opts = sorted(df_primary[column].dropna().unique())
-        sel = st.multiselect(f"{HEADER_MAP.get(column, column)} 필터", opts, key=key)
-        if sel:
-            df = df[df[column].isin(sel)]
-            if df_cmp is not None:
-                df_cmp = df_cmp[df_cmp[column].isin(sel)]
-        return df, df_cmp
+        fig.update_layout(barmode="relative")
+        fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+        fig.update_layout(
+            bargap=0.1, bargroupgap=0.2, height=400,
+            xaxis_title=None, yaxis_title=None,
+            legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
+        )
+        fig.update_xaxes(tickformat="%m월 %d일")
+        st.plotly_chart(fig, use_container_width=True)
 
 
-    # ──────────────────────────────────
-    # D) Header
-    # ──────────────────────────────────
-    st.subheader("퍼포먼스 대시보드")
+
+
+    # ────────────────────────────────────────────────────────────────
+    # 채널 목록 > 조금 컴팩트하게 수정
+    # ────────────────────────────────────────────────────────────────
+
+    # 카드 전용 CSS (컴팩트 스타일)
+    st.markdown("""
+    <style>
+    .ppl-grid { gap: 6px !important; }  /* st.columns gap=small 과 조화 */
+
+    .ppl-card {
+        border:1px solid #e6e6e6;
+        border-radius:8px;
+        padding:12px 14px;
+        margin-bottom:14px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        background:#fff;
+    }
+    .ppl-card .card-top {
+        display:flex; align-items:center; justify-content:space-between;
+        margin-bottom:1px;
+    }
+    .ppl-card .title {
+        font-size:0.9rem; font-weight:700; color:#222; margin:0; 
+        line-height:1.2;
+    }
+    .ppl-card .meta {
+        font-size:0.7rem; color:#666; margin-top:2px;
+    }
+    .ppl-card .row {
+        display:flex; justify-content:space-between; align-items:center;
+        margin-top:1px; font-size:0.8rem;
+    }
+    .ppl-card .total { color:#333; }
+    .ppl-card .total b { font-weight:700; }
+
+    /* 브랜드 배지 */
+    .ppl-badge {
+        display:inline-block; padding:2px 8px; border-radius:999px;
+        font-size:0.7rem; line-height:1.6; font-weight:500; color:#fff;
+        white-space:nowrap;
+    }
+    .badge-slp { background:#FF4B4B; } /* 슬립퍼 */
+    .badge-nor { background:#5562EA; } /* 누어 */
+
+    /* 링크 */
+    .ppl-link a { text-decoration:none; font-size:0.8rem; }
+    .ppl-link a:hover { text-decoration:underline; }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+
+    # (25.11.10) 제목 + 설명 + 업데이트 시각 + 캐시초기화 
+    # last_updated_time
+    # 제목
+    st.subheader("언드·PPL 대시보드 (수정중)")
+
 
     if "refresh" in st.query_params:
         st.cache_data.clear()
-        st.query_params.clear()
+        st.query_params.clear()   # 파라미터 제거
         st.rerun()
-
+        
+    # 설명
     col1, col2 = st.columns([0.65, 0.35], vertical_alignment="center")
     with col1:
         st.markdown(
             """
-            <div style="font-size:14px;line-height:1.5;">
-            <b>광고 매체 데이터</b>와 <b>GA 행동 데이터</b>를 통합하여,
-            <b>퍼포먼스 마케팅 성과</b>를 분석 가능한 대시보드입니다.<br>
+            <div style="  
+                font-size:14px;       
+                line-height:1.5;      
+            ">
+            <b>PPL 채널별 성과</b>와, 
+            랜딩 이후의 <b>사용자 행동</b>을 살펴볼 수 있으며, 
+            전체 검색량 대비 <b>채널별 쿼리 기여량</b>을 파악할 수 있습니다.
             </div>
-            <div style="color:#6c757d;font-size:14px;line-height:2.0;">
-            ※ 매체-GA 통합 D-1 데이터는 매일 15시 ~ 16시 사이에 업데이트됩니다.
+            <div style="
+                color:#6c757d;        
+                font-size:14px;       
+                line-height:2.0;      
+            ">
+            ※ 키워드·쿼리 D-1 데이터는 매일 10시 ~ 11시 사이에 업데이트됩니다.
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
-
+        
     with col2:
+        # last_updated_time
+        
+        # -> last_updated_time__query
+        if isinstance(last_updated_time__query, str):
+            lut_q = datetime.strptime(last_updated_time__query, "%Y-%m-%d")
+        else:
+            lut_q = last_updated_time__query
+        lut_q_date = lut_q.date()
+        
+        # -> last_updated_time__GA
+        if isinstance(last_updated_time__GA, str):
+            lut_g = datetime.strptime(last_updated_time__GA, "%Y-%m-%d")
+        else:
+            lut_g = last_updated_time__GA
+        lut_g_date = lut_g.date()
+        
+        now_kst   = datetime.now(ZoneInfo("Asia/Seoul"))
+        today_kst = now_kst.date()
+        
+        delta_days_q = (today_kst - lut_q_date).days
+        delta_days_g = (today_kst - lut_g_date).days
+        
+        # 기본값
+        msg_q    = f"D-{delta_days_q} 업데이트 완료"
+        sub_bg_q = "#E6F4EC"
+        sub_bd_q = "#91C7A5"
+        sub_fg_q = "#237A57"
+        
+        msg_g   = f"D-{delta_days_g} 업데이트 완료"
+        sub_bg_g = "#fff7ed"
+        sub_bd_g = "#fdba74"
+        sub_fg_g = "#c2410c"
+        
+        # 렌더링
         st.markdown(
             f"""
             <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
+            <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 10px;
+                font-size:13px;line-height:1.1;
+                color:{sub_fg_g};background:{sub_bg_g};border:1px solid {sub_bd_g};
+                border-radius:10px;white-space:nowrap;">
+                📢 {msg_g}
+            </span>
+            <span style="
+                display:inline-flex;align-items:center;justify-content:center;
+                height:26px;padding:0 10px;
+                font-size:13px;line-height:1.1;
+                color:{sub_fg_q};background:{sub_bg_q};border:1px solid {sub_bd_q};
+                border-radius:10px;white-space:nowrap;">
+                📊 {msg_q}
+            </span>
             <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
                 <span style="
                 display:inline-flex;align-items:center;justify-content:center;
@@ -506,560 +723,950 @@ def main():
             </a>
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
-
     st.divider()
 
-
     # ──────────────────────────────────
-    # 1) QUICK INSIGHT
+    # 1) 채널 목록
     # ──────────────────────────────────
     st.markdown(" ")
-    st.markdown("<h5 style='margin:0'>QUICK INSIGHT</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ기간 전체 성과를 요약하고, CPA 기준의 효율/비효율 캠페인을 빠르게 확인합니다.", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>채널 목록</h5>", unsafe_allow_html=True)  
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 채널에 대한 집행 정보입니다. <span style='color:#8E9097;'>(최신 6개 정렬)</span> ", unsafe_allow_html=True)
 
-    st.markdown(
+    # 원본 DF 정렬
+    df = PPL_LIST.copy()
+    df = df.sort_values(by="order", ascending=False)
+
+    # 브랜드별 분리
+    df_slp = df[df["브랜드"] == "슬립퍼"].copy()
+    df_nor = df[df["브랜드"] == "누어"].copy()
+
+
+    # _render_card_grid
+    def _render_card_grid(
+        df_src: pd.DataFrame,
+        cols_per_row: int = 6,
+        key: str = "all",
+        initial: int = 6,
+        step: int = 12
+    ):
+        """브랜드 배지 포함 카드 그리드 + 더보기/접기"""
+        if df_src is None or len(df_src) == 0:
+            st.info("표시할 채널이 없습니다.")
+            return
+
+        # 탭/그룹별 노출 개수 상태
+        state_key = f"ppl_view_{key}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = initial
+
+        view_n = st.session_state[state_key]
+        total = len(df_src)
+        df_view = df_src.iloc[:view_n]
+
+        # 카드 렌더 (기존 로직 재사용)
+        rows = math.ceil(len(df_view) / cols_per_row)
+        for i in range(rows):
+            cols = st.columns(cols_per_row, gap="small")
+            for j, col in enumerate(cols):
+                idx = i * cols_per_row + j
+                if idx >= len(df_view): break
+                row = df_view.iloc[idx]
+
+                brand = str(row.get("브랜드", "")).strip()
+                badge_class = "badge-slp" if brand == "슬립퍼" else ("badge-nor" if brand == "누어" else "badge-slp")
+
+                amount_raw = row.get("금액")
+                money = "-"
+                if pd.notna(amount_raw):
+                    try:
+                        money = f"{int(float(amount_raw)):,}원"
+                    except Exception:
+                        money = str(amount_raw)
+
+                url = row.get("컨텐츠 URL")
+                link_html = f"🔗 <a href='{url}' target='_blank'>컨텐츠 보기</a>" if url else "🔗 링크 없음"
+
+                upload_date = row.get("업로드 날짜")
+                upload_date_str = str(upload_date) if pd.notna(upload_date) else ""
+
+                with col:
+                    st.markdown(
+                        f"""
+                        <div class="ppl-card">
+                        <div class="card-top">
+                            <h4 class="title">{row.get('채널명','')}</h4>
+                            <span class="ppl-badge {badge_class}">{brand if brand else '브랜드'}</span>
+                        </div>
+                        <div class="meta">{upload_date_str}</div>
+                        <div class="row">
+                            <div class="total">Total <b>{money}</b></div>
+                            <div class="ppl-link">{link_html}</div>
+                        </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+        # --- 더보기 / 접기 컨트롤 (간소화 & 잔여 버튼 제거) ---
+        if total > view_n:
+            if st.button(f"더보기  ({view_n}/{total})", key=f"more_{key}", use_container_width=True):
+                st.session_state[state_key] = min(total, view_n + step)
+                st.rerun()
+        elif total > initial:
+            if st.button("접기", key=f"less_{key}", use_container_width=True):
+                st.session_state[state_key] = initial
+                st.rerun()
+
+    tab1, tab2, tab3 = st.tabs(["전체", "슬립퍼", "누어"])
+    with tab1:
+        _render_card_grid(df,     cols_per_row=6, key="all")   # 전체
+    with tab2:
+        _render_card_grid(df_slp, cols_per_row=6, key="slp")   # 슬립퍼
+    with tab3:
+        _render_card_grid(df_nor, cols_per_row=6, key="nor")   # 누어
+
+
+
+
+    # ────────────────────────────────────────────────────────────────
+    # (25.10.10 추가) 캠페인 효과(초반 피크+감소 일치도)
+    # ────────────────────────────────────────────────────────────────
+    def render_campaign_effect(df_merged_t: pd.DataFrame, ch: str, L: int = 5):
         """
-        <style>
-        .kpi-card{
-            background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;
-        }
-        .kpi-title{font-size:15px;color:#64748b;margin:0 0 8px}
-        .kpi-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-        .kpi-value{font-size:25px;font-weight:500;line-height:1.05;margin:0;white-space:nowrap}
-        .kpi-delta{font-size:12px;margin:0;white-space:nowrap}
+        단일 함수 버전
+        - df_merged_t: ['날짜','채널명','Cost','조회수','좋아요수','댓글수','브랜드언급량','링크 클릭수'] 포함
+        - ch: 탭에서 넘겨주는 채널명 (자동 선택)
+        - L : 평가 일수(3~7 권장). 데이터가 부족하면 가능한 길이로 자동 조정
+        - T0는 자동: '조회수>0'인 첫 날짜 (없으면 해당 채널의 첫 날짜)
+        """
+        import numpy as np
+        import pandas as pd
+        import plotly.graph_objects as go
+        from datetime import timedelta
 
-        /* selectbox 간격(전역) */
-        div[data-testid="stSelectbox"]>div{margin-top:-10px}
+        # ──────────────────────────────────
+        # 내부 헬퍼들 (함수 외부 정의 X)
+        # ──────────────────────────────────
+        def _as_daily(df: pd.DataFrame) -> pd.DataFrame:
+            d = df.copy()
+            d["날짜"] = pd.to_datetime(d["날짜"], errors="coerce")
+            d = d.dropna(subset=["날짜"]).sort_values("날짜").set_index("날짜").asfreq("D")
+            return d
 
-        /* QUICK INSIGHT 이벤트 카드 컨테이너(카드 테두리/배경) */
-        .st-key-ins_kpi_card_evt{
-            background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;
-        }
-        .st-key-ins_kpi_card_evt div[data-testid="stSelectbox"]{margin-bottom:-10px}
-        .st-key-ins_kpi_card_evt div[data-testid="stSelectbox"]>div{margin-top:-6px}
-        .st-key-ins_kpi_card_evt .kpi-value{margin-bottom:10px}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+        def _inc_from_cum(s: pd.Series) -> pd.Series:
+            # 누적 → 증가분, 음수 방지
+            return s.diff().clip(lower=0).fillna(0)
 
-    evt_opts__ins = [
-        ("PDP조회", "view_item"),
-        ("PDPscr50", "product_page_scroll_50"),
-        ("가격표시", "product_option_price"),
-        ("쇼룸찾기", "find_nearby_showroom"),
-        ("장바구니", "add_to_cart"),
-        ("쇼룸10초", "showroom_10s"),
-        ("쇼룸예약", "showroom_leads"),
-        ("구매완료", "purchase"),
-    ]
-    evt_map__ins = dict(evt_opts__ins)
-    evt_labels__ins = [x[0] for x in evt_opts__ins]
+        def _front_loading_index(y: np.ndarray, k: int = 2, n_perm: int = 5000, seed: int = 42) -> dict:
+            """
+            FLI = (앞 k일 합) / (전체 합). 퍼뮤테이션 p-value(우측꼬리).
+            y: 길이 L(3~7)의 비음 아닌 일일 값
+            """
+            y = np.array(y, dtype=float)
+            y[y < 0] = 0.0
+            L = len(y)
+            if L < max(3, k + 1) or y.sum() <= 0:
+                return {"fli": np.nan, "p": np.nan, "k": k, "L": L}
 
-    def _safe_div(a, b):
-        return 0.0 if b == 0 else (a / b)
+            fli_obs = float(y[:k].sum() / y.sum())
 
-    def _summary(df_in: pd.DataFrame, evt_raw: str) -> dict:
-        cost_g = float(df_in["cost_gross"].sum())
-        imp = float(df_in["impressions"].sum()) if "impressions" in df_in.columns else 0.0
-        clk = float(df_in["clicks"].sum()) if "clicks" in df_in.columns else 0.0
-        ses = float(df_in["session_start"].sum())
-        evt = float(df_in[evt_raw].sum()) if evt_raw in df_in.columns else 0.0
-        return dict(
-            cost_g=cost_g,
-            clk=clk,
-            ses=ses,
-            ctr=_safe_div(clk, imp) * 100,
-            cpc=_safe_div(cost_g, clk),
-            evt=evt,
-            cpa=_safe_div(cost_g, evt),
-        )
+            rng = np.random.default_rng(seed)
+            null = []
+            for _ in range(n_perm):
+                yb = y.copy()
+                rng.shuffle(yb)
+                fli_b = float(yb[:k].sum() / yb.sum())
+                null.append(fli_b)
+            null = np.array(null)
 
-    def _fmt_delta2(cur, prev, good_if_down=False, decimals=1):
-        if prev == 0:
-            return "", "#64748b"
-        d = (cur - prev) / prev * 100
-        col = "#16a34a" if ((d <= 0) if good_if_down else (d >= 0)) else "#ef4444"
-        return f"{d:+.{decimals}f}%", col
+            # 우측꼬리 (초반 집중이 클수록 큼)
+            p = float((np.sum(null >= fli_obs) + 1) / (n_perm + 1))
+            return {"fli": fli_obs, "p": p, "k": k, "L": L}
 
-    # ✅ 이벤트 선택값(카드 내부 selectbox) 초기값
-    sel_evt_label__ins = st.session_state.get("ins_evt_in_card", evt_labels__ins[0])
-    if sel_evt_label__ins not in evt_map__ins:
-        sel_evt_label__ins = evt_labels__ins[0]
-    sel_evt_raw__ins = evt_map__ins[sel_evt_label__ins]
+        def _exp_decay_fit(y: np.ndarray) -> dict:
+            """
+            y ≈ A * exp(-λ t) (t=1..L) 지수감쇠 OLS 적합 (로그선형화).
+            반환: lambda(감쇠율, +면 감소), R2 (0~1), A
+            """
+            y = np.array(y, dtype=float)
+            y[y < 0] = 0.0
+            L = len(y)
+            if L < 3 or np.all(y <= 0):
+                return {"lam": np.nan, "R2": np.nan, "A": np.nan}
 
-    cur = _summary(df_filtered, sel_evt_raw__ins)
-    prev = _summary(df_filtered_cmp, sel_evt_raw__ins) if (use_compare and df_filtered_cmp is not None) else None
+            t = np.arange(1, L + 1, dtype=float)
+            # 0 값 방지 위해 작은 epsilon 추가
+            eps = max(1e-9, 1e-6 * (y.max() if y.max() > 0 else 1.0))
+            ly = np.log(y + eps)
 
-    # 0-1) KPI 6개
-    q1, q2, q3, q4, q5, q6 = st.columns(6, vertical_alignment="top")
+            # 선형회귀 ly = c - λ t
+            X = np.column_stack([np.ones_like(t), -t])
+            beta, *_ = np.linalg.lstsq(X, ly, rcond=None)
+            c, lam = beta[0], beta[1]  # lam >= 0 이면 감소 경향
 
-    with q1:
-        t, c = _fmt_delta2(cur["cost_g"], prev["cost_g"], False, 1) if prev else ("", "#64748b")
-        st.markdown(f"""
-            <div class="kpi-card">
-            <div class="kpi-title">광고비(G)</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cur["cost_g"]:,.0f}</div>
-                <div class="kpi-delta" style="color:{c};">{t}</div>
-            </div></div>
-        """, unsafe_allow_html=True)
+            ly_hat = X @ beta
+            ss_res = float(np.sum((ly - ly_hat) ** 2))
+            ss_tot = float(np.sum((ly - ly.mean()) ** 2))
+            R2 = 0.0 if ss_tot <= 0 else max(0.0, min(1.0, 1.0 - ss_res / ss_tot))
+            A = float(np.exp(c))
+            return {"lam": float(lam), "R2": float(R2), "A": A}
 
-    with q2:
-        t, c = _fmt_delta2(cur["ses"], prev["ses"], False, 1) if prev else ("", "#64748b")
-        st.markdown(f"""
-            <div class="kpi-card">
-            <div class="kpi-title">세션</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cur["ses"]:,.0f}</div>
-                <div class="kpi-delta" style="color:{c};">{t}</div>
-            </div></div>
-        """, unsafe_allow_html=True)
+        def _peak_day(y: np.ndarray) -> str:
+            if (y is None) or (len(y) == 0) or np.all(~np.isfinite(y)):
+                return "N/A"
+            i = int(np.nanargmax(y))  # 0-based
+            return f"D{i+1}"
 
-    with q3:
-        t, c = _fmt_delta2(cur["clk"], prev["clk"], False, 1) if prev else ("", "#64748b")
-        st.markdown(f"""
-            <div class="kpi-card">
-            <div class="kpi-title">클릭수</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cur["clk"]:,.0f}</div>
-                <div class="kpi-delta" style="color:{c};">{t}</div>
-            </div></div>
-        """, unsafe_allow_html=True)
+        # 1) 채널 필터 & T0 자동 설정
+        cols_need = ["날짜", "채널명", "조회수", "브랜드언급량", "링크 클릭수"]
+        dfc = df_merged_t.loc[df_merged_t["채널명"] == ch, cols_need].copy()
+        if dfc.empty:
+            st.info("표시할 채널 데이터가 없습니다.")
+            return
 
-    with q4:
-        t, c = _fmt_delta2(cur["ctr"], prev["ctr"], False, 2) if prev else ("", "#64748b")
-        st.markdown(f"""
-            <div class="kpi-card">
-            <div class="kpi-title">CTR</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cur["ctr"]:,.2f}%</div>
-                <div class="kpi-delta" style="color:{c};">{t}</div>
-            </div></div>
-        """, unsafe_allow_html=True)
+        dfc["날짜"] = pd.to_datetime(dfc["날짜"], errors="coerce")
+        dfc = dfc.dropna(subset=["날짜"]).sort_values("날짜")
 
-    # ✅ 5) 이벤트 카드: "컨테이너(카드) + 내부 selectbox" (딥 인사이트 3번째 카드와 동일 구조)
-    with q5:
-        with st.container(key="ins_kpi_card_evt"):
-            sel_evt_label__ins = st.selectbox(
-                "",
-                evt_labels__ins,
-                index=evt_labels__ins.index(sel_evt_label__ins),
-                key="ins_evt_in_card",
-                label_visibility="collapsed",
-            )
-            sel_evt_raw__ins = evt_map__ins[sel_evt_label__ins]
-            cur = _summary(df_filtered, sel_evt_raw__ins)
-            prev = _summary(df_filtered_cmp, sel_evt_raw__ins) if (use_compare and df_filtered_cmp is not None) else None
-            t, c = _fmt_delta2(cur["evt"], prev["evt"], False, 1) if prev else ("", "#64748b")
+        # T0 자동: 조회수>0인 첫 날짜 (없으면 해당 채널의 첫 날짜)
+        nonzero_dates = dfc.loc[(dfc["조회수"].astype(float) > 0), "날짜"]
+        if len(nonzero_dates):
+            T0 = pd.to_datetime(nonzero_dates.iloc[0])
+        else:
+            T0 = pd.to_datetime(dfc["날짜"].iloc[0])
 
-            st.markdown(
-                f"""
-                <div class="kpi-row" style="margin-top:-2px;">
-                    <div class="kpi-value">{cur["evt"]:,.0f}</div>
-                    <div class="kpi-delta" style="color:{c};">{t}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        # 일단위로 정규화
+        d = _as_daily(dfc)
 
-    with q6:
-        t, c = _fmt_delta2(cur["cpa"], prev["cpa"], True, 1) if prev else ("", "#64748b")
-        st.markdown(f"""
-            <div class="kpi-card">
-            <div class="kpi-title">CPA</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cur["cpa"]:,.0f}</div>
-                <div class="kpi-delta" style="color:{c};">{t}</div>
-            </div></div>
-        """, unsafe_allow_html=True)
+        # 2) 누적→증가분 변환
+        d["views_inc"]    = _inc_from_cum(d["조회수"])
+        d["mentions_inc"] = _inc_from_cum(d["브랜드언급량"])
+        d["clicks"]       = d["링크 클릭수"].fillna(0).astype(float)
 
-    st.markdown(" ")
+        # 평가 창 실제 길이 보정
+        t_end = T0 + timedelta(days=max(0, L - 1))
+        t_end = min(t_end, d.index.max())
+        win = d.loc[T0:t_end, ["views_inc", "mentions_inc", "clicks"]].fillna(0)
+        L_eff = len(win)
+        if L_eff < 3:
+            st.warning("평가 구간 데이터가 3일 미만입니다.")
+            return
 
-    # (Quick Insight - TOP/비효율 TOP) ✅ 광고비(G) 1원 이상만 대상으로 소팅
-    topk = 10
-    need_cols = ["media_name", "campaign_name", "cost_gross", sel_evt_raw__ins]
-    if all(c in df_filtered.columns for c in need_cols):
-        g = (
-            df_filtered
-            .groupby(["media_name", "campaign_name"], dropna=False, as_index=False)
-            .agg(cost_gross_sum=("cost_gross", "sum"), evt_sum=(sel_evt_raw__ins, "sum"))
-        )
+        # 3) FLI + 지수감쇠 보조지표
+        v = win["views_inc"].values
+        m = win["mentions_inc"].values
+        c = win["clicks"].values
 
-        # ✅ 광고비 1원 이상 + 이벤트 1 이상만 남기고 소팅
-        g = g[(g["cost_gross_sum"] >= 1) & (g["evt_sum"] > 0)]
+        # --- (NEW) FLI(2일, 3일) → 평균 FLI, p-value는 보수적으로 min 사용
+        def _fli_23(y: np.ndarray) -> dict:
+            r2 = _front_loading_index(y, k=2, n_perm=5000)
+            r3 = _front_loading_index(y, k=3, n_perm=5000) if len(y) >= 3 else {"fli": np.nan, "p": np.nan}
+            fli_mean = float(np.nanmean([r2["fli"], r3["fli"]])) if not (np.isnan(r2["fli"]) and np.isnan(r3["fli"])) else np.nan
+            p_comb  = float(np.nanmin([r2["p"], r3["p"]]))      if not (np.isnan(r2["p"])  and np.isnan(r3["p"]))  else np.nan
+            return {"fli": fli_mean, "p": p_comb}
 
-        g["CPA"] = (g["cost_gross_sum"] / g["evt_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(0)
+        res_v = _fli_23(v)
+        res_m = _fli_23(m)
+        res_c = _fli_23(c)
 
-        def _top(df_in: pd.DataFrame, asc: bool) -> pd.DataFrame:
-            return (
-                df_in
-                .sort_values(["CPA", "evt_sum", "cost_gross_sum"], ascending=[asc, False, False])
-                .head(topk)
-                .rename(columns={
-                    "media_name": "매체",
-                    "campaign_name": "캠페인",
-                    "cost_gross_sum": "광고비(G)",
-                    "evt_sum": sel_evt_label__ins,
-                    "CPA": "CPA",
-                })
-            )
-
-        a, b = st.columns(2, vertical_alignment="top")
-        with a:
-            st.markdown(f"###### 🙂 Low CPA Top {topk}")
-            
-            df_LCT = _top(g, True)
-            sty = style_format(df_LCT, decimals_map={"광고비(G)": 0, sel_evt_label__ins: 0, "CPA": 0})
-            sty = style_cmap(sty, gradient_rules=[{"col": "CPA", "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)}])
-            st.dataframe(sty, use_container_width=True, height=250, hide_index=True)
-                        
-        with b:
-            st.markdown(f"###### 🙁 High CPA Top {topk}")
-            
-            df_HCT = _top(g, False)
-            sty = style_format(df_HCT, decimals_map={"광고비(G)": 0, sel_evt_label__ins: 0, "CPA": 0})
-            sty = style_cmap(sty, gradient_rules=[{"col": "CPA", "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)}])
-            st.dataframe(sty, use_container_width=True, height=250, hide_index=True)            
+        fit_v = _exp_decay_fit(v)
+        fit_m = _exp_decay_fit(m)
+        fit_c = _exp_decay_fit(c)
 
 
-    # ──────────────────────────────────
-    # 2) DEEP INSIGHT
-    # ──────────────────────────────────
-    st.header(" ")
-    st.markdown("<h5 style='margin:0'>DEEP INSIGHT</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ캠페인·브랜드·품목별로 상세 데이터를 확인합니다. **행 필드**는 피벗 기준, **기본/고급 필터**는 조회 조건을 설정합니다.", unsafe_allow_html=True)
+
+        # 시각화 - 카드
+        def _fmt_res(res):
+            fli = res["fli"]; p = res["p"]
+            return (f"{fli:.2f}" if np.isfinite(fli) else "N/A",
+                    f"{p:.3f}"   if np.isfinite(p)   else "N/A")
+
+        f_v, p_v = _fmt_res(res_v); pk_v = _peak_day(v)
+        f_m, p_m = _fmt_res(res_m); pk_m = _peak_day(m)
+        f_c, p_c = _fmt_res(res_c); pk_c = _peak_day(c)
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            with st.container(border=True):
+                st.markdown("**조회수**")
+                col_a, col_b, col_c, col_d = st.columns(4, gap="small")
+                with col_a:
+                    st.metric("FLI", f_v, help="초반 2일이 전체에서 차지하는 비중. 높을수록 초반 효과가 큼")
+                with col_b:
+                    st.metric("Highest Peak", pk_v)
+                with col_c:
+                    st.metric("P-Value", p_v, help="퍼뮤테이션 결과 초반 집중이 우연일 가능성. 낮을수록 유의함")
+                with col_d:
+                    st.metric("감쇠 적합 R²", f"{fit_v['R2']:.2f}" if np.isfinite(fit_v['R2']) else "N/A", help="R²가 높을수록 전형적인 초반효과 패턴에 가까움")
+
+        with c2:
+            with st.container(border=True):
+                st.markdown("**브랜드언급량**")
+                col_a, col_b, col_c, col_d = st.columns(4, gap="small")
+                with col_a:
+                    st.metric("FLI", f_m)
+                with col_b:
+                    st.metric("Highest Peak", pk_m)
+                with col_c:
+                    st.metric("P-Value", p_m)
+                with col_d:
+                    st.metric("감쇠 적합 R²", f"{fit_m['R2']:.2f}" if np.isfinite(fit_m['R2']) else "N/A")
         
-    with st.popover("🤔 고급필터 정규식 사용 방법"):
+        with c3:
+            with st.container(border=True):
+                st.markdown("**링크클릭수**")
+                col_a, col_b, col_c, col_d = st.columns(4, gap="small")
+                with col_a:
+                    st.metric("FLI", f_c)
+                with col_b:
+                    st.metric("Highest Peak", pk_c)
+                with col_c:
+                    st.metric("P-Value", p_c)
+                with col_d:
+                    st.metric("감쇠 적합 R²", f"{fit_c['R2']:.2f}" if np.isfinite(fit_c['R2']) else "N/A")
+
+        # 시각화 - 차트
+        # plot_df = win.copy()
+        # for col in plot_df.columns:
+        #     mx = plot_df[col].max()
+        #     plot_df[col] = plot_df[col] / (mx if mx > 0 else 1.0)
+
+        # fig = go.Figure()
+        # fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df["views_inc"],    mode="lines+markers", name="조회수"))
+        # fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df["mentions_inc"], mode="lines+markers", name="브랜드언급량"))
+        # fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df["clicks"],       mode="lines+markers", name="링크클릭수"))
+
+        # # T0 수직선 + 라벨
+        # fig.add_vline(x=T0, line_dash="dash", opacity=0.6)
+        # fig.add_annotation(x=T0, y=1.05, text="T0 시작", showarrow=False, yref="paper")
+
+        # fig.update_layout(
+        #     title=f"[{ch}] 캠페인 초반-피크 일치도(정규화) · T0={T0.date()} · L={L_eff}일",
+        #     margin=dict(l=10, r=10, t=60, b=10),
+        #     legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
+        #     yaxis=dict(title="정규화(각 지표, max=1)"),
+        #     xaxis_title=None
+        # )
+        # st.plotly_chart(fig, use_container_width=True)
+
+        # 시각화 - 차트 (개선)
+        plot_df = win.copy()
+        for col in plot_df.columns:
+            mx = plot_df[col].max()
+            plot_df[col] = plot_df[col] / (mx if mx > 0 else 1.0)
+
+
+        fig = go.Figure()
+
+        # 부드러운 라인(spline) + 작은 마커
+        fig.add_trace(go.Scatter(
+            x=plot_df.index, y=plot_df["views_inc"],
+            mode="lines+markers", name="조회수",
+            line=dict(shape="spline", width=2),
+            marker=dict(size=6),
+            hovertemplate="날짜: %{x|%Y-%m-%d}<br>정규화 값: %{y:.2f}<extra></extra>"
+        ))
+        fig.add_trace(go.Scatter(
+            x=plot_df.index, y=plot_df["mentions_inc"],
+            mode="lines+markers", name="브랜드언급량",
+            line=dict(shape="spline", width=2),
+            marker=dict(size=6),
+            hovertemplate="날짜: %{x|%Y-%m-%d}<br>정규화 값: %{y:.2f}<extra></extra>"
+        ))
+        fig.add_trace(go.Scatter(
+            x=plot_df.index, y=plot_df["clicks"],
+            mode="lines+markers", name="링크클릭수",
+            line=dict(shape="spline", width=2),
+            marker=dict(size=6),
+            hovertemplate="날짜: %{x|%Y-%m-%d}<br>정규화 값: %{y:.2f}<extra></extra>"
+        ))
+
+        # T0 수직선
+        fig.add_vline(x=T0, line_dash="dot", line_width=1.5, opacity=0.6)
+
+        # 초반효과(2~3일) 구간 하이라이트: T0 ~ T0+(k-1)
+        k_highlight = min(3, L_eff)
+        early_end = T0 + timedelta(days=k_highlight - 1)
+        fig.add_vrect(
+            x0=T0, x1=early_end,
+            fillcolor="LightSalmon", opacity=0.15, line_width=0,
+            annotation_text="초반효과(2~3일)", annotation_position="top left"
+        )
+
+        # 레이아웃: 날짜 눈금, 유니파이드 툴팁, 여백, 눈금 포맷
+        fig.update_layout(
+            title=f"[{ch}] 캠페인 초반-피크 일치도(정규화) · T0={T0.date()} · L={L_eff}일",
+            margin=dict(l=10, r=10, t=60, b=10),
+            legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
+            yaxis=dict(title="정규화(각 지표, max=1)"),
+            xaxis_title=None,
+            hovermode="x unified"
+        )
+
+        # x축: 일 단위 눈금 + 보기 좋은 포맷(YYYY-MM-DD → MM-DD)
+        # (밀림 방지: ticklabelmode='instant', dtick=1day(ms), tick0=T0 자정)
+        fig.update_xaxes(
+            type="date",
+            ticklabelmode="instant",                 # ← period 제거
+            dtick=24*60*60*1000,                     # 1 day in milliseconds
+            tickformat="%m-%d",
+            tick0=pd.to_datetime(T0).normalize()     # 첫 눈금을 T0 자정에 맞춤(선택)
+        )
+
+        # y축: 살짝 여유 (0~1 범위에 padding)
+        fig.update_yaxes(range=[-0.05, 1.05])
+
+        st.plotly_chart(fig, use_container_width=True)
+
+
+
+
+    # ────────────────────────────────────────────────────────────────
+    # 채널별 인게이지먼트 및 액션
+    # ────────────────────────────────────────────────────────────────
+    st.subheader(" ")
+
+    st.markdown("<h5 style='margin:0'>채널별 인게이지먼트 및 액션</h5>", unsafe_allow_html=True)  
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ채널별 **반응 데이터**와 **사용자 액션 및 효율 데이터**를 확인할 수 있습니다.", unsafe_allow_html=True)
+    with st.popover("지표 설명"):
         st.markdown("""
-    - **단일 입력**  
-    입력한 단어/패턴을 **포함**하는 값을 찾습니다.  
-    예) `슬립퍼` : 슬립퍼 캠페인만 조회  
-    예) `low` : low 퍼널 캠페인만 조회  
+                    - **CVR** (Conversion Rate) : **전환율** (주문수 ÷ 세션수 × 100)  
+                    - **CPA** (Cost Per Action) : **행동당 비용** (광고비 ÷ 전환수)  
+                    """)
 
-    - **OR (`|`)**  
-    여러 패턴 중 **하나라도 포함**하면 매칭됩니다.  
-    예) `스테이블|시그니처` : 스테이블 또는 시그니처 포함
-
-    - **AND (`&`)**  
-    입력한 **모든 패턴이 포함**되어야 매칭됩니다.  
-    예) `low&시그니처` : low도 있고 시그니처도 있는 값
-
-    - **제외 (`!`)**  
-    `!패턴`은 해당 패턴을 **제외**합니다.  
-    예) `!누어` : 누어 포함된 값 제외  
-    예) `슬립퍼&!프로모션` : 슬립퍼 중 프로모션 제외  
-
-    - 여러 기호를 함께 사용하거나, 기본 정규표현식 문법도 사용 가능합니다.  
-    예) `^BSA` : BSA로 시작   
-    예) `MO$` : MO로 끝  
-    예) `슬립퍼&(허쉬|시그)` : 슬립퍼 허쉬 또는 슬립퍼 시그니처  
-    예) `누어&low&!매트리스` : 누어 low 중 매트리스만 제외  
-    """)
-
-
-    st.markdown(" ")
-
-    pivot_cols = st.multiselect(
-        "행 필드 선택 ㅤ(*기간별 합계 보기 선택시, 날짜는 자동으로 제외됩니다.)",
-        options=list(HEADER_MAP.keys()),
-        default=["event_date"],
-        format_func=lambda x: HEADER_MAP.get(x, x),
+    _df_merged = pd.merge(PPL_DATA, PPL_ACTION, on=['날짜', 'utm_camp', 'utm_content'], how='outer')
+    df_merged = pd.merge(_df_merged, PPL_LIST, on=['utm_camp', 'utm_content'], how='left')
+    df_merged_t = df_merged[[
+                            "날짜",
+                            "채널명",
+                            "Cost",
+                            "조회수",
+                            "좋아요수",
+                            "댓글수",
+                            "브랜드언급량",
+                            "링크 클릭수", 
+                            "session_count",
+                            "avg_session_duration_sec",
+                            "view_item_list_sessions",
+                            "view_item_sessions",
+                            "scroll_50_sessions",
+                            "product_option_price_sessions",
+                            "find_showroom_sessions",
+                            "add_to_cart_sessions",
+                            "sign_up_sessions",
+                            "showroom_10s_sessions",
+                            "showroom_leads_sessions",
+                            # "SearchVolume_contribution"
+                        ]]
+    
+    # 자료형 
+    numeric_cols = df_merged_t.columns.difference(["날짜", "채널명"])
+    df_merged_t[numeric_cols] = df_merged_t[numeric_cols].apply(lambda col: pd.to_numeric(col, errors="coerce").fillna(0))
+    df_merged_t[numeric_cols] = df_merged_t[numeric_cols].astype(int)
+    
+    
+    # 탭 라벨: 실제로 데이터가 있는 채널만, order 내림차순
+    order_map = (
+        PPL_LIST.loc[:, ["채널명","order"]]
+        .assign(order=lambda d: pd.to_numeric(d["order"], errors="coerce"))
+        .assign(order=lambda d: d["order"].fillna(float("-inf")))
+        .drop_duplicates(subset=["채널명"], keep="first")
+        .set_index("채널명")["order"]
+        .to_dict()
     )
 
-    # 기간별 합계 보기 모드라면 event_date 는 무시
-    if show_totals and "event_date" in pivot_cols:
-        pivot_cols.remove("event_date")
-
-    # 필터
-    with st.expander("기본 필터", expanded=False):
-        ft1, ft2, ft3, ft4, ft5, ft6 = st.columns(6)
-        with ft1:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "media_name", text_filter=False)
-        with ft2:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_source", text_filter=False)
-        with ft3:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_medium", text_filter=False)
-        with ft4:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "brand_type", text_filter=False)
-        with ft5:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "funnel_type", text_filter=False)
-        with ft6:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "product_type", text_filter=False)
-
-    with st.expander("고급 필터", expanded=False):
-        ft7, ft8, ft9, ft10 = st.columns([2, 1, 2, 1])
-        with ft7:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "campaign_name", text_filter=False)
-        with ft8:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "campaign_name", text_filter=True)
-        with ft9:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "adgroup_name", text_filter=False)
-        with ft10:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "adgroup_name", text_filter=True)
-
-        ft11, ft12, ft13, ft14 = st.columns([2, 1, 2, 1])
-        with ft11:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "ad_name", text_filter=False)
-        with ft12:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "ad_name", text_filter=True)
-        with ft13:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "keyword_name", text_filter=False)
-        with ft14:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "keyword_name", text_filter=True)
-
-        ft15, ft16, ft17, ft18 = st.columns([2, 1, 2, 1])
-        with ft15:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_content", text_filter=False)
-        with ft16:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_content", text_filter=True)
-        with ft17:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_term", text_filter=False)
-        with ft18:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_term", text_filter=True)
-
-
-    # ------------------------------
-    # ★ 영역
-    # ------------------------------
-    # 카드보드 (써머리)
-    st.markdown(
-        """
-        <style>
-        /* 카드 */
-        .kpi-card, .st-key-kpi_card_evt{
-            background:#f8fafc;
-            border:1px solid #e2e8f0;
-            border-radius:14px;
-            padding:14px 16px;
-        }
-
-        /* 텍스트 */
-        .kpi-title{font-size:15px;color:#64748b;margin:0 0 8px}
-        .kpi-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-        .kpi-value{font-size:25px;font-weight:500;line-height:1.05;margin:0;white-space:nowrap}
-        .kpi-delta{font-size:12px;margin:0;white-space:nowrap}
-
-        /* selectbox 간격 */
-        div[data-testid="stSelectbox"]>div{margin-top:-10px}
-        .st-key-kpi_card_evt div[data-testid="stSelectbox"]{margin-bottom:-10px}
-        .st-key-kpi_card_evt div[data-testid="stSelectbox"]>div{margin-top:-6px}
-
-        /* 3번째 카드 숫자 아래 */
-        .st-key-kpi_card_evt .kpi-value{margin-bottom:10px}
-        </style>
-        """,
-        unsafe_allow_html=True,
+    channels_present = (
+        df_merged_t["채널명"]
+        .dropna()
+        .drop_duplicates()
+        .tolist()
     )
 
+    tab_labels = sorted(
+        channels_present,
+        key=lambda ch: order_map.get(ch, float("-inf")),
+        reverse=True  # 큰 order 먼저
+    )
 
-    # 기준 이벤트(원본 df 컬럼)
-    evt_opts = [
-        ("PDP조회", "view_item"),
-        ("PDPscr50", "product_page_scroll_50"),
-        ("가격표시", "product_option_price"),
-        ("쇼룸찾기", "find_nearby_showroom"),
-        ("장바구니", "add_to_cart"),
-        ("쇼룸10초", "showroom_10s"),
-        ("쇼룸예약", "showroom_leads"),
-        ("구매완료", "purchase"),
-    ]
-    evt_label_to_raw = dict(evt_opts)
-
-    def _calc_kpi(df, evt_raw: str):
-        cost = float(df["cost_gross"].sum())
-        sessions = float(df["session_start"].sum())
-        clk = float(df["clicks"].sum()) if "clicks" in df.columns else 0.0
-        imp = float(df["impressions"].sum()) if "impressions" in df.columns else 0.0
-        ctr = (clk / imp * 100) if imp > 0 else 0.0
-
-        evt = float(df[evt_raw].sum()) if evt_raw in df.columns else 0.0
-        cpa = (cost / evt) if evt > 0 else 0.0
-        return cost, sessions, clk, ctr, evt, cpa
-
-    def _delta(cur, prev):
-        return None if prev == 0 else (cur - prev) / prev * 100
-
-    def _fmt_delta(d, good_if_down: bool = False):
-        if d is None or (isinstance(d, float) and np.isnan(d)):
-            return "", "#64748b"
-        col = "#16a34a" if ((d <= 0) if good_if_down else (d >= 0)) else "#ef4444"
-        return f"{d:+.1f}%", col
-
-    # 현재 선택값 유지
-    sel_evt_label = st.session_state.get("kpi_evt_in_card", evt_opts[0][0])
-    if sel_evt_label not in evt_label_to_raw:
-        sel_evt_label = evt_opts[0][0]
-
-    # 6개 카드 레이아웃
-    st.markdown("###### 📊 Summary ")
-    c1, c2, c3, c4, c5, c6 = st.columns(6, vertical_alignment="top")
-
-    # (selectbox와 무관한 공통 KPI)
-    cost, sessions, clk, ctr, evt, cpa = _calc_kpi(df_filtered, evt_label_to_raw[sel_evt_label])
-
-    if use_compare and df_filtered_cmp is not None:
-        cost_c, sessions_c, clk_c, ctr_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, evt_label_to_raw[sel_evt_label])
-
-        t_cost, col_cost = _fmt_delta(_delta(cost, cost_c), good_if_down=False)
-        t_ses,  col_ses  = _fmt_delta(_delta(sessions, sessions_c), good_if_down=False)
-        t_clk,  col_clk  = _fmt_delta(_delta(clk, clk_c), good_if_down=False)
-        t_ctr,  col_ctr  = _fmt_delta(_delta(ctr, ctr_c), good_if_down=False)
+    if not tab_labels:
+        st.info("표시할 채널 데이터가 없습니다.")
     else:
-        t_cost, col_cost = "", "#64748b"
-        t_ses,  col_ses  = "", "#64748b"
-        t_clk,  col_clk  = "", "#64748b"
-        t_ctr,  col_ctr  = "", "#64748b"
+        tabs = st.tabs(tab_labels)
+        for ch, t in zip(tab_labels, tabs):
+            with t:
+                # (25.10.10 로직 추가)
+                # render_campaign_effect(df_merged_t, ch=ch, L=10)
 
-    # 1) 광고비
-    with c1:
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-            <div class="kpi-title">광고비(G)</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cost:,.0f}</div>
-                <div class="kpi-delta" style="color:{col_cost};">{t_cost}</div>
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+                
+                # 기존
+                c1, c2, _ = st.columns([1,1,11])
+                add_cvr = c1.checkbox("CVR 추가", key=f"{ch}_cvr", value=False)
+                add_cpa = c2.checkbox("CPA 추가", key=f"{ch}_cpa", value=False)
+                if add_cvr and add_cpa: opt = 4
+                elif add_cvr:           opt = 2
+                elif add_cpa:           opt = 3
+                else:                   opt = 1
+
+                render_style_eng(
+                    df_merged_t[df_merged_t["채널명"] == ch].copy(),
+                    select_option=opt
+                )
+                
+
+
+
+
+    # ────────────────────────────────────────────────────────────────
+    # 채널별 쿼리 기여량
+    # ────────────────────────────────────────────────────────────────
+    query_sum_slp  = query_sum[query_sum["브랜드"] == "슬립퍼"].copy()
+    query_sum_nor  = query_sum[query_sum["브랜드"] == "누어"].copy()
+    
+    st.header(" ")
+    st.markdown("<h5 style='margin:0'>채널별 쿼리 기여량</h5>", unsafe_allow_html=True)  
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ'쿼리 기여량'은 전체 검색량 중에서 **각 PPL 채널이 유도했다고 판단되는 검색 수**를 의미합니다.", unsafe_allow_html=True)
+    
+    ppl_action2 = PPL_ACTION[['날짜', 'utm_content', 'SearchVolume_contribution']]   # 기여 쿼리량 { 날짜, utm_content, SearchVolume_contribution }
+    ppl_action3 = pd.merge(ppl_action2, PPL_LIST, on=['utm_content'], how='left')   # utm_content가 너무 복잡하니까 채널명으로 변경
+    ppl_action3 = ppl_action3[['날짜', '채널명', 'SearchVolume_contribution']]        # utm_content 안녕~
+    ppl_action3 = ppl_action3.pivot_table(index="날짜", columns="채널명", values="SearchVolume_contribution", aggfunc="sum").reset_index() # 멜팅
+    
+
+    tab1, tab2 = st.tabs(["슬립퍼", "누어"])
+
+        
+    with tab1:
+        # 동적 채널 목록
+        channels_slp = CHANNELS_BY_BRAND.get('슬립퍼', [])
+
+        # 슬립퍼 데이터 결합
+        df_QueryContribution = ppl_action3.merge(
+            query_sum_slp[['날짜','검색량']], on='날짜', how='outer'
         )
 
-    # 2) 세션
-    with c2:
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-            <div class="kpi-title">세션</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{sessions:,.0f}</div>
-                <div class="kpi-delta" style="color:{col_ses};">{t_ses}</div>
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        # 누락 채널 컬럼 0으로 생성
+        for ch in channels_slp:
+            if ch not in df_QueryContribution.columns:
+                df_QueryContribution[ch] = 0
 
-    # 3) 클릭수
-    with c3:
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-            <div class="kpi-title">클릭수</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{clk:,.0f}</div>
-                <div class="kpi-delta" style="color:{col_clk};">{t_clk}</div>
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # 4) CTR
-    with c4:
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-            <div class="kpi-title">CTR</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{ctr:,.2f}%</div>
-                <div class="kpi-delta" style="color:{col_ctr};">{t_ctr}</div>
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # 5) 이벤트(selectbox + 값/증감)
-    with c5:
-        with st.container(key="kpi_card_evt"):
-            sel_evt_label = st.selectbox(
-                "",
-                [x[0] for x in evt_opts],
-                index=[x[0] for x in evt_opts].index(sel_evt_label),
-                key="kpi_evt_in_card",
-                label_visibility="collapsed",
+        # 숫자형 변환
+        cols_to_int = channels_slp + ['검색량']
+        if cols_to_int:
+            df_QueryContribution[cols_to_int] = (
+                df_QueryContribution[cols_to_int]
+                .apply(pd.to_numeric, errors='coerce')
+                .fillna(0).astype(int)
             )
-            sel_evt_raw = evt_label_to_raw[sel_evt_label]
-
-            cost, sessions, clk, ctr, evt, cpa = _calc_kpi(df_filtered, sel_evt_raw)
-
-            if use_compare and df_filtered_cmp is not None:
-                cost_c, sessions_c, clk_c, ctr_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, sel_evt_raw)
-                t_evt, col_evt = _fmt_delta(_delta(evt, evt_c), good_if_down=False)
-            else:
-                t_evt, col_evt = "", "#64748b"
-
-            st.markdown(
-                f"""
-                <div class="kpi-row" style="margin-top:-2px;">
-                <div class="kpi-value">{evt:,.0f}</div>
-                <div class="kpi-delta" style="color:{col_evt};">{t_evt}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    # 6) CPA (선택 이벤트 기준)
-    with c6:
-        sel_evt_raw = evt_label_to_raw[sel_evt_label]
-        cost, sessions, clk, ctr, evt, cpa = _calc_kpi(df_filtered, sel_evt_raw)
-
-        if use_compare and df_filtered_cmp is not None:
-            cost_c, sessions_c, clk_c, ctr_c, evt_c, cpa_c = _calc_kpi(df_filtered_cmp, sel_evt_raw)
-            t_cpa, col_cpa = _fmt_delta(_delta(cpa, cpa_c), good_if_down=True)
         else:
-            t_cpa, col_cpa = "", "#64748b"
+            df_QueryContribution['검색량'] = pd.to_numeric(
+                df_QueryContribution.get('검색량', 0), errors='coerce'
+            ).fillna(0).astype(int)
 
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-            <div class="kpi-title">CPA</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cpa:,.0f}</div>
-                <div class="kpi-delta" style="color:{col_cpa};">{t_cpa}</div>
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        # 기본 검색량 및 비중
+        df_QueryContribution["기본 검색량"] = (
+            df_QueryContribution["검색량"] - df_QueryContribution[channels_slp].sum(axis=1)
+        ).clip(lower=0)
+
+        for col in (channels_slp + ['기본 검색량']):
+            df_QueryContribution[f"{col}_비중"] = np.where(
+                df_QueryContribution['검색량'] > 0,
+                df_QueryContribution[col] / df_QueryContribution['검색량'] * 100,
+                0.0
+            ).round(2)
+
+        # 컬럼 순서 동적
+        ordered_cols = (
+            ['날짜','검색량','기본 검색량','기본 검색량_비중'] +
+            [c for pair in [(ch, f"{ch}_비중") for ch in channels_slp] for c in pair]
+        )
+        df_QueryContribution = df_QueryContribution[ordered_cols].sort_values("날짜", ascending=True)
+
+        # 기간 슬라이더 (키 유지: slider_01)
+        from pandas.tseries.offsets import MonthEnd
+        df_QueryContribution["날짜_dt"] = pd.to_datetime(df_QueryContribution["날짜"], format="%Y-%m-%d", errors="coerce")
+        start_period = (df_QueryContribution["날짜_dt"].min().to_period("M")
+                        if df_QueryContribution["날짜_dt"].notna().any()
+                        else pd.Timestamp.now().to_period("M"))
+        curr_period  = pd.Timestamp.now().to_period("M")
+        month_options = [p.to_timestamp() for p in pd.period_range(start=start_period, end=curr_period, freq="M")]
+        now = pd.Timestamp.now()
+        curr_ts = now.to_period("M").to_timestamp()
+        prev_ts = (now.to_period("M") - 1).to_timestamp()
+
+        st.markdown(" ")
+        selected_range = st.select_slider(
+            "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
+            options=month_options,
+            value=(prev_ts, curr_ts),
+            format_func=lambda x: x.strftime("%Y-%m"),
+            key="slider_01"
+        )
+        start_sel, end_sel = selected_range
+        period_start = start_sel
+        period_end   = end_sel + MonthEnd(0)
+
+        df_filtered = df_QueryContribution[
+            (df_QueryContribution["날짜_dt"] >= period_start) &
+            (df_QueryContribution["날짜_dt"] <= period_end)
+        ].copy()
+        df_filtered["날짜"] = df_filtered["날짜_dt"].dt.strftime("%Y-%m-%d")
+
+        # 차트(채널들 + 기본 검색량)
+        plot_cols = channels_slp + ['기본 검색량']
+        df_long = df_filtered.melt(id_vars='날짜', value_vars=plot_cols, var_name='콘텐츠', value_name='기여량')
+        render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
+
+        # 테이블 (동적 포맷)
+        render_style_ctb(df_filtered.drop(columns=['날짜_dt']), brand='슬립퍼')
+
+    
+    with tab2:
+        channels_nor = CHANNELS_BY_BRAND.get('누어', [])
+
+        df_QueryContribution_nor = ppl_action3.merge(
+            query_sum_nor[['날짜','검색량']], on='날짜', how='outer'
         )
 
+        for ch in channels_nor:
+            if ch not in df_QueryContribution_nor.columns:
+                df_QueryContribution_nor[ch] = 0
 
-    # 표 (데이터프레임)
-    # st.markdown("###### Report")
-    if pivot_cols or show_totals:
-        if show_totals:
-            df_sel = df_filtered.assign(period=f"{start_date_str} ~ {end_date_str}")
-
-            if use_compare:
-                df_cmp = df_filtered_cmp.assign(period=f"{default_comp_s_str} ~ {default_comp_e_str}")
-                df_combined = pd.concat([df_sel, df_cmp], ignore_index=True)
-            else:
-                df_combined = df_sel
-
-            group_keys = ["period"] + pivot_cols
-            df_pivot = pivot_perf(df_combined, group_keys)
-            render_style_perf(df_pivot, group_keys)
-
-
+        cols_to_int = channels_nor + ['검색량']
+        if cols_to_int:
+            df_QueryContribution_nor[cols_to_int] = (
+                df_QueryContribution_nor[cols_to_int]
+                .apply(pd.to_numeric, errors='coerce')
+                .fillna(0).astype(int)
+            )
         else:
-            df_sel = pivot_perf(df_filtered, pivot_cols).assign(period=f"{start_date_str} ~ {end_date_str}")
+            df_QueryContribution_nor['검색량'] = pd.to_numeric(
+                df_QueryContribution_nor.get('검색량', 0), errors='coerce'
+            ).fillna(0).astype(int)
 
-            if use_compare:
-                df_cmp = pivot_perf(df_filtered_cmp, pivot_cols).assign(period=f"{default_comp_s_str} ~ {default_comp_e_str}")
-                df_pivot = pd.concat([df_sel, df_cmp], ignore_index=True)
-            else:
-                df_pivot = df_sel
+        df_QueryContribution_nor["기본 검색량"] = (
+            df_QueryContribution_nor["검색량"] - df_QueryContribution_nor[channels_nor].sum(axis=1)
+        ).clip(lower=0)
 
-            render_style_perf(df_pivot, ["period"] + pivot_cols)
+        for col in (channels_nor + ['기본 검색량']):
+            df_QueryContribution_nor[f"{col}_비중"] = np.where(
+                df_QueryContribution_nor['검색량'] > 0,
+                df_QueryContribution_nor[col] / df_QueryContribution_nor['검색량'] * 100,
+                0.0
+            ).round(2)
+
+        ordered_cols_nor = (
+            ['날짜','검색량','기본 검색량','기본 검색량_비중'] +
+            [c for pair in [(ch, f"{ch}_비중") for ch in channels_nor] for c in pair]
+        )
+        df_QueryContribution_nor = df_QueryContribution_nor[ordered_cols_nor].sort_values("날짜", ascending=True)
+
+        # 기간 슬라이더 (키 유지: slider_02)
+        from pandas.tseries.offsets import MonthEnd
+        df_QueryContribution_nor["날짜_dt"] = pd.to_datetime(df_QueryContribution_nor["날짜"], format="%Y-%m-%d", errors="coerce")
+        start_period = (df_QueryContribution_nor["날짜_dt"].min().to_period("M")
+                        if df_QueryContribution_nor["날짜_dt"].notna().any()
+                        else pd.Timestamp.now().to_period("M"))
+        curr_period  = pd.Timestamp.now().to_period("M")
+        month_options = [p.to_timestamp() for p in pd.period_range(start=start_period, end=curr_period, freq="M")]
+        now = pd.Timestamp.now()
+        curr_ts = now.to_period("M").to_timestamp()
+        prev_ts = (now.to_period("M") - 1).to_timestamp()
+
+        st.markdown(" ")
+        selected_range = st.select_slider(
+            "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
+            options=month_options,
+            value=(prev_ts, curr_ts),
+            format_func=lambda x: x.strftime("%Y-%m"),
+            key="slider_02"
+        )
+        start_sel, end_sel = selected_range
+        period_start = start_sel
+        period_end   = end_sel + MonthEnd(0)
+
+        df_filtered_nor = df_QueryContribution_nor[
+            (df_QueryContribution_nor["날짜_dt"] >= period_start) &
+            (df_QueryContribution_nor["날짜_dt"] <= period_end)
+        ].copy()
+        df_filtered_nor["날짜"] = df_filtered_nor["날짜_dt"].dt.strftime("%Y-%m-%d")
+
+        plot_cols = channels_nor + ['기본 검색량']
+        df_long = df_filtered_nor.melt(id_vars='날짜', value_vars=plot_cols, var_name='콘텐츠', value_name='기여량')
+        render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
+
+        render_style_ctb(df_filtered_nor.drop(columns=['날짜_dt']), brand='누어')
+
+        
+    
+    # ────────────────────────────────────────────────────────────────
+    # 키워드별 검색량
+    # ────────────────────────────────────────────────────────────────
+    st.header(" ")
+    st.markdown("<h5 style='margin:0'>키워드별 검색량</h5>", unsafe_allow_html=True)  
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ주요 **키워드별 검색량**에 대해 증감 추이를 확인할 수 있습니다.", unsafe_allow_html=True)
+
+    tab1, tab2 = st.tabs(["슬립퍼", "누어"])
+    with tab1: 
+        df = query_slp.copy()
+
+        # ──────────── 월 단위 범위 슬라이더 추가 ────────────
+        # 1) 날짜 컬럼을 datetime 으로 변환
+        df['날짜_dt'] = pd.to_datetime(df['날짜'], format="%Y-%m-%d", errors="coerce")
+        df['날짜'] = df['날짜'].dt.strftime("%Y-%m-%d")
 
 
-    else:
-        st.warning("피벗할 행 필드를 하나 이상 선택해 주세요.")
+        # 2) 전체 데이터 범위의 월 옵션 생성
+        start_period  = df['날짜_dt'].min().to_period("M")
+        curr_period   = pd.Timestamp.now().to_period("M")
+        all_periods   = pd.period_range(start=start_period, end=curr_period, freq="M")
+        month_options = [p.to_timestamp() for p in all_periods]
+
+        # 3) 기본값: 이전월 → 이번달
+        now     = pd.Timestamp.now()
+        curr_ts = now.to_period("M").to_timestamp()
+        prev_ts = (now.to_period("M") - 1).to_timestamp()
+
+        # 4) 범위 슬라이더
+        st.markdown(" ")
+        start_sel, end_sel = st.select_slider(
+            "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
+            options=month_options,
+            value=(prev_ts, curr_ts),
+            format_func=lambda x: x.strftime("%Y-%m"),
+            key="slider_03"
+        )
+
+        # 5) 선택 구간의 1일~말일 계산 & 필터링
+        period_start = start_sel
+        period_end   = end_sel + MonthEnd(0)
+        df = df[(df['날짜_dt'] >= period_start) & (df['날짜_dt'] <= period_end)].copy()
+
+        # ───────────────────── 기존 필터 영역 ─────────────────────
+        ft1, _p, ft2 = st.columns([3, 0.3, 1])
+        with ft1: 
+            keywords     = df['키워드'].unique().tolist()
+            default_kw   = [kw for kw in keywords if ('슬리퍼' in kw) or ('슬립퍼' in kw) or ('SLEEPER' in kw)] # SLEEPER 추까 (25.09.02)
+            sel_keywords = st.multiselect(
+                "키워드 선택", 
+                keywords, 
+                default=default_kw,
+                key="kw_select_03"
+            )       
+        with _p: pass
+        with ft2: 
+            chart_type = st.radio(
+                "시각화 유형 선택", 
+                ["누적 막대", "누적 영역", "꺾은선"], 
+                horizontal=True, 
+                index=0,
+                key="chart_type_03"
+            )
+
+        df_f = df[df['키워드'].isin(sel_keywords)].copy()
+
+        # y축 고정
+        y_col = "검색량"
+
+        # 1) 숫자형 변환 & 일별 집계
+        df_plot = df_f.copy()
+        df_plot[y_col] = pd.to_numeric(df_plot[y_col], errors="coerce").fillna(0)
+        plot_df = (
+            df_plot
+            .groupby(["날짜_dt", "키워드"], as_index=False)[y_col]
+            .sum()
+        )
+        if plot_df.empty:
+            st.warning("선택된 기간/키워드에 해당하는 데이터가 없습니다.")
+        else:
+            # 2) 일별 날짜 범위 생성
+            min_date = plot_df["날짜_dt"].min()
+            max_date = plot_df["날짜_dt"].max()
+            all_x    = pd.date_range(min_date, max_date)
+            x_col    = "날짜_dt"
+
+            # 3) MultiIndex 재색인으로 누락값 채움
+            all_keywords = plot_df['키워드'].unique()
+            idx = pd.MultiIndex.from_product([all_x, all_keywords],
+                                            names=[x_col, "키워드"])
+            plot_df = (
+                plot_df
+                .set_index([x_col, '키워드'])[y_col]
+                .reindex(idx, fill_value=0)
+                .reset_index()
+            )
+
+            # 4) chart_type 에 따른 시각화
+            if chart_type == "누적 막대":
+                fig = px.bar(
+                    plot_df,
+                    x=x_col,
+                    y=y_col,
+                    color="키워드",
+                    barmode="relative",
+                )
+                fig.update_layout(barmode="relative")
+                fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+                fig.update_traces(opacity=0.6)
+
+            elif chart_type == "누적 영역":
+                fig = px.area(
+                    plot_df,
+                    x=x_col,
+                    y=y_col,
+                    color="키워드",
+                )
+                fig.update_traces(opacity=0.3)
+
+            else:  # 꺾은선
+                fig = px.line(
+                    plot_df,
+                    x=x_col,
+                    y=y_col,
+                    color="키워드",
+                    markers=True,
+                )
+                fig.update_traces(opacity=0.6)
+
+            # x축 한글 포맷, 축 제목 숨기기
+            try:
+                fig.update_xaxes(tickformat="%m월 %d일")
+                fig.update_layout(xaxis_title=None, yaxis_title=None)
+                st.plotly_chart(fig, use_container_width=True)
+            except: pass
+            df_f = df_f[['날짜', '키워드', '검색량']]
+            st.dataframe(df_f,  row_height=30, hide_index=True)
+            
+    with tab2: 
+        df = query_nor.copy()
+
+        # ──────────── 월 단위 범위 슬라이더 추가 ────────────
+        # 1) 날짜 컬럼을 datetime 으로 변환
+        df['날짜_dt'] = pd.to_datetime(df['날짜'], format="%Y-%m-%d", errors="coerce")
+        df['날짜'] = df['날짜'].dt.strftime("%Y-%m-%d")
 
 
-if __name__ == "__main__":
+        # 2) 전체 데이터 범위의 월 옵션 생성
+        start_period  = df['날짜_dt'].min().to_period("M")
+        curr_period   = pd.Timestamp.now().to_period("M")
+        all_periods   = pd.period_range(start=start_period, end=curr_period, freq="M")
+        month_options = [p.to_timestamp() for p in all_periods]
+
+        # 3) 기본값: 이전월 → 이번달
+        now     = pd.Timestamp.now()
+        curr_ts = now.to_period("M").to_timestamp()
+        prev_ts = (now.to_period("M") - 1).to_timestamp()
+
+        # 4) 범위 슬라이더
+        st.markdown(" ")
+        start_sel, end_sel = st.select_slider(
+            "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
+            options=month_options,
+            value=(prev_ts, curr_ts),
+            format_func=lambda x: x.strftime("%Y-%m"),
+            key="slider_04"
+        )
+
+        # 5) 선택 구간의 1일~말일 계산 & 필터링
+        period_start = start_sel
+        period_end   = end_sel + MonthEnd(0)
+        df = df[(df['날짜_dt'] >= period_start) & (df['날짜_dt'] <= period_end)].copy()
+
+        # ───────────────────── 기존 필터 영역 ─────────────────────
+        ft1, _p, ft2 = st.columns([3, 0.3, 1])
+        with ft1: 
+            keywords     = df['키워드'].unique().tolist()
+            default_kw   = [kw for kw in keywords if ('누어' in kw) or ('NOOER' in kw)]
+            sel_keywords = st.multiselect(
+                "키워드 선택", 
+                keywords, 
+                default=default_kw,
+                key="kw_select_04"
+            )       
+        with _p: pass
+        with ft2: 
+            chart_type = st.radio(
+                "시각화 유형 선택", 
+                ["누적 막대", "누적 영역", "꺾은선"], 
+                horizontal=True, 
+                index=0,
+                key="chart_type_04"
+            )
+
+        df_f = df[df['키워드'].isin(sel_keywords)].copy()
+
+        # y축 고정
+        y_col = "검색량"
+
+        # 1) 숫자형 변환 & 일별 집계
+        df_plot = df_f.copy()
+        df_plot[y_col] = pd.to_numeric(df_plot[y_col], errors="coerce").fillna(0)
+        plot_df = (
+            df_plot
+            .groupby(["날짜_dt", "키워드"], as_index=False)[y_col]
+            .sum()
+        )
+        if plot_df.empty:
+            st.warning("선택된 기간/키워드에 해당하는 데이터가 없습니다.")
+        else:
+            # 2) 일별 날짜 범위 생성
+            min_date = plot_df["날짜_dt"].min()
+            max_date = plot_df["날짜_dt"].max()
+            all_x    = pd.date_range(min_date, max_date)
+            x_col    = "날짜_dt"
+
+            # 3) MultiIndex 재색인으로 누락값 채움
+            all_keywords = plot_df['키워드'].unique()
+            idx = pd.MultiIndex.from_product([all_x, all_keywords],
+                                            names=[x_col, "키워드"])
+            plot_df = (
+                plot_df
+                .set_index([x_col, '키워드'])[y_col]
+                .reindex(idx, fill_value=0)
+                .reset_index()
+            )
+
+            # 4) chart_type 에 따른 시각화
+            if chart_type == "누적 막대":
+                fig = px.bar(
+                    plot_df,
+                    x=x_col,
+                    y=y_col,
+                    color="키워드",
+                    barmode="relative",
+                )
+                fig.update_layout(barmode="relative")
+                fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+                fig.update_traces(opacity=0.6)
+
+            elif chart_type == "누적 영역":
+                fig = px.area(
+                    plot_df,
+                    x=x_col,
+                    y=y_col,
+                    color="키워드",
+                )
+                fig.update_traces(opacity=0.3)
+
+            else:  # 꺾은선
+                fig = px.line(
+                    plot_df,
+                    x=x_col,
+                    y=y_col,
+                    color="키워드",
+                    markers=True,
+                )
+                fig.update_traces(opacity=0.6)
+
+            # x축 한글 포맷, 축 제목 숨기기
+            fig.update_xaxes(tickformat="%m월 %d일")
+            fig.update_layout(xaxis_title=None, yaxis_title=None)
+            st.plotly_chart(fig, use_container_width=True)
+            df_f = df_f[['날짜', '키워드', '검색량']]
+            st.dataframe(df_f, row_height=30,  hide_index=True)
+
+
+
+
+if __name__ == '__main__':
     main()

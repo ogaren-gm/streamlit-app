@@ -272,8 +272,27 @@ def main():
 
         return df
 
-    with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df = load_data(cs, ce)
+    # with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
+    #     df = load_data(cs, ce)
+
+    # PROGRESS BAR
+    import time
+    progress_bar = st.progress(0, text="데이터베이스 연결 확인 중입니다...")
+    time.sleep(0.2)
+    
+    for i in range(1, 80, 5):
+        progress_bar.progress(i, text=f"데이터를 불러오고 있습니다...{i}%")
+        time.sleep(0.1)
+
+    df = load_data(cs, ce) 
+    
+    # 로드 완료 직후, 수치를 대폭 점프시켜 보상감 제공
+    progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 증입니다...")
+    time.sleep(0.4)
+    
+    progress_bar.progress(100, text="데이터 로드 완료!")
+    time.sleep(0.6)
+    progress_bar.empty()
 
     # ──────────────────────────────────
     # D) Header
@@ -290,10 +309,10 @@ def main():
         st.markdown(
             """
             <div style="font-size:14px;line-height:1.5;">
-            GA 기준 <b>자사몰 트래픽 </b>추이와 <b>유입경로, 주요 이벤트</b> 추이를 종합적으로 확인할 수 있는 대시보드입니다.<br>
+            GA4(BigQuery) 데이터를 기반으로 <b>자사몰 트래픽 추이, 유입 경로, 주요 이벤트 현황</b>을 종합 분석하는 대시보드입니다.<br>
             </div>
             <div style="color:#6c757d;font-size:14px;line-height:2.0;">
-            ※ GA D-1 데이터의 세션 수치는 <b>오전에 1차</b> 집계되나 , 세션의 유입출처는 <b>오후에 2차</b> 반영됩니다.
+            ※ 전일 데이터가 오전 8:40경 1차 반영되며, 유입 매체 정보(Source/Medium)는 오후 3:15경 최종 반영됩니다.
             </div>
             """,
             unsafe_allow_html=True
@@ -325,7 +344,7 @@ def main():
     # ──────────────────────────────────
     st.markdown(" ")
     st.markdown("<h5 style='margin:0'>트래픽 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ트래픽의 증감 추이와 신규·재방문 비중 변화를 확인합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ트래픽의 전반적인 증감 추이와 방문 형태별(신규/재방문) 비중 변화를 확인합니다.")
 
     with st.popover("🤔 유저 VS 세션"):
         st.markdown("""
@@ -462,7 +481,7 @@ def main():
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>트래픽 현황</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ트래픽의 지역 또는 매체별 비중을 확인합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ유입 경로(매체)와 지리적 위치(지역/권역)에 따른 트래픽 분포 및 상세 비중을 비교 분석합니다.")
 
     def _select_opt(df0, col, label, key):
         s = _safe_dim_series(df0, col)
@@ -664,7 +683,7 @@ def main():
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>이벤트 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ주요 이벤트의 증감 추이를 확인합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ제품 탐색부터 전환 의도까지, 사용자의 구매 여정별 핵심 행동 지표(이벤트)의 변화를 확인합니다.")
 
     with st.popover("🤔 유저 VS 세션 VS 이벤트"):
         st.markdown("""
@@ -736,7 +755,7 @@ def main():
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>이벤트 현황</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ주요 이벤트의 지역 또는 매체별 비중을 확인합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ특정 이벤트가 어떤 매체 혹은 지역에서 집중적으로 발생하는지 상세 세그먼트별로 확인합니다.")
 
     # 이벤트 선택 옵션 (라벨 기준)
     ev_label_opts = [label for _, label in EVENTS_META]

@@ -284,8 +284,24 @@ def main():
 
         return df
 
-    with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df = load_data(cs, ce)
+    # PROGRESS BAR
+    import time
+    progress_bar = st.progress(0, text="데이터베이스 연결 확인 중입니다...")
+    time.sleep(0.2)
+    
+    for i in range(1, 80, 5):
+        progress_bar.progress(i, text=f"데이터를 불러오고 있습니다...{i}%")
+        time.sleep(0.1)
+
+    df = load_data(cs, ce) 
+    
+    # 로드 완료 직후, 수치를 대폭 점프시켜 보상감 제공
+    progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 증입니다...")
+    time.sleep(0.4)
+    
+    progress_bar.progress(100, text="데이터 로드 완료!")
+    time.sleep(0.6)
+    progress_bar.empty()
 
     # ──────────────────────────────────
     # D) Header
@@ -302,11 +318,10 @@ def main():
         st.markdown(
             """
             <div style="font-size:14px; line-height:1.5;">
-            GA 기준 <b>장바구니 담기</b> 추이와 유입경로를
-            <b>브랜드·품목·제품</b> 단위로 확인할 수 있는 대시보드 입니다.<br>
+            GA4(BigQuery) 데이터를 기반으로 <b>브랜드·품목·제품별 "장바구니 담기" 성과와 유입 경로</b>를 다각도로 분석하는 대시보드입니다.<br>
             </div>
             <div style="color:#6c757d; font-size:14px; line-height:2.0;">
-            ※ GA D-1 데이터의 세션 수치는 <b>오전에 1차</b> 집계되나 , 세션의 유입출처는 <b>오후에 2차</b> 반영됩니다.
+            ※ 전일 데이터가 오전 8:45경 1차 반영되며, 유입 매체 정보(Source/Medium)는 오후 3:25경 최종 반영됩니다.
             </div>
             """,
             unsafe_allow_html=True
@@ -336,8 +351,8 @@ def main():
     # 1) 장바구니 추이
     # ──────────────────────────────────
     st.markdown(" ")
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>장바구니 </span>추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ장바구니 담기의 증감 추이를 확인합니다.")
+    st.markdown("<h5 style='margin:0'>장바구니 추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ장바구니 담기의 증감 추이를 확인하고, 유저당 세션수(SPU) 및 세션당 이벤트수(EPS)를 통해 질적 수준을 진단합니다.")
 
     with st.popover("🤔 유저 VS 세션 VS 이벤트"):
         st.markdown("""
@@ -451,8 +466,8 @@ def main():
     # 2) 장바구니 현황
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>장바구니 </span>현황</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ장바구니 담기가 발생한 지역 또는 유입한 매체별 비중을 확인합니다.")
+    st.markdown("<h5 style='margin:0'>장바구니 현황</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ장바구니 담기가 발생한 지역 분포와 유입 매체별 비중을 확인합니다.")
 
     # 필터
     with st.expander("Filter", expanded=False):
@@ -654,8 +669,8 @@ def main():
     # 3) 품목별 추이
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>품목별 </span>추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ품목별로 장바구니 담기의 증감 추이를 확인합니다.")
+    st.markdown("<h5 style='margin:0'>품목별 추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ대분류(브랜드)부터 소분류, 개별 제품까지 원하는 깊이(Depth)를 선택하여 품목별 장바구니 추이를 비교합니다.")
 
     with st.popover("🤔 품목 뎁스 설명"):
         st.markdown("""
@@ -824,8 +839,8 @@ def main():
     # 4) 품목별 현황
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>품목별 </span>현황</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ품목별로 장바구니 담기가 발생한 지역 또는 유입한 매체별 비중을 확인합니다.", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>품목별 현황</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ선택한 품목이나 제품이 어떤 매체나 지역에서 주로 담겼는지 상세 세그먼트별 유입 성과를 분석합니다.", unsafe_allow_html=True)
 
     def _k4(tag: str) -> str:
         return f"pp4__{tag}"
@@ -1102,11 +1117,11 @@ def main():
                 )
 
     # ──────────────────────────────────
-    # 5) 장바구니 구성 분포
+    # 5) 장바구니 구성 분석
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>장바구니 옵션 분석 </h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ옵션 포함 기준의 담김 금액(가격대)·사이즈·옵션 조합의 비중을 확인합니다.", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>장바구니 구성 분석</span></h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ담긴 제품의 가격대 분포, 사이즈 비중, 상세 옵션 조합을 분석하여 고객의 구체적인 제품 선호도를 파악합니다.", unsafe_allow_html=True)
 
     # 해당 영역 전용 일회용 함수
     def make_price_bucket(s: pd.Series, step: int = 500_000) -> tuple[list[int], list[str]]:

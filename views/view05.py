@@ -243,8 +243,25 @@ def main():
 
         return df
 
-    with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df = load_data(cs, ce)
+    # PROGRESS BAR
+    import time
+    progress_bar = st.progress(0, text="데이터베이스 연결 확인 중입니다...")
+    time.sleep(0.2)
+    
+    for i in range(1, 80, 5):
+        progress_bar.progress(i, text=f"데이터를 불러오고 있습니다...{i}%")
+        time.sleep(0.1)
+
+    df = load_data(cs, ce) 
+    
+    # 로드 완료 직후, 수치를 대폭 점프시켜 보상감 제공
+    progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 증입니다...")
+    time.sleep(0.4)
+    
+    progress_bar.progress(100, text="데이터 로드 완료!")
+    time.sleep(0.6)
+    progress_bar.empty()
+
 
     # ✅ (NEW) 세션 단위 flag_type 1회 생성 + df에 붙이기
     sess_flag = (
@@ -285,10 +302,10 @@ def main():
         st.markdown(
             """
             <div style="font-size:14px; line-height:1.5;">
-            GA 기준 <b>CMP 트래픽 </b>추이와 <b>유입경로, 페이지 내 액션, 이후 확장 행동</b> 을 종합적으로 확인할 수 있는 대시보드입니다. <br>
+            GA4(BigQuery) 데이터를 기반으로 캠페인 페이지의 유입 성과, 페이지 내 인게이지먼트, 유입 유저 후속 여정을 종합 분석하는 대시보드입니다.<br>
             </div>
             <div style="color:#6c757d; font-size:14px; line-height:2.0;">
-            ※ GA D-1 데이터의 세션 수치는 <b>오전에 1차</b> 집계되나 , 세션의 유입출처는 <b>오후에 2차</b> 반영됩니다.
+            ※ 전일 데이터가 오전 8:45경 1차 반영되며, 유입 매체 정보(Source/Medium)는 오후 3:25경 최종 반영됩니다.
             </div>
             """,
             unsafe_allow_html=True
@@ -320,7 +337,7 @@ def main():
     # ──────────────────────────────────
     st.markdown(" ")
     st.markdown("<h5 style='margin:0'>CMP 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 트래픽 대비 CMP 트래픽의 증감 추이를 확인합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 트래픽 대비 캠페인 페이지 유입량 변화를 확인하고, 사용자가 페이지에 처음 랜딩했는지 혹은 탐색 중 경유했는지에 따른 유형별 비중을 분석합니다.")
 
     with st.popover("🤔 CMP 랜딩 VS CMP 경유"):
         st.markdown("""
@@ -471,7 +488,7 @@ def main():
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>CMP 유입매체</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤCMP 트래픽의 매체별 비중을 확인합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ캠페인 페이지로 사용자를 유입시킨 매체별 성과를 분석하여 효과적인 유입 경로를 식별합니다.")
     
     def _select_opt(df0, col, label, key):
         s = _safe_dim_series(df0, col)
@@ -627,11 +644,11 @@ def main():
 
 
     # ──────────────────────────────────
-    # 3) 
+    # 3) 페이지 내 인게이지먼트
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>CMP 페이지 반응</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤCMP 페이지 내에서 발생한 스크롤과 CTA 액션을 분석합니다. ", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>페이지 내 인게이지먼트</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ캠페인 콘텐츠에 대한 사용자의 몰입도(스크롤 뎁스)와 주요 행동 버튼(CTA)의 클릭 반응률을 측정합니다.", unsafe_allow_html=True)
 
     # -- 필터
     with st.expander("Filter", expanded=True):
@@ -955,11 +972,11 @@ def main():
 
 
     # ──────────────────────────────────
-    # 4) 
+    # 4) 유입 유저 후속 여정
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>이후 확장 행동</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤCMP를 거친 사용자가 어떤 페이지에서 행동하고, 어떤 행동을 하는지 분석합니다. ", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>유입 유저 후속 여정</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ캠페인 페이지 방문 이후 제품 상세 조회(PDP), 장바구니 담기, 구매 등 실질적인 비즈니스 가치로 이어지는 사용자 행동의 확장성을 분석합니다.", unsafe_allow_html=True)
 
     # ── Filter
     with st.expander("Filter", expanded=True):

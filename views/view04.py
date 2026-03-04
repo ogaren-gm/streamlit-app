@@ -639,8 +639,25 @@ def main():
 
         return df1, df2
 
-    with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
-        df1, df2 = load_data(cs, ce)
+
+    # PROGRESS BAR
+    import time
+    progress_bar = st.progress(0, text="데이터베이스 연결 확인 중입니다...")
+    time.sleep(0.2)
+    
+    for i in range(1, 80, 5):
+        progress_bar.progress(i, text=f"데이터를 불러오고 있습니다...{i}%")
+        time.sleep(0.1)
+
+    df1, df2 = load_data(cs, ce) 
+    
+    # 로드 완료 직후, 수치를 대폭 점프시켜 보상감 제공
+    progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 증입니다...")
+    time.sleep(0.4)
+    
+    progress_bar.progress(100, text="데이터 로드 완료!")
+    time.sleep(0.6)
+    progress_bar.empty()
 
     # ──────────────────────────────────
     # D) Header
@@ -657,10 +674,10 @@ def main():
         st.markdown(
             """
             <div style="font-size:14px; line-height:1.5;">
-            대시보드 설명  
+            쇼룸 시트와 네이버 Place 데이터를 기반으로 <b>조회부터 방문까지의 고객 현황 및 데모그래픽</b>을 확인하는 대시보드입니다.<br> 
             </div>
             <div style="color:#6c757d; font-size:14px; line-height:2.0;">
-            ※ 설명  
+            ※ 전일 데이터가 오전 10시경 업데이트 됩니다.
             </div>
             """,
             unsafe_allow_html=True,
@@ -694,7 +711,7 @@ def main():
     
     st.markdown(" ")
     st.markdown("<h5 style='margin:0'> 전체 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ조회 -> 예약신청 -> 예약 -> 방문", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ조회부터 예약 신청, 확정, 최종 방문으로 이어지는 단계별 유입량과 주요 전환 지표(BPL, VPL, VPR)의 추이를 확인합니다.", unsafe_allow_html=True)
 
     st.markdown(
         """
@@ -942,11 +959,11 @@ def main():
         key=f"flow::{sel_type}::{sel_reg}::{sel_br}",
     )
 
-    tab1, tab2 = st.tabs(["전체 데이터", "🚨이상치 알림"])
+    tab1, tab2 = st.tabs(["전체 데이터", "🚨이상치 탐지"])
     
     with tab1: 
         # ✅ 표
-        st.markdown(":gray-badge[:material/Info: Info]ㅤ선 그래프의 **상세 데이터**입니다.")
+        st.markdown(":gray-badge[:material/Info: Info]ㅤ상단 그래프의 일자별 수치와 주요 전환 지표 데이터 입니다.")
         
         daily_tbl = df_evt_f.copy()
         daily_tbl["날짜"] = pd.to_datetime(daily_tbl["날짜"], errors="coerce").dt.strftime("%Y-%m-%d")
@@ -962,7 +979,7 @@ def main():
 
     with tab2:
         # ✅ 동요일 급증 감지
-        st.markdown(":gray-badge[:material/Info: Info]ㅤ지난주 같은 요일 대비 **변화가 큰 요일**을 확인합니다.")
+        st.markdown(":gray-badge[:material/Info: Info]ㅤ지난주 같은 요일의 평균 수치와 비교하여 급증하거나 급락한 요일을 탐지합니다.")
         
         with st.expander("Filter", expanded=True):
             cA, cB, cC = st.columns([1, 1, 2], vertical_alignment="center")
@@ -1076,7 +1093,7 @@ def main():
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>방문 현황 </h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ방문 고객의 인구통계학적 특성(성별/연령)과 인지 경로, 구매 목적 등 상세 프로필 비중을 통해 쇼룸 방문자의 특성을 정의합니다.")
 
     # ※ 필터 (공통 함수로 묶음)
     with st.expander("Filter", expanded=True):
@@ -1195,8 +1212,8 @@ def main():
     # 3) CROSS INSIGHT
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>CROSS INSIGHT </h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 ")
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>CROSS INSIGHT</span></h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ분석 기준과 구성 기준을 교차 선택하여 특정 고객군이나 지점별로 어떤 특성이 두드러지는지 상관관계를 심층 분석합니다.")
 
     DIM_OPTS = {
         "쇼룸형태": "shrm_type",
