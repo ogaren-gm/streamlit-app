@@ -156,24 +156,29 @@ def main():
 
 
     # PROGRESS BAR
-    st.markdown("<br>", unsafe_allow_html=True)
+    spacer_placeholder = st.empty()
+    progress_placeholder = st.empty()
+
+    spacer_placeholder.markdown("<br>", unsafe_allow_html=True)
+    progress_bar = progress_placeholder.progress(0, text="데이터베이스 연결 확인 중입니다...")
+    
     import time
-    progress_bar = st.progress(0, text="데이터베이스 연결 확인 중입니다...")
     time.sleep(0.2)
     
     for i in range(1, 80, 5):
         progress_bar.progress(i, text=f"데이터를 불러오고 있습니다...{i}%")
         time.sleep(0.1)
-
+    
     df = load_data()
     
-    # 로드 완료 직후, 수치를 대폭 점프시켜 보상감 제공
     progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 중입니다...")
     time.sleep(0.4)
     
     progress_bar.progress(100, text="데이터 로드 완료!")
     time.sleep(0.6)
-    progress_bar.empty()
+
+    progress_placeholder.empty()
+    spacer_placeholder.empty()
 
 
     # ──────────────────────────────────

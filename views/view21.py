@@ -228,17 +228,21 @@ def main():
     #     # apply_filter_pair에서 옵션은 항상 "선택기간 기준"을 쓰므로 원본 유지
     #     df_primary = df_filtered
 
+
     # PROGRESS BAR
-    st.markdown("<br>", unsafe_allow_html=True)
     import time
-    progress_bar = st.progress(0, text="데이터베이스 연결 확인 중입니다...")
+    
+    spacer_placeholder = st.empty()
+    progress_placeholder = st.empty()
+
+    spacer_placeholder.markdown("<br>", unsafe_allow_html=True)
+    progress_bar = progress_placeholder.progress(0, text="데이터베이스 연결 확인 중입니다...")
     time.sleep(0.2)
     
     for i in range(1, 80, 5):
         progress_bar.progress(i, text=f"데이터를 불러오고 있습니다...{i}%")
         time.sleep(0.1)
 
-    # 데이터 로딩 및 분기 처리
     if use_compare:
         cs_cmp = comp_start.strftime("%Y%m%d")
         df_merged = load_data(cs_cmp, ce)
@@ -263,10 +267,11 @@ def main():
     
     progress_bar.progress(100, text="데이터 로드 완료!")
     time.sleep(0.6)
-    progress_bar.empty()
+    
+    progress_placeholder.empty()
+    spacer_placeholder.empty()
     
     df_primary = df_filtered
-
 
     # ──────────────────────────────────
     # Helpers (이 파일 내부에서만)
