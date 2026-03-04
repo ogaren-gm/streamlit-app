@@ -624,7 +624,7 @@ def main():
 
     # 탭 없이 
     with st.expander("Filter", expanded=True):
-        c1, c2, c3, c4, c5, c6 = st.columns([1, 1, 1.8, 1, 1, 1], vertical_alignment="bottom")
+        c1, c2, c3, c4, c5, c6 = st.columns([0.8, 0.9, 1.9, 1, 1, 1], vertical_alignment="bottom")
         with c1:
             mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="s_m")
         with c2:

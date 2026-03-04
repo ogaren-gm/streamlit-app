@@ -99,7 +99,7 @@ def main():
     # ────────────────────────────────────────────────────────────────
     # 기간
     st.sidebar.header("Filter")
-    st.sidebar.caption("영역마다 개별로 기간을 조정하세요.")
+    st.sidebar.caption("영역별로 기간을 조정하세요.")
     
     # ──────────────────────────────────
     # C) Data Load
@@ -696,9 +696,24 @@ def main():
     st.header(" ")
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>검색량 급변 탐지</span></h5>", unsafe_allow_html=True)
     st.markdown(
-        ":gray-badge[:material/Info: Info]ㅤ검색량이 급격하게 증가하거나 감소한 키워드를 탐지하여 시장 트렌드를 확인합니다. ",
+        ":gray-badge[:material/Info: Info]ㅤ특정 키워드에 대한 검색량이 급격하게 증가하거나 감소한 키워드를 탐지하여 시장 트렌드를 확인합니다. ",
         unsafe_allow_html=True,
     )
+
+    with st.popover("🧐 급상승 키워드, 어떤 기준으로 뽑나요?"):
+            st.markdown("""
+        **기간 내 검색 규모의 성장 폭이 가장 큰 키워드를 선정합니다.**  
+
+        - **선정 근거 (What)** 
+            - 연령대 비중이 아닌, 키워드 자체의 **전체 검색량**(abs_age 합계)에 집중합니다.
+            - **증감률**이 높을수록 최근 사용자들의 검색이 활발하게 발생한 키워드를 의미합니다.
+
+        * **계산 방식 (How)** 
+            - 최근 N일과 이전 N일의 절대 검색량을 대조하여 $\Delta$증감량과 $\Delta$증감률을 산출합니다.
+            - 예를 들어, 이전 기간 검색량이 4,000건에서 최근 6,400건으로 증가했다면
+                * 증감량은 +2,400건 이고, (= 6,400 - 4,000)
+                * 증감률은 +60% 입니다. (= 2,400 / 4,000)
+        """)
 
     outer_tabs = st.tabs(outer_names)
 
@@ -1037,6 +1052,22 @@ def main():
     st.header(" ")
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>연령대 급변 탐지</span></h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ단순 검색량을 넘어, 연령대별 비중 분포의 변화량을 측정하여 타겟층의 구조적 변화가 큰 키워드를 탐지합니다.")
+
+    with st.popover("🧐 연령층 변화, 어떻게 분석되나요?"):
+            st.markdown("""
+        **검색 규모는 비슷하더라도, 검색 연령대 구성이 얼마나 바뀌었는지에 집중합니다.**  
+
+        - **선정 근거 (What)** 
+            - 전체 검색량이 아닌, **연령대별 비중 분포**의 구조적 변화를 확인합니다.
+            - 이를 통해 주요 타겟층이 교체된 키워드를 찾아내는 것이 목적입니다.
+
+        * **계산 방식 (How)**
+            * 연령별 비중 차이의 절대값 합계인 **Shift Score**를 통해 변화폭을 지수화합니다.
+            * $$Shift \ Score \ (L1 \ Distance) = \sum_{i=1}^{n} |Share_{recent, i} - Share_{previous, i}|$$
+            * 예를 들어, 전체 검색량 10,000건 중 20대 비중이 20% → 45%로 증가했다면
+                * 검색량 변화는 0으로 규모 변화는 없지만,
+                * 타겟층이 완전히 바뀌었으므로 Shift Score가 높게 측정됩니다.
+        """)
 
     outer_tabs = st.tabs(outer_names)
 
