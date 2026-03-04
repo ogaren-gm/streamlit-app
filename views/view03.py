@@ -286,6 +286,7 @@ def main():
 
     # PROGRESS BAR
     import time
+    st.markdown("<br>", unsafe_allow_html=True)
     progress_bar = st.progress(0, text="데이터베이스 연결 확인 중입니다...")
     time.sleep(0.2)
     
@@ -296,7 +297,7 @@ def main():
     df = load_data(cs, ce) 
     
     # 로드 완료 직후, 수치를 대폭 점프시켜 보상감 제공
-    progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 증입니다...")
+    progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 중입니다...")
     time.sleep(0.4)
     
     progress_bar.progress(100, text="데이터 로드 완료!")

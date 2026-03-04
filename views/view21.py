@@ -229,6 +229,7 @@ def main():
     #     df_primary = df_filtered
 
     # PROGRESS BAR
+    st.markdown("<br>", unsafe_allow_html=True)
     import time
     progress_bar = st.progress(0, text="데이터베이스 연결 확인 중입니다...")
     time.sleep(0.2)
