@@ -765,7 +765,7 @@ def main():
             with c4:
                 show = st.radio(
                     "증감 방향",
-                    ["증가", "감소", "둘다"],
+                    ["둘다", "증가", "감소"],
                     horizontal=True,
                     index=0,
                     key=f"sp_show_{tk}",
