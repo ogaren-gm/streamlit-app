@@ -1,4 +1,5 @@
-# 서희_리뉴얼_키워드대시보드_2026-02-27 (fix: period/label/shading/weekly-range)
+#
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11,6 +12,7 @@ from google.oauth2.service_account import Credentials
 from zoneinfo import ZoneInfo
 import html
 from scipy.spatial import ConvexHull  # 추가된 부분
+import json
 
 import modules.ui_common as ui
 importlib.reload(ui)
@@ -155,7 +157,43 @@ def main():
         return df
 
 
-    # PROGRESS BAR
+    # ──────────────────────────────────
+    # C-1) tb_max -> get max date
+    # ──────────────────────────────────
+    @st.cache_data(ttl=CFG["CACHE_TTL"])
+    def get_max():
+        scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        try:
+            creds = Credentials.from_service_account_file(
+                "C:/_code/auth/sleeper-461005-c74c5cd91818.json", scopes=scope
+            )
+        except:
+            sa_info = st.secrets["sleeper-462701-admin"]
+            if isinstance(sa_info, str):
+                sa_info = json.loads(sa_info)
+            creds = Credentials.from_service_account_info(sa_info, scopes=scope)
+
+        gc = gspread.authorize(creds)
+        sh = gc.open_by_url(
+            "https://docs.google.com/spreadsheets/d/1HFPuxQSJqIY7VY_3YcAwEPfw_SjnApH_txRPS69s4xk/edit?gid=1274042914#gid=1274042914"
+        )
+        wsa = sh.worksheet("query_demographic")
+        
+        date_values = wsa.col_values(1)
+        dates = pd.to_datetime(date_values[1:], errors='coerce')
+        date_max = dates.max().date()
+
+        date_today = datetime.now().date()
+        date_diff = (date_today - date_max).days
+        
+        return date_diff
+
+    # ──────────────────────────────────
+    # C-2) Progress Bar
+    # ──────────────────────────────────
     spacer_placeholder = st.empty()
     progress_placeholder = st.empty()
 
@@ -199,30 +237,77 @@ def main():
             네이버 DataLab 데이터를 기반으로 <b>키워드 유형별 트렌드와 연령대별 관심도</b>를 분석하는 대시보드입니다.<br>
             </div>
             <div style="color:#6c757d;font-size:14px;line-height:2.0;">
-            ※ 전일 데이터가 오전 10시경 업데이트 됩니다.
+            ※ 전일 데이터 업데이트 시점은 09시~10시 입니다.
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with col2:
+    with col2:       
+        # tb_max 
+        date_diff = get_max()
+        if date_diff <= 1:
+            status_text = f"업데이트 정상"
+            icon_name = "event_available"
+            color = "#7FD0C4"
+            bg_color = "#F3FBFA"
+        else:
+            status_text = f"업데이트 이전 (D-{date_diff})"
+            icon_name = "event_busy"
+            color = "#FF8080"
+            bg_color = "#FFF4F4"
+        
         st.markdown(
             f"""
-            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
-            <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
-                <span style="
-                display:inline-flex;align-items:center;justify-content:center;
-                height:26px;padding:0 8px;
-                font-size:13px;line-height:1;
-                color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
-                border-radius:10px;white-space:nowrap;">
-                🗑️ 캐시 초기화
-                </span>
+            <div style="display:flex;justify-content:flex-end;align-items:bottom;gap:9px;">
+            <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet" />
+            
+            <span style="
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                gap: 4px;
+                height:30px;
+                padding:10px 10px;
+                font-size:13px;
+                font-weight:400;
+                letter-spacing:-0.3px;
+                color:{color};
+                background-color:{bg_color};
+                border:1.5px solid {color};
+                border-radius:14px;
+                white-space:nowrap;
+                cursor:default;">
+                <span class="material-symbols-outlined" style="font-size:15px;">{icon_name}</span>
+                {status_text}
+            </span>
+            
+            <a href="?refresh=1" title="사용자 캐시를 초기화하고 서버의 최신 데이터로 갱신합니다." style="text-decoration:none;vertical-align:middle;">
+            <span style="
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                gap: 4px;
+                height:30px;
+                padding:10px 10px;
+                font-size:13px;
+                font-weight:400;
+                letter-spacing:-0.3px;
+                color:#8B92A0;
+                background-color:#FFFFFF;
+                border:1.5px solid #D6D6D9;
+                border-radius:14px;
+                white-space:nowrap;
+                cursor:pointer;
+                transition:0.1s;">
+                <span class="material-symbols-outlined" style="font-size:15px;">sync</span>
+                강력 새로고침
+            </span>
             </a>
-            </div>
             """,
-            unsafe_allow_html=True,
-        )
+            unsafe_allow_html=True
+            )
+    
     st.divider()
 
     # 대시보드에서 쓸 날짜 기준값 4개를 한 번만 계산

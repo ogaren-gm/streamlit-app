@@ -1,23 +1,17 @@
-# 서희_최신수정일_25-08-19
+#
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import importlib
-from datetime import datetime, timedelta
-import modules.bigquery
-importlib.reload(modules.bigquery)
-from modules.bigquery import BigQuery
-from st_aggrid import AgGrid, GridOptionsBuilder
-from st_aggrid.shared import JsCode
-import io
-from google.oauth2.service_account import Credentials
-import gspread
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import re
+import importlib, json
+from datetime import datetime, timedelta, date
+import gspread
+from google.oauth2.service_account import Credentials
+from zoneinfo import ZoneInfo
 import math
+import json
 
 import modules.ui_common as ui
 importlib.reload(ui)
@@ -627,10 +621,6 @@ def main():
     """, unsafe_allow_html=True)
 
 
-
-    # (25.11.10) 제목 + 설명 + 업데이트 시각 + 캐시초기화 
-    # last_updated_time
-    # 제목
     st.subheader("언드·PPL 대시보드 (수정중)")
 
 
@@ -657,80 +647,44 @@ def main():
                 font-size:14px;       
                 line-height:2.0;      
             ">
-            ※ 키워드·쿼리 D-1 데이터는 매일 10시 ~ 11시 사이에 업데이트됩니다.
+            ※ 전일 데이터 업데이트 시점은 09시~10시 입니다.
             </div>
             """,
             unsafe_allow_html=True
         )
         
-    with col2:
-        # last_updated_time
-        
-        # -> last_updated_time__query
-        if isinstance(last_updated_time__query, str):
-            lut_q = datetime.strptime(last_updated_time__query, "%Y-%m-%d")
-        else:
-            lut_q = last_updated_time__query
-        lut_q_date = lut_q.date()
-        
-        # -> last_updated_time__GA
-        if isinstance(last_updated_time__GA, str):
-            lut_g = datetime.strptime(last_updated_time__GA, "%Y-%m-%d")
-        else:
-            lut_g = last_updated_time__GA
-        lut_g_date = lut_g.date()
-        
-        now_kst   = datetime.now(ZoneInfo("Asia/Seoul"))
-        today_kst = now_kst.date()
-        
-        delta_days_q = (today_kst - lut_q_date).days
-        delta_days_g = (today_kst - lut_g_date).days
-        
-        # 기본값
-        msg_q    = f"D-{delta_days_q} 업데이트 완료"
-        sub_bg_q = "#E6F4EC"
-        sub_bd_q = "#91C7A5"
-        sub_fg_q = "#237A57"
-        
-        msg_g   = f"D-{delta_days_g} 업데이트 완료"
-        sub_bg_g = "#fff7ed"
-        sub_bd_g = "#fdba74"
-        sub_fg_g = "#c2410c"
-        
-        # 렌더링
+    with col2:        
         st.markdown(
             f"""
-            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
+            <div style="display:flex;justify-content:flex-end;align-items:bottom;gap:9px;">
+            <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet" />
+            
+            <a href="?refresh=1" title="사용자 캐시를 초기화하고 서버의 최신 데이터로 갱신합니다." style="text-decoration:none;vertical-align:middle;">
             <span style="
-                display:inline-flex;align-items:center;justify-content:center;
-                height:26px;padding:0 10px;
-                font-size:13px;line-height:1.1;
-                color:{sub_fg_g};background:{sub_bg_g};border:1px solid {sub_bd_g};
-                border-radius:10px;white-space:nowrap;">
-                📢 {msg_g}
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                gap: 4px;
+                height:30px;
+                padding:10px 10px;
+                font-size:13px;
+                font-weight:400;
+                letter-spacing:-0.3px;
+                color:#8B92A0;
+                background-color:#FFFFFF;
+                border:1.5px solid #D6D6D9;
+                border-radius:14px;
+                white-space:nowrap;
+                cursor:pointer;
+                transition:0.1s;">
+                <span class="material-symbols-outlined" style="font-size:15px;">sync</span>
+                강력 새로고침
             </span>
-            <span style="
-                display:inline-flex;align-items:center;justify-content:center;
-                height:26px;padding:0 10px;
-                font-size:13px;line-height:1.1;
-                color:{sub_fg_q};background:{sub_bg_q};border:1px solid {sub_bd_q};
-                border-radius:10px;white-space:nowrap;">
-                📊 {msg_q}
-            </span>
-            <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
-                <span style="
-                display:inline-flex;align-items:center;justify-content:center;
-                height:26px;padding:0 8px;
-                font-size:13px;line-height:1;
-                color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
-                border-radius:10px;white-space:nowrap;">
-                🗑️ 캐시 초기화
-                </span>
             </a>
-            </div>
             """,
             unsafe_allow_html=True
-        )
+            )
+    
     st.divider()
 
     # ──────────────────────────────────

@@ -279,7 +279,24 @@ def main():
 
         return df
 
-    # PROGRESS BAR
+    # ──────────────────────────────────
+    # C-1) tb_max -> get max date
+    # ──────────────────────────────────
+    @st.cache_data(ttl=CFG["CACHE_TTL"])
+    def get_max():
+        bq  = BigQuery(projectCode="sleeper") # 기간 인자 없이
+        df  = bq.get_data("tb_max")
+        date_max = df['max_date_psi'].iloc[0]
+        date_max = pd.to_datetime(date_max).date()
+
+        date_today = datetime.now().date()
+        date_diff = (date_today - date_max).days
+        
+        return date_diff
+
+    # ──────────────────────────────────
+    # C-2) Progress Bar
+    # ──────────────────────────────────
     spacer_placeholder = st.empty()
     progress_placeholder = st.empty()
 
@@ -322,29 +339,76 @@ def main():
             GA4(BigQuery) 데이터를 기반으로 <b>브랜드·품목·제품별 "상세페이지 조회" 성과와 유입 경로</b>를 다각도로 분석하는 대시보드입니다.<br>
             </div>
             <div style="color:#6c757d; font-size:14px; line-height:2.0;">
-            ※ 전일 데이터가 오전 8:45경 1차 반영되며, 유입 매체 정보(Source/Medium)는 오후 3:25경 최종 반영됩니다.
+            ※ 전일 데이터 업데이트 시점은 08:45 입니다. (유입매체 미분류시 15:25 재반영)
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    with col2:
+    with col2:       
+        # tb_max 
+        date_diff = get_max()
+        if date_diff <= 1:
+            status_text = f"업데이트 정상"
+            icon_name = "event_available"
+            color = "#7FD0C4"
+            bg_color = "#F3FBFA"
+        else:
+            status_text = f"업데이트 이전 (D-{date_diff})"
+            icon_name = "event_busy"
+            color = "#FF8080"
+            bg_color = "#FFF4F4"
+        
         st.markdown(
             f"""
-            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
-            <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
-                <span style="
-                display:inline-flex;align-items:center;justify-content:center;
-                height:26px;padding:0 8px;font-size:13px;line-height:1;
-                color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
-                border-radius:10px;white-space:nowrap;">
-                🗑️ 캐시 초기화
-                </span>
+            <div style="display:flex;justify-content:flex-end;align-items:bottom;gap:9px;">
+            <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet" />
+            
+            <span style="
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                gap: 4px;
+                height:30px;
+                padding:10px 10px;
+                font-size:13px;
+                font-weight:400;
+                letter-spacing:-0.3px;
+                color:{color};
+                background-color:{bg_color};
+                border:1.5px solid {color};
+                border-radius:14px;
+                white-space:nowrap;
+                cursor:default;">
+                <span class="material-symbols-outlined" style="font-size:15px;">{icon_name}</span>
+                {status_text}
+            </span>
+            
+            <a href="?refresh=1" title="사용자 캐시를 초기화하고 서버의 최신 데이터로 갱신합니다." style="text-decoration:none;vertical-align:middle;">
+            <span style="
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                gap: 4px;
+                height:30px;
+                padding:10px 10px;
+                font-size:13px;
+                font-weight:400;
+                letter-spacing:-0.3px;
+                color:#8B92A0;
+                background-color:#FFFFFF;
+                border:1.5px solid #D6D6D9;
+                border-radius:14px;
+                white-space:nowrap;
+                cursor:pointer;
+                transition:0.1s;">
+                <span class="material-symbols-outlined" style="font-size:15px;">sync</span>
+                강력 새로고침
+            </span>
             </a>
-            </div>
             """,
             unsafe_allow_html=True
-        )
+            )
 
     st.divider()
 

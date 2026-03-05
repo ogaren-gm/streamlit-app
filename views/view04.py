@@ -639,8 +639,15 @@ def main():
 
         return df1, df2
 
+    # ──────────────────────────────────
+    # C-1) tb_max -> get max date
+    # ──────────────────────────────────
+    # pass
 
-    # PROGRESS BAR
+
+    # ──────────────────────────────────
+    # C-2) Progress Bar
+    # ──────────────────────────────────
     spacer_placeholder = st.empty()
     progress_placeholder = st.empty()
 
@@ -668,7 +675,7 @@ def main():
     # ──────────────────────────────────
     # D) Header
     # ──────────────────────────────────
-    st.subheader("쇼룸 대시보드 (제작중)")
+    st.subheader("쇼룸 대시보드 (수정중)")
 
     if "refresh" in st.query_params:
         st.cache_data.clear()
@@ -683,29 +690,43 @@ def main():
             쇼룸 시트와 네이버 Place 데이터를 기반으로 <b>조회부터 방문까지의 고객 현황 및 데모그래픽</b>을 확인하는 대시보드입니다.<br> 
             </div>
             <div style="color:#6c757d; font-size:14px; line-height:2.0;">
-            ※ 전일 데이터가 오전 10시경 업데이트 됩니다.
+            ※ 전일 데이터 업데이트 시점은 10시~11시 입니다.
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with col2:
+    with col2:       
         st.markdown(
-            """
-            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
-            <a href="?refresh=1" title="캐시 초기화" style="text-decoration:none;vertical-align:middle;">
-                <span style="
-                display:inline-flex;align-items:center;justify-content:center;
-                height:26px;padding:0 8px;font-size:13px;line-height:1;
-                color:#475569;background:#f8fafc;border:1px solid #e2e8f0;
-                border-radius:10px;white-space:nowrap;">
-                🗑️ 캐시 초기화
-                </span>
+            f"""
+            <div style="display:flex;justify-content:flex-end;align-items:bottom;gap:9px;">
+            <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet" />
+            
+            <a href="?refresh=1" title="사용자 캐시를 초기화하고 서버의 최신 데이터로 갱신합니다." style="text-decoration:none;vertical-align:middle;">
+            <span style="
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                gap: 4px;
+                height:30px;
+                padding:10px 10px;
+                font-size:13px;
+                font-weight:400;
+                letter-spacing:-0.3px;
+                color:#8B92A0;
+                background-color:#FFFFFF;
+                border:1.5px solid #D6D6D9;
+                border-radius:14px;
+                white-space:nowrap;
+                cursor:pointer;
+                transition:0.1s;">
+                <span class="material-symbols-outlined" style="font-size:15px;">sync</span>
+                강력 새로고침
+            </span>
             </a>
-            </div>
             """,
-            unsafe_allow_html=True,
-        )
+            unsafe_allow_html=True
+            )
 
     st.divider()
 

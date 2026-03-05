@@ -8,6 +8,7 @@
         "tb_sleeper_e_cart" : "tb_sleeper.tb_sleeper_e_cart",
         "tb_media" : "tb_sleeper.tb_media",
         "tb_sleeper_f_cmp" : "tb_sleeper.tb_sleeper_f_cmp",
-        "raw_geo_city_kr" : "tb_sleeper.raw_geo_city_kr"
+        "raw_geo_city_kr" : "tb_sleeper.raw_geo_city_kr",
+        "tb_max" : "tb_sleeper.tb_max"
     }
 }

@@ -47,13 +47,14 @@ class BigQuery():
         self.credentialPath = json_data[self.projectCode]['credentialPath']
         
         # 테이블 추가
-        self.tb_sleeper_flatten  = json_data[self.projectCode]['tb_sleeper_flatten']
-        self.tb_sleeper_psi      = json_data[self.projectCode]['tb_sleeper_psi']
-        self.tb_sleeper_e_pdp    = json_data[self.projectCode]['tb_sleeper_e_pdp']
-        self.tb_sleeper_e_cart   = json_data[self.projectCode]['tb_sleeper_e_cart']
-        self.tb_media            = json_data[self.projectCode]['tb_media']
-        self.tb_sleeper_f_cmp    = json_data[self.projectCode]['tb_sleeper_f_cmp']
-        self.raw_geo_city_kr     = json_data[self.projectCode]['raw_geo_city_kr']
+        self.tb_sleeper_flatten = json_data[self.projectCode]['tb_sleeper_flatten']
+        self.tb_sleeper_psi     = json_data[self.projectCode]['tb_sleeper_psi']
+        self.tb_sleeper_e_pdp   = json_data[self.projectCode]['tb_sleeper_e_pdp']
+        self.tb_sleeper_e_cart  = json_data[self.projectCode]['tb_sleeper_e_cart']
+        self.tb_media           = json_data[self.projectCode]['tb_media']
+        self.tb_sleeper_f_cmp   = json_data[self.projectCode]['tb_sleeper_f_cmp']
+        self.raw_geo_city_kr    = json_data[self.projectCode]['raw_geo_city_kr']
+        self.tb_max             = json_data[self.projectCode]['tb_max']
 
 
         try:
@@ -142,8 +143,6 @@ class BigQuery():
             credentials = service_account.Credentials.from_service_account_info(sa_info)
             client      = bigquery.Client(credentials=credentials, project=self.projectName)
 
-
-
         # 테이블 참조
         table_ref = getattr(self, tb_name)  # 예: "project.dataset.table"
         table     = client.get_table(table_ref)
@@ -199,7 +198,35 @@ class BigQuery():
         
         print('호출완료!')
         return df
-    
+
+    def get_max_date(self, tb_name, date_col="event_date"):
+
+        try:
+            credentials = service_account.Credentials.from_service_account_file(self.credentialPath)
+            client      = bigquery.Client(credentials=credentials, project=self.projectName)
+        
+        except:
+            import streamlit as st
+            sa_info = st.secrets["sleeper-462701-admin"]
+            if isinstance(sa_info, str):  # 문자열(JSON)로 저장된 경우
+                sa_info = json.loads(sa_info)
+            sa_info = dict(sa_info)
+            credentials = service_account.Credentials.from_service_account_info(sa_info)
+            client      = bigquery.Client(credentials=credentials, project=self.projectName)
+
+        table_ref = getattr(self, tb_name)
+
+        sql = f"SELECT MAX({date_col}) AS max_date FROM `{table_ref}`"
+        
+        query_job = client.query(sql)
+        df_result = query_job.to_dataframe()
+
+        # 5. 결과값(단일 날짜) 추출해서 반환
+        if not df_result.empty and df_result['max_date'].iloc[0] is not None:
+            return df_result['max_date'].iloc[0]
+        else:
+            return None
+
     
     def append_data(self, df: pd.DataFrame, tb_name: str, if_exists: str = 'append'):
         """
