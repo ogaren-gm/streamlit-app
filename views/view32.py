@@ -10,21 +10,26 @@ from datetime import datetime, timedelta, date
 import gspread
 from google.oauth2.service_account import Credentials
 from zoneinfo import ZoneInfo
-import math
+import html
+from scipy.spatial import ConvexHull  # 추가된 부분
 import json
 
 import modules.ui_common as ui
 importlib.reload(ui)
-from zoneinfo import ZoneInfo
 
 
+# ──────────────────────────────────
+# CONFIG
+# ──────────────────────────────────
+CFG = {
+    # 기본
+    "TZ": "Asia/Seoul",
+    "CACHE_TTL": 3600,
+    "DEFAULT_LOOKBACK_DAYS": 14,
+    
+    "TOPK_OPTS": [10, 15, 20, 25, 30, 35, 40],
 
-def main():
-    # ──────────────────────────────────
-    # 스트림릿 페이지 설정
-    # ──────────────────────────────────
-    st.markdown(
-        """
+    "CSS_BLOCK_CONTAINER": """
         <style>
             .block-container {
                 max-width: 100% !important;
@@ -34,60 +39,162 @@ def main():
                 padding-right: 4.5rem;
             }
         </style>
-        """,
-        unsafe_allow_html=True
-    )    
-    # # 탭 간격 CSS
-    # st.markdown("""
-    #     <style>
-    #         [role="tablist"] [role="tab"] { margin-right: 1rem; }
-    #     </style>
-    # """, unsafe_allow_html=True)
-    
-    
+    """,
+    "CSS_TABS": """
+        <style>
+            [role="tablist"] [role="tab"] { margin-right: 1rem; }
+        </style>
+    """,
+}
+
+AGE_ORDER = ['19-24','25-29','30-34','35-39','40-44','45-49','50-54','55-59']
+
+
+# ──────────────────────────────────
+# HELPER
+# ──────────────────────────────────
+def _calc_ranges(end_date: date, n_days: int):
+    cur_e = end_date
+    cur_s = (pd.to_datetime(cur_e) - timedelta(days=n_days - 1)).date()
+    prev_e = (pd.to_datetime(cur_s) - timedelta(days=1)).date()
+    prev_s = (pd.to_datetime(prev_e) - timedelta(days=n_days - 1)).date()
+    return prev_s, prev_e, cur_s, cur_e
+
+def _kw_total_base(df0: pd.DataFrame) -> pd.DataFrame:
+    # kw_total은 age 중복이므로 max로 대표값 1개만
+    return (
+        df0.groupby(["날짜", "키워드유형", "키워드"], as_index=False)
+        .agg(kw_total=("키워드_abs_total(일)", "max"))
+    )
+
+def _to_pct(g: pd.DataFrame, x_col: str, val_col: str) -> pd.DataFrame:
+    denom = g.groupby(x_col, dropna=False)[val_col].transform("sum")
+    g["val"] = np.where(denom > 0, g[val_col] / denom, 0.0)
+    return g
+
+def _clean_key(s: str) -> str:
+    return (
+        str(s)
+        .replace(" ", "_")
+        .replace("/", "_")
+        .replace("\\", "_")
+        .replace(":", "_")
+        .replace(".", "_")
+        .replace("-", "_")
+        .replace("(", "")
+        .replace(")", "")
+    )
+
+
+# ──────────────────────────────────
+# main
+# ──────────────────────────────────
+def main():
+    # ──────────────────────────────────
+    # A) Layout / CSS
+    # ──────────────────────────────────
+    st.markdown(CFG["CSS_BLOCK_CONTAINER"], unsafe_allow_html=True)
+    st.markdown(CFG["CSS_TABS"], unsafe_allow_html=True)
+
     # ────────────────────────────────────────────────────────────────
-    # 사이드바 필터 설정
-    # ────────────────────────────────────────────────────────────────    
-    @st.cache_data(ttl=3600)
+    # B) Sidebar
+    # ────────────────────────────────────────────────────────────────
+    # 기간
+    st.sidebar.header("Filter")
+    st.sidebar.caption("영역별로 기간을 조정하세요.")
+    
+    # ──────────────────────────────────
+    # C) Data Load
+    # ──────────────────────────────────
+    @st.cache_data(ttl=CFG["CACHE_TTL"])
     def load_data():
         scope = [
-            'https://spreadsheets.google.com/feeds',
-            'https://www.googleapis.com/auth/drive'
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive",
         ]
-
-        try: 
-            creds = Credentials.from_service_account_file("C:/_code/auth/sleeper-461005-c74c5cd91818.json", scopes=scope)
-        except: # 배포용 (secrets.toml)
+        try:
+            creds = Credentials.from_service_account_file(
+                "C:/_code/auth/sleeper-461005-c74c5cd91818.json", scopes=scope
+            )
+        except:
             sa_info = st.secrets["sleeper-462701-admin"]
-            if isinstance(sa_info, str):  # 혹시 문자열(JSON)로 저장했을 경우
+            if isinstance(sa_info, str):
                 sa_info = json.loads(sa_info)
             creds = Credentials.from_service_account_info(sa_info, scopes=scope)
 
         gc = gspread.authorize(creds)
-        sh = gc.open_by_url('https://docs.google.com/spreadsheets/d/1Li4YzwsxI7rB3Q2Z0gkuGIyANTaxFrVzgsKE-RAAdME/edit?gid=2078920702#gid=2078920702')
+        sh = gc.open_by_url(
+            "https://docs.google.com/spreadsheets/d/1HFPuxQSJqIY7VY_3YcAwEPfw_SjnApH_txRPS69s4xk/edit?gid=1274042914#gid=1274042914"
+        )
+        # 한 시트만 불러오면 됨.
+        wsa = sh.worksheet("query_demographic")
+        data = wsa.get("A1:Z")
+        df = pd.DataFrame(data[1:], columns=data[0])
         
-        # 데이터 시트별로 불러오자.
-        PPL_LIST   = pd.DataFrame(sh.worksheet('PPL_LIST').get_all_records())
-        PPL_DATA   = pd.DataFrame(sh.worksheet('PPL_DATA').get_all_records())
-        GA_EVENT_SUMMARY = pd.DataFrame(sh.worksheet('GA_Event_Summary').get_all_records())
-        # --------------------------------------------------------------
-        wsa = sh.worksheet('PPL_ACTION')
-        data = wsa.get('A1:P')  # A열~P열까지 전체
-        PPL_ACTION = pd.DataFrame(data[1:], columns=data[0])  # 1행=헤더
-        # --------------------------------------------------------------
-        query_slp      = pd.DataFrame(sh.worksheet('query_슬립퍼').get_all_records())
-        query_nor      = pd.DataFrame(sh.worksheet('query_누어').get_all_records())
-        query_sum      = pd.DataFrame(sh.worksheet('query_sum').get_all_records())
-        
-        # last_updated_time
-        last_updated_time__query = query_slp['날짜'].max()
-        last_updated_time__GA = GA_EVENT_SUMMARY['event_date'].max()
-        
-        
-        return PPL_LIST, PPL_DATA, PPL_ACTION, query_slp, query_nor, query_sum, last_updated_time__query, last_updated_time__GA
+        # 1) 컬럼 전처리
+        need_cols = ["날짜", "키워드", "키워드유형", "age_info", "abs_age", "키워드_abs_total(일)"]
+        df = df[[c for c in need_cols if c in df.columns]]
+
+        # 1-1) 날짜
+        df["날짜"] = (
+            df["날짜"]
+            .astype("string")
+            .str.strip()
+            .replace({"": pd.NA, "nan": pd.NA, "NaN": pd.NA})
+        )
+        df["날짜"] = pd.to_datetime(df["날짜"], errors="coerce")
+
+        # 1-2) 날짜 이외
+        df["키워드"]    = df["키워드"].astype(str).fillna("").str.strip()
+        df["키워드유형"] = df["키워드유형"].astype(str).fillna("").str.strip()
+        df["age_info"] = df["age_info"].astype(str).fillna("").str.strip()
+        df["abs_age"]  = pd.to_numeric(df["abs_age"], errors="coerce").fillna(0)
+        df["키워드_abs_total(일)"] = pd.to_numeric(df["키워드_abs_total(일)"], errors="coerce").fillna(0)
+        df["age_info"] = pd.Categorical(df["age_info"], categories=AGE_ORDER, ordered=True)
+
+        # 유효 데이터만
+        df = df[(df["날짜"].notna()) & (df["키워드"] != "") & (df["키워드유형"] != "") & (df["age_info"].notna())]
+
+        return df
 
 
-    # PROGRESS BAR
+    # ──────────────────────────────────
+    # C-1) tb_max -> get max date
+    # ──────────────────────────────────
+    @st.cache_data(ttl=CFG["CACHE_TTL"])
+    def get_max():
+        scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        try:
+            creds = Credentials.from_service_account_file(
+                "C:/_code/auth/sleeper-461005-c74c5cd91818.json", scopes=scope
+            )
+        except:
+            sa_info = st.secrets["sleeper-462701-admin"]
+            if isinstance(sa_info, str):
+                sa_info = json.loads(sa_info)
+            creds = Credentials.from_service_account_info(sa_info, scopes=scope)
+
+        gc = gspread.authorize(creds)
+        sh = gc.open_by_url(
+            "https://docs.google.com/spreadsheets/d/1HFPuxQSJqIY7VY_3YcAwEPfw_SjnApH_txRPS69s4xk/edit?gid=1274042914#gid=1274042914"
+        )
+        wsa = sh.worksheet("query_demographic")
+        
+        date_values = wsa.col_values(1)
+        dates = pd.to_datetime(date_values[1:], errors='coerce')
+        date_max = dates.max().date()
+
+        date_today = datetime.now().date()
+        date_diff = (date_today - date_max).days
+        
+        return date_diff
+
+    # ──────────────────────────────────
+    # C-2) Progress Bar
+    # ──────────────────────────────────
     spacer_placeholder = st.empty()
     progress_placeholder = st.empty()
 
@@ -101,7 +208,7 @@ def main():
         progress_bar.progress(i, text=f"데이터를 불러오고 있습니다...{i}%")
         time.sleep(0.1)
     
-    PPL_LIST, PPL_DATA, PPL_ACTION, query_slp, query_nor, query_sum, last_updated_time__query, last_updated_time__GA = load_data()
+    df = load_data()
     
     progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 중입니다...")
     time.sleep(0.4)
@@ -113,551 +220,68 @@ def main():
     spacer_placeholder.empty()
 
 
-    # 날짜 컬럼 타입 변환
-    # ppl_data['날짜']   = pd.to_datetime(ppl_data['날짜'])
-    # ppl_action['날짜'] = pd.to_datetime(ppl_action['날짜'])
-    query_slp['날짜']   = pd.to_datetime(query_slp['날짜'])
-    query_nor['날짜']   = pd.to_datetime(query_nor['날짜'])
-    
-    
-    # 모든 데이터프레임이 동일한 파생 지표를 가...지지 않음
-    # => "채널별 인게이지먼트 및 액션"용
-    def decorate_df_eng(df: pd.DataFrame,
-                    select_option: int = 1,) -> None:
-        # 키에러방지
-        required = ["날짜",
-                    "채널명",
-                    "Cost",
-                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
-                    "session_count","avg_session_duration_sec","view_item_list_sessions","view_item_sessions","scroll_50_sessions","product_option_price_sessions","find_showroom_sessions","add_to_cart_sessions","sign_up_sessions","showroom_10s_sessions","showroom_leads_sessions",
-                    ]
-        for c in required:
-            if c not in df.columns:
-                df[c] = 0  
-        num_cols = ["Cost",
-                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
-                    "session_count","avg_session_duration_sec","view_item_list_sessions","view_item_sessions","scroll_50_sessions","product_option_price_sessions","find_showroom_sessions","add_to_cart_sessions","sign_up_sessions","showroom_10s_sessions","showroom_leads_sessions",
-                    ]
-        df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-
-        # 파생지표 생성 - CVR
-        df['view_item_list_CVR']         = (df['view_item_list_sessions']         / df['session_count']          * 100).round(2)
-        df['view_item_CVR']              = (df['view_item_sessions']              / df['session_count']          * 100).round(2)
-        df['scroll_50_CVR']              = (df['scroll_50_sessions']              / df['session_count']          * 100).round(2)
-        df['product_option_price_CVR']   = (df['product_option_price_sessions']   / df['session_count']          * 100).round(2)
-        df['find_nearby_showroom_CVR']   = (df['find_showroom_sessions']          / df['session_count']          * 100).round(2)
-        df['add_to_cart_CVR']            = (df['add_to_cart_sessions']            / df['session_count']          * 100).round(2)
-        df['sign_up_CVR']                = (df['sign_up_sessions']                / df['session_count']          * 100).round(2)
-        df['showroom_10s_CVR']           = (df['showroom_10s_sessions']           / df['session_count']          * 100).round(2)
-        df['showroom_leads_CVR']         = (df['showroom_leads_sessions']         / df['session_count']          * 100).round(2)  # (25.11.02) view_item_list_CVR 제외하고 view_item_list_sessions가 분모였는데 세션수로 일괄 바꿈
-        # 파생지표 생성 - CPA
-        df['view_item_list_CPA']         = (df['Cost']/10     /  df['view_item_list_sessions']          * 100).round(0)  # (25.11.02) 행별로 분배가 안되고 있어서 하드코딩으로 변경함 
-        df['view_item_CPA']              = (df['Cost']/10     /  df['view_item_sessions']               * 100).round(0)
-        df['scroll_50_CPA']              = (df['Cost']/10     /  df['scroll_50_sessions']               * 100).round(0)
-        df['product_option_price_CPA']   = (df['Cost']/10     /  df['product_option_price_sessions']    * 100).round(0)
-        df['find_nearby_showroom_CPA']   = (df['Cost']/10     /  df['find_showroom_sessions']           * 100).round(0)
-        df['add_to_cart_CPA']            = (df['Cost']/10     /  df['add_to_cart_sessions']             * 100).round(0)
-        df['sign_up_CPA']                = (df['Cost']/10     /  df['sign_up_sessions']                 * 100).round(0)
-        df['showroom_10s_CPA']           = (df['Cost']/10     /  df['showroom_10s_sessions']            * 100).round(0)
-        df['showroom_leads_CPA']         = (df['Cost']/10     /  df['showroom_leads_sessions']          * 100).round(0)
-        
-        # 컬럼 순서 지정
-        if select_option == 1: # min
-            df = df[["날짜",
-                    "채널명",
-                    "Cost",
-                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
-                    "session_count","avg_session_duration_sec",
-                    "view_item_list_sessions",
-                    "view_item_sessions",
-                    "scroll_50_sessions",
-                    "product_option_price_sessions",
-                    "find_showroom_sessions",
-                    "add_to_cart_sessions",
-                    "sign_up_sessions",
-                    "showroom_10s_sessions",
-                    "showroom_leads_sessions"
-                    ]]
-        elif select_option == 2: # CVR
-            df = df[["날짜",
-                    "채널명",
-                    "Cost",
-                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
-                    "session_count","avg_session_duration_sec",
-                    "view_item_list_sessions","view_item_list_CVR",
-                    "view_item_sessions","view_item_CVR",
-                    "scroll_50_sessions","scroll_50_CVR",
-                    "product_option_price_sessions","product_option_price_CVR",
-                    "find_showroom_sessions","find_nearby_showroom_CVR",
-                    "add_to_cart_sessions","add_to_cart_CVR",
-                    "sign_up_sessions","sign_up_CVR",
-                    "showroom_10s_sessions","showroom_10s_CVR",
-                    "showroom_leads_sessions","showroom_leads_CVR"
-                    ]]
-        elif select_option == 3: # CPA
-            df = df[["날짜",
-                    "채널명",
-                    "Cost",
-                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
-                    "session_count","avg_session_duration_sec",
-                    "view_item_list_sessions","view_item_list_CPA",
-                    "view_item_sessions","view_item_CPA",
-                    "scroll_50_sessions","scroll_50_CPA",
-                    "product_option_price_sessions","product_option_price_CPA",
-                    "find_showroom_sessions","find_nearby_showroom_CPA",
-                    "add_to_cart_sessions","add_to_cart_CPA",
-                    "sign_up_sessions","sign_up_CPA",
-                    "showroom_10s_sessions","showroom_10s_CPA",
-                    "showroom_leads_sessions","showroom_leads_CPA"
-                    ]]
-        elif select_option == 4: # max
-            df = df[["날짜",
-                    "채널명",
-                    "Cost",
-                    "조회수","좋아요수","댓글수","브랜드언급량","링크 클릭수", 
-                    "session_count","avg_session_duration_sec",
-                    "view_item_list_sessions","view_item_list_CVR", "view_item_list_CPA",
-                    "view_item_sessions","view_item_CVR","view_item_CPA",
-                    "scroll_50_sessions","scroll_50_CVR","scroll_50_CPA",
-                    "product_option_price_sessions","product_option_price_CVR","product_option_price_CPA",
-                    "find_showroom_sessions","find_nearby_showroom_CVR","find_nearby_showroom_CPA",
-                    "add_to_cart_sessions","add_to_cart_CVR","add_to_cart_CPA",
-                    "sign_up_sessions","sign_up_CVR","sign_up_CPA",
-                    "showroom_10s_sessions","showroom_10s_CVR","showroom_10s_CPA",
-                    "showroom_leads_sessions","showroom_leads_CVR","showroom_leads_CPA"
-                    ]]
-
-        # 자료형 워싱 (event_date 아님)
-        df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
-        num_cols = df.select_dtypes(include=['number']).columns
-        df[num_cols] = (df[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0))    
-        
-        # 컬럼 이름 변경 - 멀티 인덱스
-        if select_option == 1: # min 
-            df.columns = pd.MultiIndex.from_tuples([
-                ("기본정보",      "날짜"),             # 
-                ("기본정보",      "채널명"),            # 
-                ("COST",         "일할비용"),          # 
-                ("ENGAGEMENT",   "조회수"),            # 
-                ("ENGAGEMENT",   "좋아요수"),          # 
-                ("ENGAGEMENT",   "댓글수"),            # 
-                ("ENGAGEMENT",   "브랜드언급량"),       # 
-                ("ENGAGEMENT",   "링크클릭수"),         # 
-                ("GA",    "유입 세션수"),       # session_count
-                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
-                ("PLP조회",    "Acutal"),          # view_item_list_sessions
-                ("PDP조회",    "Acutal"),          # view_item_sessions
-                ("PDPscr50",    "Acutal"),         # scroll_50_sessions
-                ("가격표시",    "Acutal"),          # product_option_price_sessions
-                ("쇼룸찾기",    "Acutal"),          # find_showroom_sessions
-                ("장바구니",    "Acutal"),          # add_to_cart_sessions
-                ("회원가입",    "Acutal"),          # sign_up_sessions
-                ("쇼룸10초",    "Acutal"),          # showroom_10s_sessions
-                ("쇼룸예약",    "Acutal"),          # showroom_leads_sessions
-            ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)   
-        elif select_option == 2: # CVR
-            df.columns = pd.MultiIndex.from_tuples([
-                ("기본정보",      "날짜"),             # 
-                ("기본정보",      "채널명"),            # 
-                ("COST",         "일할비용"),          # 
-                ("ENGAGEMENT",   "조회수"),            # 
-                ("ENGAGEMENT",   "좋아요수"),          # 
-                ("ENGAGEMENT",   "댓글수"),            # 
-                ("ENGAGEMENT",   "브랜드언급량"),       # 
-                ("ENGAGEMENT",   "링크클릭수"),         # 
-                ("GA",    "유입 세션수"),       # session_count
-                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
-                ("PLP조회",    "Acutal"),          # view_item_list_sessions
-                ("PLP조회",    "CVR"),     
-                ("PDP조회",    "Acutal"),          # view_item_sessions
-                ("PDP조회",    "CVR"),  
-                ("PDPscr50",    "Acutal"),         # scroll_50_sessions
-                ("PDPscr50",    "CVR"),    
-                ("가격표시",    "Acutal"),          # product_option_price_sessions
-                ("가격표시",    "CVR"),   
-                ("쇼룸찾기",    "Acutal"),          # find_showroom_sessions
-                ("쇼룸찾기",    "CVR"), 
-                ("장바구니",    "Acutal"),          # add_to_cart_sessions
-                ("장바구니",    "CVR"),
-                ("회원가입",    "Acutal"),          # sign_up_sessions
-                ("회원가입",    "CVR"),  
-                ("쇼룸10초",    "Acutal"),          # showroom_10s_sessions
-                ("쇼룸10초",    "CVR"),  
-                ("쇼룸예약",    "Acutal"),          # showroom_leads_sessions
-                ("쇼룸예약",    "CVR"),
-            ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)     
-        elif select_option == 3: # CPA
-            df.columns = pd.MultiIndex.from_tuples([
-                ("기본정보",      "날짜"),             # 
-                ("기본정보",      "채널명"),            # 
-                ("COST",         "일할비용"),          # 
-                ("ENGAGEMENT",   "조회수"),            # 
-                ("ENGAGEMENT",   "좋아요수"),          # 
-                ("ENGAGEMENT",   "댓글수"),            # 
-                ("ENGAGEMENT",   "브랜드언급량"),       # 
-                ("ENGAGEMENT",   "링크클릭수"),         # 
-                ("GA",    "유입 세션수"),       # session_count
-                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
-                ("PLP조회",    "Acutal"),          # view_item_list_sessions
-                ("PLP조회",    "CPA"),     
-                ("PDP조회",    "Acutal"),          # view_item_sessions
-                ("PDP조회",    "CPA"),     
-                ("PDPscr50",    "Acutal"),         # scroll_50_sessions
-                ("PDPscr50",    "CPA"),     
-                ("가격표시",    "Acutal"),          # product_option_price_sessions
-                ("가격표시",    "CPA"),    
-                ("쇼룸찾기",    "Acutal"),          # find_showroom_sessions
-                ("쇼룸찾기",    "CPA"), 
-                ("장바구니",    "Acutal"),          # add_to_cart_sessions
-                ("장바구니",    "CPA"), 
-                ("회원가입",    "Acutal"),          # sign_up_sessions
-                ("회원가입",    "CPA"),  
-                ("쇼룸10초",    "Acutal"),          # showroom_10s_sessions
-                ("쇼룸10초",    "CPA"),  
-                ("쇼룸예약",    "Acutal"),          # showroom_leads_sessions
-                ("쇼룸예약",    "CPA"), 
-            ], names=["그룹","지표"])  # 상단 레벨 이름(옵션) 
-        elif select_option == 4: # max
-            df.columns = pd.MultiIndex.from_tuples([
-                ("기본정보",      "날짜"),             # 
-                ("기본정보",      "채널명"),            # 
-                ("COST",         "일할비용"),          # 
-                ("ENGAGEMENT",   "조회수"),            # 
-                ("ENGAGEMENT",   "좋아요수"),          # 
-                ("ENGAGEMENT",   "댓글수"),            # 
-                ("ENGAGEMENT",   "브랜드언급량"),       # 
-                ("ENGAGEMENT",   "링크클릭수"),         # 
-                ("GA",    "유입 세션수"),       # session_count
-                ("GA",    "평균체류시간(초)"),   # avg_session_duration_sec
-                ("PLP조회",    "Acutal"),          # view_item_list_sessions
-                ("PLP조회",    "CVR"),     
-                ("PLP조회",    "CPA"),     
-                ("PDP조회",    "Acutal"),          # view_item_sessions
-                ("PDP조회",    "CVR"),  
-                ("PDP조회",    "CPA"),     
-                ("PDPscr50",    "Acutal"),         # scroll_50_sessions
-                ("PDPscr50",    "CVR"),    
-                ("PDPscr50",    "CPA"),     
-                ("가격표시",    "Acutal"),          # product_option_price_sessions
-                ("가격표시",    "CVR"),   
-                ("가격표시",    "CPA"),    
-                ("쇼룸찾기",    "Acutal"),          # find_showroom_sessions
-                ("쇼룸찾기",    "CVR"), 
-                ("쇼룸찾기",    "CPA"), 
-                ("장바구니",    "Acutal"),          # add_to_cart_sessions
-                ("장바구니",    "CVR"),
-                ("장바구니",    "CPA"), 
-                ("회원가입",    "Acutal"),          # sign_up_sessions
-                ("회원가입",    "CVR"),  
-                ("회원가입",    "CPA"),  
-                ("쇼룸10초",    "Acutal"),          # showroom_10s_sessions
-                ("쇼룸10초",    "CVR"),  
-                ("쇼룸10초",    "CPA"),  
-                ("쇼룸예약",    "Acutal"),          # showroom_leads_sessions
-                ("쇼룸예약",    "CVR"),
-                ("쇼룸예약",    "CPA"), 
-            ], names=["그룹","지표"])  # 상단 레벨 이름(옵션)
-        
-        return df
-
-    def render_style_eng(target_df, select_option):
-        styled = ui.style_format(
-            decorate_df_eng(target_df, select_option=opt),
-            decimals_map={
-                ("COST",         "일할비용"):0,          # 
-                ("ENGAGEMENT",   "조회수"):0,            # 
-                ("ENGAGEMENT",   "좋아요수"):0,          # 
-                ("ENGAGEMENT",   "댓글수"):0,            # 
-                ("ENGAGEMENT",   "브랜드언급량"):0,       # 
-                ("ENGAGEMENT",   "링크클릭수"):0,         # 
-                ("GA",    "유입 세션수"):0,       # session_count
-                ("GA",    "평균체류시간(초)"):0,   # avg_session_duration_sec
-                ("PLP조회",    "Acutal"):0,          # view_item_list_sessions
-                ("PLP조회",    "CVR"):1,     
-                ("PLP조회",    "CPA"):0,     
-                ("PDP조회",    "Acutal"):0,          # view_item_sessions
-                ("PDP조회",    "CVR"):1,  
-                ("PDP조회",    "CPA"):0,     
-                ("PDPscr50",    "Acutal"):0,         # scroll_50_sessions
-                ("PDPscr50",    "CVR"):1,    
-                ("PDPscr50",    "CPA"):0,     
-                ("가격표시",    "Acutal"):0,          # product_option_price_sessions
-                ("가격표시",    "CVR"):1,   
-                ("가격표시",    "CPA"):0,    
-                ("쇼룸찾기",    "Acutal"):0,          # find_showroom_sessions
-                ("쇼룸찾기",    "CVR"):1, 
-                ("쇼룸찾기",    "CPA"):0, 
-                ("장바구니",    "Acutal"):0,          # add_to_cart_sessions
-                ("장바구니",    "CVR"):1,
-                ("장바구니",    "CPA"):0, 
-                ("회원가입",    "Acutal"):0,          # sign_up_sessions
-                ("회원가입",    "CVR"):1,  
-                ("회원가입",    "CPA"):0,  
-                ("쇼룸10초",    "Acutal"):0,          # showroom_10s_sessions
-                ("쇼룸10초",    "CVR"):1,  
-                ("쇼룸10초",    "CPA"):0,  
-                ("쇼룸예약",    "Acutal"):0,          # showroom_leads_sessions
-                ("쇼룸예약",    "CVR"):1,
-                ("쇼룸예약",    "CPA"):0, 
-            },
-            suffix_map={
-                ("PLP조회",    "CVR"):" %",     
-                ("PDP조회",    "CVR"):" %",  
-                ("PDPscr50",    "CVR"):" %",    
-                ("가격표시",    "CVR"):" %",   
-                ("쇼룸찾기",    "CVR"):" %", 
-                ("장바구니",    "CVR"):" %",
-                ("회원가입",    "CVR"):" %",  
-                ("쇼룸10초",    "CVR"):" %",  
-                ("쇼룸예약",    "CVR"):" %",
-        }
-        )
-
-        st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
-
-
     # ──────────────────────────────────
-    # 브랜드별 채널명 자동으로 수집. 하드코딩 제거 
+    # D) Header
     # ──────────────────────────────────
-    channel_brand = (
-        PPL_LIST.loc[:, ['채널명', '브랜드', 'order']]
-        .dropna(subset=['채널명', '브랜드'])
-        .assign(order=lambda d: pd.to_numeric(d['order'], errors='coerce'))
-        # order가 비어있거나 숫자 변환 실패 시 맨 뒤로 가도록 아주 작은 값으로 대체
-        .assign(order=lambda d: d['order'].fillna(float('-inf')))
-        # 브랜드 내에서 order 내림차순 정렬
-        .sort_values(['브랜드', 'order'], ascending=[True, False])
-        # 중복 채널명/브랜드 조합 있으면 첫 행(=가장 큰 order)만 보존
-        .drop_duplicates(subset=['브랜드', '채널명'], keep='first')
-    )
-
-    CHANNELS_BY_BRAND = {
-        b: g['채널명'].tolist()
-        for b, g in channel_brand.groupby('브랜드', sort=False)
-    }
+    st.subheader("키워드 대시보드")
     
-
-    # (25.09.18 하드코딩 제거) "채널별 쿼리 기여량"용
-    def decorate_df_ctb(df: pd.DataFrame, brand: str = 'sleeper') -> pd.DataFrame:
-        # 브랜드 라벨 정규화
-        brand_map = {'sleeper': '슬립퍼', 'nooer': '누어'}
-        brand_kor = brand_map.get(brand, brand)  # 이미 한글이면 그대로
-
-        # 채널 목록 자동 로드 (없으면 빈 리스트)
-        channels = CHANNELS_BY_BRAND.get(brand_kor, [])
-
-        # 필요한 기본 컬럼 채우기
-        base_required = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중']
-        # 채널·비중 동적 required
-        dyn_required = [c for ch in channels for c in (ch, f'{ch}_비중')]
-        for c in base_required + dyn_required:
-            if c not in df.columns:
-                df[c] = 0
-
-        # 숫자형 변환
-        num_cols = ['검색량', '기본 검색량', '기본 검색량_비중'] + \
-                [c for ch in channels for c in (ch, f'{ch}_비중')]
-        df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-
-        # 컬럼 순서 동적 구성
-        ordered = ['날짜', '검색량', '기본 검색량', '기본 검색량_비중'] + \
-                [c for pair in [(ch, f'{ch}_비중') for ch in channels] for c in pair]
-        df = df[ordered]
-
-        # 날짜/무한대 처리
-        df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m-%d')
-        num_cols2 = df.select_dtypes(include=['number']).columns
-        df[num_cols2] = df[num_cols2].replace([np.inf, -np.inf], np.nan).fillna(0)
-
-        # MultiIndex 헤더 구성
-        tuples = [
-            ("기본정보", "날짜"),
-            ("기본정보", "전체 검색량"),
-            ("기본 검색량", "검색량"),
-            ("기본 검색량", "비중(%)"),
-        ]
-        for ch in channels:
-            tuples += [(ch, "검색량"), (ch, "비중(%)")]
-
-        df.columns = pd.MultiIndex.from_tuples(tuples, names=["그룹", "지표"])
-        return df
-
-
-    # (25.09.18 하드코딩 제거) 
-    def render_style_ctb(target_df, brand):
-        # 먼저 데코레이션(여기서 MultiIndex 컬럼 완성됨)
-        decorated = decorate_df_ctb(target_df, brand)
-
-        # 채널 그룹명 동적 추출 (기본정보/기본 검색량 제외)
-        groups = list(decorated.columns.get_level_values(0).unique())
-        channel_groups = [g for g in groups if g not in ["기본정보", "기본 검색량"]]
-
-        # 동적 포맷 맵
-        decimals_map = {
-            ("기본정보", "전체 검색량"): 0,
-            ("기본 검색량", "비중(%)"): 1,
-        }
-        # 채널 비중은 모두 소수 1자리
-        for g in channel_groups:
-            decimals_map[(g, "비중(%)")] = 1
-
-        suffix_map = {
-            ("기본 검색량", "비중(%)"): " %",
-        }
-        for g in channel_groups:
-            suffix_map[(g, "비중(%)")] = " %"
-
-        styled = ui.style_format(decorated, decimals_map=decimals_map, suffix_map=suffix_map)
-        st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
-
-
-    def render_stacked_bar(
-        df, x, y, color,
-        fixed_label="기본 검색량",
-        fixed_color="#D5DAE5",  # 회색 고정, 회색 다신 등장 ㄴㄴ
-    ):
-        # 숫자형 보정
-        def _to_numeric(cols):
-            for c in cols:
-                df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-
-        # 회색 제외 팔레트
-        palette = px.colors.qualitative.Plotly
-        color_map = {fixed_label: fixed_color}
-
-        # ← 여기만 변경: fixed_label을 항상 "마지막"으로 보냄
-        def _category_order(series_name):
-            cats = df[series_name].dropna().astype(str).unique().tolist()
-            if fixed_label in cats:
-                cats = [c for c in cats if c != fixed_label] + [fixed_label]
-            return cats
-
-        if isinstance(y, (list, tuple)):
-            _to_numeric(list(y))
-            if color is not None and color in df.columns:
-                long_df = df.melt(id_vars=[x, color], value_vars=list(y),
-                                var_name="__series__", value_name="__value__")
-                order = _category_order("__series__")
-                fig = px.bar(
-                    long_df, x=x, y="__value__", color="__series__", opacity=0.6,
-                    color_discrete_map=color_map,
-                    color_discrete_sequence=palette,
-                    category_orders={"__series__": order},
-                )
-            else:
-                fig = px.bar(df, x=x, y=list(y), opacity=0.6,
-                            color_discrete_sequence=palette)
-        else:
-            _to_numeric([y])
-            order = _category_order(color) if color else None
-            fig = px.bar(
-                df, x=x, y=y, color=color, opacity=0.6,
-                color_discrete_map=color_map,
-                color_discrete_sequence=palette,
-                category_orders=({color: order} if order else None),
-            )
-
-        fig.update_layout(barmode="relative")
-        fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-        fig.update_layout(
-            bargap=0.1, bargroupgap=0.2, height=400,
-            xaxis_title=None, yaxis_title=None,
-            legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
-        )
-        fig.update_xaxes(tickformat="%m월 %d일")
-        st.plotly_chart(fig, use_container_width=True)
-
-
-
-
-    # ────────────────────────────────────────────────────────────────
-    # 채널 목록 > 조금 컴팩트하게 수정
-    # ────────────────────────────────────────────────────────────────
-
-    # 카드 전용 CSS (컴팩트 스타일)
-    st.markdown("""
-    <style>
-    .ppl-grid { gap: 6px !important; }  /* st.columns gap=small 과 조화 */
-
-    .ppl-card {
-        border:1px solid #e6e6e6;
-        border-radius:8px;
-        padding:12px 14px;
-        margin-bottom:14px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-        background:#fff;
-    }
-    .ppl-card .card-top {
-        display:flex; align-items:center; justify-content:space-between;
-        margin-bottom:1px;
-    }
-    .ppl-card .title {
-        font-size:0.9rem; font-weight:700; color:#222; margin:0; 
-        line-height:1.2;
-    }
-    .ppl-card .meta {
-        font-size:0.7rem; color:#666; margin-top:2px;
-    }
-    .ppl-card .row {
-        display:flex; justify-content:space-between; align-items:center;
-        margin-top:1px; font-size:0.8rem;
-    }
-    .ppl-card .total { color:#333; }
-    .ppl-card .total b { font-weight:700; }
-
-    /* 브랜드 배지 */
-    .ppl-badge {
-        display:inline-block; padding:2px 8px; border-radius:999px;
-        font-size:0.7rem; line-height:1.6; font-weight:500; color:#fff;
-        white-space:nowrap;
-    }
-    .badge-slp { background:#FF4B4B; } /* 슬립퍼 */
-    .badge-nor { background:#5562EA; } /* 누어 */
-
-    /* 링크 */
-    .ppl-link a { text-decoration:none; font-size:0.8rem; }
-    .ppl-link a:hover { text-decoration:underline; }
-    </style>
-    """, unsafe_allow_html=True)
-
-
-    st.subheader("언드·PPL 대시보드 (수정중)")
-
-
     if "refresh" in st.query_params:
         st.cache_data.clear()
-        st.query_params.clear()   # 파라미터 제거
+        st.query_params.clear()
         st.rerun()
-        
-    # 설명
+
     col1, col2 = st.columns([0.65, 0.35], vertical_alignment="center")
     with col1:
         st.markdown(
             """
-            <div style="  
-                font-size:14px;       
-                line-height:1.5;      
-            ">
-            <b>PPL 채널별 성과</b>와, 
-            랜딩 이후의 <b>사용자 행동</b>을 살펴볼 수 있으며, 
-            전체 검색량 대비 <b>채널별 쿼리 기여량</b>을 파악할 수 있습니다.
+            <div style="font-size:14px;line-height:1.5;">
+            네이버 DataLab 데이터를 기반으로 <b>키워드 유형별 트렌드와 연령대별 관심도</b>를 분석하는 대시보드입니다.<br>
             </div>
-            <div style="
-                color:#6c757d;        
-                font-size:14px;       
-                line-height:2.0;      
-            ">
+            <div style="color:#6c757d;font-size:14px;line-height:2.0;">
             ※ 전일 데이터 업데이트 시점은 09시~10시 입니다.
             </div>
             """,
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
+
+    with col2:       
+        # tb_max 
+        date_diff = get_max()
+        if date_diff <= 1:
+            status_text = f"업데이트 정상"
+            icon_name = "event_available"
+            color = "#7FD0C4"
+            bg_color = "#F3FBFA"
+        else:
+            status_text = f"업데이트 이전 (D-{date_diff})"
+            icon_name = "event_busy"
+            color = "#FF8080"
+            bg_color = "#FFF4F4"
         
-    with col2:        
         st.markdown(
             f"""
             <div style="display:flex;justify-content:flex-end;align-items:bottom;gap:9px;">
             <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet" />
+            
+            <span style="
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                gap: 4px;
+                height:30px;
+                padding:10px 10px;
+                font-size:13px;
+                font-weight:400;
+                letter-spacing:-0.3px;
+                color:{color};
+                background-color:{bg_color};
+                border:1.5px solid {color};
+                border-radius:14px;
+                white-space:nowrap;
+                cursor:default;">
+                <span class="material-symbols-outlined" style="font-size:15px;">{icon_name}</span>
+                {status_text}
+            </span>
             
             <a href="?refresh=1" title="사용자 캐시를 초기화하고 서버의 최신 데이터로 갱신합니다." style="text-decoration:none;vertical-align:middle;">
             <span style="
@@ -688,945 +312,1120 @@ def main():
     st.divider()
 
     # ──────────────────────────────────
-    # 1) 채널 목록
+    # 전처리
+    # ──────────────────────────────────
+    # 대시보드에서 쓸 날짜 기준값 4개를 한 번만 계산
+        # _valid : df["날짜"]에서 결측 제거한 시리즈
+        # _min_d : 데이터에 존재하는 가장 이른 날짜
+        # _max_d : 데이터에 존재하는 가장 마지막 날짜
+        # _def_s : 기본 시작일(룩백), DEFAULT_LOOKBACK_DAYS만큼 뒤로 가되, 데이터 최소일 _min_d보다 더 과거로는 못 가게 max()로 막음.
+        # _def_e : 기본 종료일 = 데이터의 최신일(_max_d)
+    _valid = df["날짜"].dropna()
+    _min_d = _valid.min().date() if not _valid.empty else datetime.now().date()
+    _max_d = _valid.max().date() if not _valid.empty else datetime.now().date()
+    _def_s = max(_min_d, _max_d - timedelta(days=CFG["DEFAULT_LOOKBACK_DAYS"] - 1))
+    _def_e = _max_d
+
+
+    # 키워드 유형 대분류 / 소분류 분류
+        # [ 전체 ] [ A ] [ B ] [ C ]
+        # B 클릭 시 →
+        #    [ 전체 ] [ sub1 ] [ sub2 ]
+    type_all = sorted(df["키워드유형"].dropna().astype(str).unique().tolist())
+    major_map = {}
+    for t in type_all:
+        if "_" in t:
+            maj = t.split("_", 1)[0]
+            major_map.setdefault(maj, {"plain": set(), "subs": set()})
+            major_map[maj]["subs"].add(t)
+        else:
+            maj = t
+            major_map.setdefault(maj, {"plain": set(), "subs": set()})
+            major_map[maj]["plain"].add(t)
+
+    majors = sorted(major_map.keys())
+    outer_names = ["전체"] + majors
+
+
+    # ──────────────────────────────────
+    # 1) QUICK INSIGHT ( 트렌드 요약 )
     # ──────────────────────────────────
     st.markdown(" ")
-    st.markdown("<h5 style='margin:0'>채널 목록</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 채널에 대한 집행 정보입니다. <span style='color:#8E9097;'>(최신 6개 정렬)</span> ", unsafe_allow_html=True)
-
-    # 원본 DF 정렬
-    df = PPL_LIST.copy()
-    df = df.sort_values(by="order", ascending=False)
-
-    # 브랜드별 분리
-    df_slp = df[df["브랜드"] == "슬립퍼"].copy()
-    df_nor = df[df["브랜드"] == "누어"].copy()
-
-
-    # _render_card_grid
-    def _render_card_grid(
-        df_src: pd.DataFrame,
-        cols_per_row: int = 6,
-        key: str = "all",
-        initial: int = 6,
-        step: int = 12
-    ):
-        """브랜드 배지 포함 카드 그리드 + 더보기/접기"""
-        if df_src is None or len(df_src) == 0:
-            st.info("표시할 채널이 없습니다.")
-            return
-
-        # 탭/그룹별 노출 개수 상태
-        state_key = f"ppl_view_{key}"
-        if state_key not in st.session_state:
-            st.session_state[state_key] = initial
-
-        view_n = st.session_state[state_key]
-        total = len(df_src)
-        df_view = df_src.iloc[:view_n]
-
-        # 카드 렌더 (기존 로직 재사용)
-        rows = math.ceil(len(df_view) / cols_per_row)
-        for i in range(rows):
-            cols = st.columns(cols_per_row, gap="small")
-            for j, col in enumerate(cols):
-                idx = i * cols_per_row + j
-                if idx >= len(df_view): break
-                row = df_view.iloc[idx]
-
-                brand = str(row.get("브랜드", "")).strip()
-                badge_class = "badge-slp" if brand == "슬립퍼" else ("badge-nor" if brand == "누어" else "badge-slp")
-
-                amount_raw = row.get("금액")
-                money = "-"
-                if pd.notna(amount_raw):
-                    try:
-                        money = f"{int(float(amount_raw)):,}원"
-                    except Exception:
-                        money = str(amount_raw)
-
-                url = row.get("컨텐츠 URL")
-                link_html = f"🔗 <a href='{url}' target='_blank'>컨텐츠 보기</a>" if url else "🔗 링크 없음"
-
-                upload_date = row.get("업로드 날짜")
-                upload_date_str = str(upload_date) if pd.notna(upload_date) else ""
-
-                with col:
-                    st.markdown(
-                        f"""
-                        <div class="ppl-card">
-                        <div class="card-top">
-                            <h4 class="title">{row.get('채널명','')}</h4>
-                            <span class="ppl-badge {badge_class}">{brand if brand else '브랜드'}</span>
-                        </div>
-                        <div class="meta">{upload_date_str}</div>
-                        <div class="row">
-                            <div class="total">Total <b>{money}</b></div>
-                            <div class="ppl-link">{link_html}</div>
-                        </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-        # --- 더보기 / 접기 컨트롤 (간소화 & 잔여 버튼 제거) ---
-        if total > view_n:
-            if st.button(f"더보기  ({view_n}/{total})", key=f"more_{key}", use_container_width=True):
-                st.session_state[state_key] = min(total, view_n + step)
-                st.rerun()
-        elif total > initial:
-            if st.button("접기", key=f"less_{key}", use_container_width=True):
-                st.session_state[state_key] = initial
-                st.rerun()
-
-    tab1, tab2, tab3 = st.tabs(["전체", "슬립퍼", "누어"])
-    with tab1:
-        _render_card_grid(df,     cols_per_row=6, key="all")   # 전체
-    with tab2:
-        _render_card_grid(df_slp, cols_per_row=6, key="slp")   # 슬립퍼
-    with tab3:
-        _render_card_grid(df_nor, cols_per_row=6, key="nor")   # 누어
-
-
-
-
-    # ────────────────────────────────────────────────────────────────
-    # (25.10.10 추가) 캠페인 효과(초반 피크+감소 일치도)
-    # ────────────────────────────────────────────────────────────────
-    def render_campaign_effect(df_merged_t: pd.DataFrame, ch: str, L: int = 5):
-        """
-        단일 함수 버전
-        - df_merged_t: ['날짜','채널명','Cost','조회수','좋아요수','댓글수','브랜드언급량','링크 클릭수'] 포함
-        - ch: 탭에서 넘겨주는 채널명 (자동 선택)
-        - L : 평가 일수(3~7 권장). 데이터가 부족하면 가능한 길이로 자동 조정
-        - T0는 자동: '조회수>0'인 첫 날짜 (없으면 해당 채널의 첫 날짜)
-        """
-        import numpy as np
-        import pandas as pd
-        import plotly.graph_objects as go
-        from datetime import timedelta
-
-        # ──────────────────────────────────
-        # 내부 헬퍼들 (함수 외부 정의 X)
-        # ──────────────────────────────────
-        def _as_daily(df: pd.DataFrame) -> pd.DataFrame:
-            d = df.copy()
-            d["날짜"] = pd.to_datetime(d["날짜"], errors="coerce")
-            d = d.dropna(subset=["날짜"]).sort_values("날짜").set_index("날짜").asfreq("D")
-            return d
-
-        def _inc_from_cum(s: pd.Series) -> pd.Series:
-            # 누적 → 증가분, 음수 방지
-            return s.diff().clip(lower=0).fillna(0)
-
-        def _front_loading_index(y: np.ndarray, k: int = 2, n_perm: int = 5000, seed: int = 42) -> dict:
-            """
-            FLI = (앞 k일 합) / (전체 합). 퍼뮤테이션 p-value(우측꼬리).
-            y: 길이 L(3~7)의 비음 아닌 일일 값
-            """
-            y = np.array(y, dtype=float)
-            y[y < 0] = 0.0
-            L = len(y)
-            if L < max(3, k + 1) or y.sum() <= 0:
-                return {"fli": np.nan, "p": np.nan, "k": k, "L": L}
-
-            fli_obs = float(y[:k].sum() / y.sum())
-
-            rng = np.random.default_rng(seed)
-            null = []
-            for _ in range(n_perm):
-                yb = y.copy()
-                rng.shuffle(yb)
-                fli_b = float(yb[:k].sum() / yb.sum())
-                null.append(fli_b)
-            null = np.array(null)
-
-            # 우측꼬리 (초반 집중이 클수록 큼)
-            p = float((np.sum(null >= fli_obs) + 1) / (n_perm + 1))
-            return {"fli": fli_obs, "p": p, "k": k, "L": L}
-
-        def _exp_decay_fit(y: np.ndarray) -> dict:
-            """
-            y ≈ A * exp(-λ t) (t=1..L) 지수감쇠 OLS 적합 (로그선형화).
-            반환: lambda(감쇠율, +면 감소), R2 (0~1), A
-            """
-            y = np.array(y, dtype=float)
-            y[y < 0] = 0.0
-            L = len(y)
-            if L < 3 or np.all(y <= 0):
-                return {"lam": np.nan, "R2": np.nan, "A": np.nan}
-
-            t = np.arange(1, L + 1, dtype=float)
-            # 0 값 방지 위해 작은 epsilon 추가
-            eps = max(1e-9, 1e-6 * (y.max() if y.max() > 0 else 1.0))
-            ly = np.log(y + eps)
-
-            # 선형회귀 ly = c - λ t
-            X = np.column_stack([np.ones_like(t), -t])
-            beta, *_ = np.linalg.lstsq(X, ly, rcond=None)
-            c, lam = beta[0], beta[1]  # lam >= 0 이면 감소 경향
-
-            ly_hat = X @ beta
-            ss_res = float(np.sum((ly - ly_hat) ** 2))
-            ss_tot = float(np.sum((ly - ly.mean()) ** 2))
-            R2 = 0.0 if ss_tot <= 0 else max(0.0, min(1.0, 1.0 - ss_res / ss_tot))
-            A = float(np.exp(c))
-            return {"lam": float(lam), "R2": float(R2), "A": A}
-
-        def _peak_day(y: np.ndarray) -> str:
-            if (y is None) or (len(y) == 0) or np.all(~np.isfinite(y)):
-                return "N/A"
-            i = int(np.nanargmax(y))  # 0-based
-            return f"D{i+1}"
-
-        # 1) 채널 필터 & T0 자동 설정
-        cols_need = ["날짜", "채널명", "조회수", "브랜드언급량", "링크 클릭수"]
-        dfc = df_merged_t.loc[df_merged_t["채널명"] == ch, cols_need].copy()
-        if dfc.empty:
-            st.info("표시할 채널 데이터가 없습니다.")
-            return
-
-        dfc["날짜"] = pd.to_datetime(dfc["날짜"], errors="coerce")
-        dfc = dfc.dropna(subset=["날짜"]).sort_values("날짜")
-
-        # T0 자동: 조회수>0인 첫 날짜 (없으면 해당 채널의 첫 날짜)
-        nonzero_dates = dfc.loc[(dfc["조회수"].astype(float) > 0), "날짜"]
-        if len(nonzero_dates):
-            T0 = pd.to_datetime(nonzero_dates.iloc[0])
-        else:
-            T0 = pd.to_datetime(dfc["날짜"].iloc[0])
-
-        # 일단위로 정규화
-        d = _as_daily(dfc)
-
-        # 2) 누적→증가분 변환
-        d["views_inc"]    = _inc_from_cum(d["조회수"])
-        d["mentions_inc"] = _inc_from_cum(d["브랜드언급량"])
-        d["clicks"]       = d["링크 클릭수"].fillna(0).astype(float)
-
-        # 평가 창 실제 길이 보정
-        t_end = T0 + timedelta(days=max(0, L - 1))
-        t_end = min(t_end, d.index.max())
-        win = d.loc[T0:t_end, ["views_inc", "mentions_inc", "clicks"]].fillna(0)
-        L_eff = len(win)
-        if L_eff < 3:
-            st.warning("평가 구간 데이터가 3일 미만입니다.")
-            return
-
-        # 3) FLI + 지수감쇠 보조지표
-        v = win["views_inc"].values
-        m = win["mentions_inc"].values
-        c = win["clicks"].values
-
-        # --- (NEW) FLI(2일, 3일) → 평균 FLI, p-value는 보수적으로 min 사용
-        def _fli_23(y: np.ndarray) -> dict:
-            r2 = _front_loading_index(y, k=2, n_perm=5000)
-            r3 = _front_loading_index(y, k=3, n_perm=5000) if len(y) >= 3 else {"fli": np.nan, "p": np.nan}
-            fli_mean = float(np.nanmean([r2["fli"], r3["fli"]])) if not (np.isnan(r2["fli"]) and np.isnan(r3["fli"])) else np.nan
-            p_comb  = float(np.nanmin([r2["p"], r3["p"]]))      if not (np.isnan(r2["p"])  and np.isnan(r3["p"]))  else np.nan
-            return {"fli": fli_mean, "p": p_comb}
-
-        res_v = _fli_23(v)
-        res_m = _fli_23(m)
-        res_c = _fli_23(c)
-
-        fit_v = _exp_decay_fit(v)
-        fit_m = _exp_decay_fit(m)
-        fit_c = _exp_decay_fit(c)
-
-
-
-        # 시각화 - 카드
-        def _fmt_res(res):
-            fli = res["fli"]; p = res["p"]
-            return (f"{fli:.2f}" if np.isfinite(fli) else "N/A",
-                    f"{p:.3f}"   if np.isfinite(p)   else "N/A")
-
-        f_v, p_v = _fmt_res(res_v); pk_v = _peak_day(v)
-        f_m, p_m = _fmt_res(res_m); pk_m = _peak_day(m)
-        f_c, p_c = _fmt_res(res_c); pk_c = _peak_day(c)
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            with st.container(border=True):
-                st.markdown("**조회수**")
-                col_a, col_b, col_c, col_d = st.columns(4, gap="small")
-                with col_a:
-                    st.metric("FLI", f_v, help="초반 2일이 전체에서 차지하는 비중. 높을수록 초반 효과가 큼")
-                with col_b:
-                    st.metric("Highest Peak", pk_v)
-                with col_c:
-                    st.metric("P-Value", p_v, help="퍼뮤테이션 결과 초반 집중이 우연일 가능성. 낮을수록 유의함")
-                with col_d:
-                    st.metric("감쇠 적합 R²", f"{fit_v['R2']:.2f}" if np.isfinite(fit_v['R2']) else "N/A", help="R²가 높을수록 전형적인 초반효과 패턴에 가까움")
-
-        with c2:
-            with st.container(border=True):
-                st.markdown("**브랜드언급량**")
-                col_a, col_b, col_c, col_d = st.columns(4, gap="small")
-                with col_a:
-                    st.metric("FLI", f_m)
-                with col_b:
-                    st.metric("Highest Peak", pk_m)
-                with col_c:
-                    st.metric("P-Value", p_m)
-                with col_d:
-                    st.metric("감쇠 적합 R²", f"{fit_m['R2']:.2f}" if np.isfinite(fit_m['R2']) else "N/A")
-        
-        with c3:
-            with st.container(border=True):
-                st.markdown("**링크클릭수**")
-                col_a, col_b, col_c, col_d = st.columns(4, gap="small")
-                with col_a:
-                    st.metric("FLI", f_c)
-                with col_b:
-                    st.metric("Highest Peak", pk_c)
-                with col_c:
-                    st.metric("P-Value", p_c)
-                with col_d:
-                    st.metric("감쇠 적합 R²", f"{fit_c['R2']:.2f}" if np.isfinite(fit_c['R2']) else "N/A")
-
-        # 시각화 - 차트
-        # plot_df = win.copy()
-        # for col in plot_df.columns:
-        #     mx = plot_df[col].max()
-        #     plot_df[col] = plot_df[col] / (mx if mx > 0 else 1.0)
-
-        # fig = go.Figure()
-        # fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df["views_inc"],    mode="lines+markers", name="조회수"))
-        # fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df["mentions_inc"], mode="lines+markers", name="브랜드언급량"))
-        # fig.add_trace(go.Scatter(x=plot_df.index, y=plot_df["clicks"],       mode="lines+markers", name="링크클릭수"))
-
-        # # T0 수직선 + 라벨
-        # fig.add_vline(x=T0, line_dash="dash", opacity=0.6)
-        # fig.add_annotation(x=T0, y=1.05, text="T0 시작", showarrow=False, yref="paper")
-
-        # fig.update_layout(
-        #     title=f"[{ch}] 캠페인 초반-피크 일치도(정규화) · T0={T0.date()} · L={L_eff}일",
-        #     margin=dict(l=10, r=10, t=60, b=10),
-        #     legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
-        #     yaxis=dict(title="정규화(각 지표, max=1)"),
-        #     xaxis_title=None
-        # )
-        # st.plotly_chart(fig, use_container_width=True)
-
-        # 시각화 - 차트 (개선)
-        plot_df = win.copy()
-        for col in plot_df.columns:
-            mx = plot_df[col].max()
-            plot_df[col] = plot_df[col] / (mx if mx > 0 else 1.0)
-
-
-        fig = go.Figure()
-
-        # 부드러운 라인(spline) + 작은 마커
-        fig.add_trace(go.Scatter(
-            x=plot_df.index, y=plot_df["views_inc"],
-            mode="lines+markers", name="조회수",
-            line=dict(shape="spline", width=2),
-            marker=dict(size=6),
-            hovertemplate="날짜: %{x|%Y-%m-%d}<br>정규화 값: %{y:.2f}<extra></extra>"
-        ))
-        fig.add_trace(go.Scatter(
-            x=plot_df.index, y=plot_df["mentions_inc"],
-            mode="lines+markers", name="브랜드언급량",
-            line=dict(shape="spline", width=2),
-            marker=dict(size=6),
-            hovertemplate="날짜: %{x|%Y-%m-%d}<br>정규화 값: %{y:.2f}<extra></extra>"
-        ))
-        fig.add_trace(go.Scatter(
-            x=plot_df.index, y=plot_df["clicks"],
-            mode="lines+markers", name="링크클릭수",
-            line=dict(shape="spline", width=2),
-            marker=dict(size=6),
-            hovertemplate="날짜: %{x|%Y-%m-%d}<br>정규화 값: %{y:.2f}<extra></extra>"
-        ))
-
-        # T0 수직선
-        fig.add_vline(x=T0, line_dash="dot", line_width=1.5, opacity=0.6)
-
-        # 초반효과(2~3일) 구간 하이라이트: T0 ~ T0+(k-1)
-        k_highlight = min(3, L_eff)
-        early_end = T0 + timedelta(days=k_highlight - 1)
-        fig.add_vrect(
-            x0=T0, x1=early_end,
-            fillcolor="LightSalmon", opacity=0.15, line_width=0,
-            annotation_text="초반효과(2~3일)", annotation_position="top left"
-        )
-
-        # 레이아웃: 날짜 눈금, 유니파이드 툴팁, 여백, 눈금 포맷
-        fig.update_layout(
-            title=f"[{ch}] 캠페인 초반-피크 일치도(정규화) · T0={T0.date()} · L={L_eff}일",
-            margin=dict(l=10, r=10, t=60, b=10),
-            legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
-            yaxis=dict(title="정규화(각 지표, max=1)"),
-            xaxis_title=None,
-            hovermode="x unified"
-        )
-
-        # x축: 일 단위 눈금 + 보기 좋은 포맷(YYYY-MM-DD → MM-DD)
-        # (밀림 방지: ticklabelmode='instant', dtick=1day(ms), tick0=T0 자정)
-        fig.update_xaxes(
-            type="date",
-            ticklabelmode="instant",                 # ← period 제거
-            dtick=24*60*60*1000,                     # 1 day in milliseconds
-            tickformat="%m-%d",
-            tick0=pd.to_datetime(T0).normalize()     # 첫 눈금을 T0 자정에 맞춤(선택)
-        )
-
-        # y축: 살짝 여유 (0~1 범위에 padding)
-        fig.update_yaxes(range=[-0.05, 1.05])
-
-        st.plotly_chart(fig, use_container_width=True)
-
-
-
-
-    # ────────────────────────────────────────────────────────────────
-    # 채널별 인게이지먼트 및 액션
-    # ────────────────────────────────────────────────────────────────
-    st.subheader(" ")
-
-    st.markdown("<h5 style='margin:0'>채널별 인게이지먼트 및 액션</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ채널별 **반응 데이터**와 **사용자 액션 및 효율 데이터**를 확인할 수 있습니다.", unsafe_allow_html=True)
-    with st.popover("지표 설명"):
-        st.markdown("""
-                    - **CVR** (Conversion Rate) : **전환율** (주문수 ÷ 세션수 × 100)  
-                    - **CPA** (Cost Per Action) : **행동당 비용** (광고비 ÷ 전환수)  
-                    """)
-
-    _df_merged = pd.merge(PPL_DATA, PPL_ACTION, on=['날짜', 'utm_camp', 'utm_content'], how='outer')
-    df_merged = pd.merge(_df_merged, PPL_LIST, on=['utm_camp', 'utm_content'], how='left')
-    df_merged_t = df_merged[[
-                            "날짜",
-                            "채널명",
-                            "Cost",
-                            "조회수",
-                            "좋아요수",
-                            "댓글수",
-                            "브랜드언급량",
-                            "링크 클릭수", 
-                            "session_count",
-                            "avg_session_duration_sec",
-                            "view_item_list_sessions",
-                            "view_item_sessions",
-                            "scroll_50_sessions",
-                            "product_option_price_sessions",
-                            "find_showroom_sessions",
-                            "add_to_cart_sessions",
-                            "sign_up_sessions",
-                            "showroom_10s_sessions",
-                            "showroom_leads_sessions",
-                            # "SearchVolume_contribution"
-                        ]]
-    
-    # 자료형 
-    numeric_cols = df_merged_t.columns.difference(["날짜", "채널명"])
-    df_merged_t[numeric_cols] = df_merged_t[numeric_cols].apply(lambda col: pd.to_numeric(col, errors="coerce").fillna(0))
-    df_merged_t[numeric_cols] = df_merged_t[numeric_cols].astype(int)
-    
-    
-    # 탭 라벨: 실제로 데이터가 있는 채널만, order 내림차순
-    order_map = (
-        PPL_LIST.loc[:, ["채널명","order"]]
-        .assign(order=lambda d: pd.to_numeric(d["order"], errors="coerce"))
-        .assign(order=lambda d: d["order"].fillna(float("-inf")))
-        .drop_duplicates(subset=["채널명"], keep="first")
-        .set_index("채널명")["order"]
+    st.markdown("<h5 style='margin:0'>QUICK INSIGHT</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ키워드 유형별 검색량 증감 흐름과 현재 핵심 키워드로 트렌드를 빠르게 확인합니다.", unsafe_allow_html=True)
+
+    # Filter
+    with st.expander("Filter", expanded=False):
+        f1, f2, f3 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
+
+        if "qi_mode" not in st.session_state:
+            st.session_state["qi_mode"] = "최근 7일"
+
+        if "qi_prev" not in st.session_state or "qi_cur" not in st.session_state:
+            ps, pe, cs, ce = _calc_ranges(_max_d, 7)
+            st.session_state["qi_prev"] = [ps, pe]
+            st.session_state["qi_cur"]  = [cs, ce]
+
+        def _qi_apply_win():
+            m = st.session_state["qi_mode"]
+            if m == "커스텀":
+                return
+            n_map = {"최근 7일": 7, "최근 14일": 14, "최근 30일": 30}
+            n = n_map.get(m, 7)
+            ps, pe, cs, ce = _calc_ranges(_max_d, n)
+            st.session_state["qi_prev"] = [ps, pe]
+            st.session_state["qi_cur"]  = [cs, ce]
+
+        with f1:
+            st.radio(
+                "기간 윈도우 설정",
+                ["최근 7일", "최근 14일", "최근 30일", "커스텀"],
+                horizontal=True,
+                key="qi_mode",
+                on_change=_qi_apply_win,
+            )
+
+        lock = (st.session_state["qi_mode"] != "커스텀")
+
+        with f2:
+            prev_rng = st.date_input("이전기간 선택", key="qi_prev", disabled=lock)
+        with f3:
+            cur_rng = st.date_input("비교기간(최근) 선택", key="qi_cur", disabled=lock)
+
+    # range normalize
+    if not (isinstance(prev_rng, (list, tuple)) and len(prev_rng) == 2):
+        prev_rng = st.session_state["qi_prev"]
+    if not (isinstance(cur_rng, (list, tuple)) and len(cur_rng) == 2):
+        cur_rng = st.session_state["qi_cur"]
+
+    prev_s, prev_e = pd.to_datetime(prev_rng[0]), pd.to_datetime(prev_rng[1])
+    cur_s,  cur_e  = pd.to_datetime(cur_rng[0]),  pd.to_datetime(cur_rng[1])
+
+    if prev_s > prev_e:
+        prev_s, prev_e = prev_e, prev_s
+    if cur_s > cur_e:
+        cur_s, cur_e = cur_e, cur_s
+
+    # base
+    base = _kw_total_base(df)
+
+    cur_type = (
+        base[(base["날짜"] >= cur_s) & (base["날짜"] <= cur_e)]
+        .groupby(["키워드유형"], as_index=False)["kw_total"].sum()
+        .rename(columns={"kw_total": "비교"})
+    )
+    prev_type = (
+        base[(base["날짜"] >= prev_s) & (base["날짜"] <= prev_e)]
+        .groupby(["키워드유형"], as_index=False)["kw_total"].sum()
+        .rename(columns={"kw_total": "이전"})
+    )
+
+    sum_type = cur_type.merge(prev_type, on="키워드유형", how="outer")
+    sum_type["비교"] = pd.to_numeric(sum_type["비교"], errors="coerce").fillna(0)
+    sum_type["이전"] = pd.to_numeric(sum_type["이전"], errors="coerce").fillna(0)
+    sum_type["증감량"] = sum_type["비교"] - sum_type["이전"]
+    sum_type["증감률"] = np.where(sum_type["이전"] > 0, sum_type["증감량"] / sum_type["이전"], np.nan)
+
+    # 대표 키워드 Top3
+    cur_kw = (
+        base[(base["날짜"] >= cur_s) & (base["날짜"] <= cur_e)]
+        .groupby(["키워드유형", "키워드"], as_index=False)["kw_total"].sum()
+        .sort_values(["키워드유형", "kw_total"], ascending=[True, False])
+    )
+    kw_top3 = (
+        cur_kw.groupby("키워드유형")["키워드"]
+        .apply(lambda s: s.head(3).astype(str).tolist())
         .to_dict()
     )
 
-    channels_present = (
-        df_merged_t["채널명"]
-        .dropna()
-        .drop_duplicates()
-        .tolist()
-    )
+    # 정렬
+    sum_type["_sort"] = sum_type["증감률"].fillna(-1e18)
+    sum_type = sum_type.sort_values("_sort", ascending=False).drop(columns=["_sort"]).reset_index(drop=True)
 
-    tab_labels = sorted(
-        channels_present,
-        key=lambda ch: order_map.get(ch, float("-inf")),
-        reverse=True  # 큰 order 먼저
-    )
-
-    if not tab_labels:
-        st.info("표시할 채널 데이터가 없습니다.")
+    if sum_type.empty:
+        st.info("요약을 만들 데이터가 없습니다.")
     else:
-        tabs = st.tabs(tab_labels)
-        for ch, t in zip(tab_labels, tabs):
-            with t:
-                # (25.10.10 로직 추가)
-                # render_campaign_effect(df_merged_t, ch=ch, L=10)
+        cols = st.columns(len(sum_type), vertical_alignment="top")
 
-                
-                # 기존
-                c1, c2, _ = st.columns([1,1,11])
-                add_cvr = c1.checkbox("CVR 추가", key=f"{ch}_cvr", value=False)
-                add_cpa = c2.checkbox("CPA 추가", key=f"{ch}_cpa", value=False)
-                if add_cvr and add_cpa: opt = 4
-                elif add_cvr:           opt = 2
-                elif add_cpa:           opt = 3
-                else:                   opt = 1
+        for col, (_, r) in zip(cols, sum_type.iterrows()):
+            t = html.escape(str(r["키워드유형"]), quote=True)
+            rate = r["증감률"]
+            delta = float(r["증감량"])
+            delta_txt = f"(+{delta:,.0f})" if delta > 0 else f"({delta:,.0f})"
+            cur_v = float(r["비교"])
+            prev_v = float(r["이전"])
 
-                render_style_eng(
-                    df_merged_t[df_merged_t["채널명"] == ch].copy(),
-                    select_option=opt
+            if pd.isna(rate):
+                arrow = "–"
+                rate_txt = "N/A"
+                color = "#64748B"
+            else:
+                arrow = "▲" if rate > 0 else ("▼" if rate < 0 else "–")
+                rate_txt = f"{rate:.1%}"
+                color = "#2E7D32" if rate > 0 else ("#D32F2F" if rate < 0 else "#64748B")
+
+            kws = kw_top3.get(r["키워드유형"], [])
+            kws = (kws + ["-", "-", "-"])[:3]
+            kws = [html.escape(str(x), quote=True) for x in kws]
+
+            with col:
+                st.markdown(
+                    f"""
+                    <div style="
+                        border:1px solid #e5e5e5;
+                        border-radius:12px;
+                        padding:12px 12px 10px 12px;
+                        background:#ffffff;
+                    ">
+                        <div style="font-weight:700; font-size:13px; margin-bottom:6px;">{t}</div>
+                        <div style="font-size:18px; font-weight:800; line-height:1.2; color:{color};">
+                            {arrow} {rate_txt}
+                        </div>
+                        <div style="font-size:12px; font-weight:500; margin-top:10px;">
+                            이전 {prev_v:,.0f}
+                        </div>
+                        <div style="font-size:12px; font-weight:500; color:{color};">
+                            최근 {cur_v:,.0f} {delta_txt}
+                        </div>
+                        <div style="font-size:12px; margin-top:13px; line-height:1.2; opacity:0.75;">
+                            <div style="font-weight:500; margin-bottom:4px;">Major Keyword</div>
+                            - {kws[0]}<br>
+                            - {kws[1]}<br>
+                            - {kws[2]}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
-                
+
+    st.markdown(" ")
 
 
-
-
-    # ────────────────────────────────────────────────────────────────
-    # 채널별 쿼리 기여량
-    # ────────────────────────────────────────────────────────────────
-    query_sum_slp  = query_sum[query_sum["브랜드"] == "슬립퍼"].copy()
-    query_sum_nor  = query_sum[query_sum["브랜드"] == "누어"].copy()
-    
+    # ──────────────────────────────────
+    # 2) 검색량 추이 
+    # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>채널별 쿼리 기여량</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ'쿼리 기여량'은 전체 검색량 중에서 **각 PPL 채널이 유도했다고 판단되는 검색 수**를 의미합니다.", unsafe_allow_html=True)
-    
-    ppl_action2 = PPL_ACTION[['날짜', 'utm_content', 'SearchVolume_contribution']]   # 기여 쿼리량 { 날짜, utm_content, SearchVolume_contribution }
-    ppl_action3 = pd.merge(ppl_action2, PPL_LIST, on=['utm_content'], how='left')   # utm_content가 너무 복잡하니까 채널명으로 변경
-    ppl_action3 = ppl_action3[['날짜', '채널명', 'SearchVolume_contribution']]        # utm_content 안녕~
-    ppl_action3 = ppl_action3.pivot_table(index="날짜", columns="채널명", values="SearchVolume_contribution", aggfunc="sum").reset_index() # 멜팅
-    
+    st.markdown("<h5 style='margin:0'>검색량 추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ키워드 유형, 개별 키워드, 연령대별 검색량의 변화를 확인합니다.", unsafe_allow_html=True)
 
-    tab1, tab2 = st.tabs(["슬립퍼", "누어"])
+    def _render_block(d0: pd.DataFrame, tab_key: str, fixed_types: list[str] | None):
+        tk = _clean_key(tab_key)
 
-        
-    with tab1:
-        # 동적 채널 목록
-        channels_slp = CHANNELS_BY_BRAND.get('슬립퍼', [])
+        # ---------- Filter
+        with st.expander("Filter", expanded=True):
+            c1, c2, _p, c3, c4, c5 = st.columns([2.2, 1.8, 0.2, 1, 1.4, 1.1], vertical_alignment="bottom")
 
-        # 슬립퍼 데이터 결합
-        df_QueryContribution = ppl_action3.merge(
-            query_sum_slp[['날짜','검색량']], on='날짜', how='outer'
-        )
-
-        # 누락 채널 컬럼 0으로 생성
-        for ch in channels_slp:
-            if ch not in df_QueryContribution.columns:
-                df_QueryContribution[ch] = 0
-
-        # 숫자형 변환
-        cols_to_int = channels_slp + ['검색량']
-        if cols_to_int:
-            df_QueryContribution[cols_to_int] = (
-                df_QueryContribution[cols_to_int]
-                .apply(pd.to_numeric, errors='coerce')
-                .fillna(0).astype(int)
-            )
-        else:
-            df_QueryContribution['검색량'] = pd.to_numeric(
-                df_QueryContribution.get('검색량', 0), errors='coerce'
-            ).fillna(0).astype(int)
-
-        # 기본 검색량 및 비중
-        df_QueryContribution["기본 검색량"] = (
-            df_QueryContribution["검색량"] - df_QueryContribution[channels_slp].sum(axis=1)
-        ).clip(lower=0)
-
-        for col in (channels_slp + ['기본 검색량']):
-            df_QueryContribution[f"{col}_비중"] = np.where(
-                df_QueryContribution['검색량'] > 0,
-                df_QueryContribution[col] / df_QueryContribution['검색량'] * 100,
-                0.0
-            ).round(2)
-
-        # 컬럼 순서 동적
-        ordered_cols = (
-            ['날짜','검색량','기본 검색량','기본 검색량_비중'] +
-            [c for pair in [(ch, f"{ch}_비중") for ch in channels_slp] for c in pair]
-        )
-        df_QueryContribution = df_QueryContribution[ordered_cols].sort_values("날짜", ascending=True)
-
-        # 기간 슬라이더 (키 유지: slider_01)
-        from pandas.tseries.offsets import MonthEnd
-        df_QueryContribution["날짜_dt"] = pd.to_datetime(df_QueryContribution["날짜"], format="%Y-%m-%d", errors="coerce")
-        start_period = (df_QueryContribution["날짜_dt"].min().to_period("M")
-                        if df_QueryContribution["날짜_dt"].notna().any()
-                        else pd.Timestamp.now().to_period("M"))
-        curr_period  = pd.Timestamp.now().to_period("M")
-        month_options = [p.to_timestamp() for p in pd.period_range(start=start_period, end=curr_period, freq="M")]
-        now = pd.Timestamp.now()
-        curr_ts = now.to_period("M").to_timestamp()
-        prev_ts = (now.to_period("M") - 1).to_timestamp()
-
-        st.markdown(" ")
-        selected_range = st.select_slider(
-            "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
-            options=month_options,
-            value=(prev_ts, curr_ts),
-            format_func=lambda x: x.strftime("%Y-%m"),
-            key="slider_01"
-        )
-        start_sel, end_sel = selected_range
-        period_start = start_sel
-        period_end   = end_sel + MonthEnd(0)
-
-        df_filtered = df_QueryContribution[
-            (df_QueryContribution["날짜_dt"] >= period_start) &
-            (df_QueryContribution["날짜_dt"] <= period_end)
-        ].copy()
-        df_filtered["날짜"] = df_filtered["날짜_dt"].dt.strftime("%Y-%m-%d")
-
-        # 차트(채널들 + 기본 검색량)
-        plot_cols = channels_slp + ['기본 검색량']
-        df_long = df_filtered.melt(id_vars='날짜', value_vars=plot_cols, var_name='콘텐츠', value_name='기여량')
-        render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
-
-        # 테이블 (동적 포맷)
-        render_style_ctb(df_filtered.drop(columns=['날짜_dt']), brand='슬립퍼')
-
-    
-    with tab2:
-        channels_nor = CHANNELS_BY_BRAND.get('누어', [])
-
-        df_QueryContribution_nor = ppl_action3.merge(
-            query_sum_nor[['날짜','검색량']], on='날짜', how='outer'
-        )
-
-        for ch in channels_nor:
-            if ch not in df_QueryContribution_nor.columns:
-                df_QueryContribution_nor[ch] = 0
-
-        cols_to_int = channels_nor + ['검색량']
-        if cols_to_int:
-            df_QueryContribution_nor[cols_to_int] = (
-                df_QueryContribution_nor[cols_to_int]
-                .apply(pd.to_numeric, errors='coerce')
-                .fillna(0).astype(int)
-            )
-        else:
-            df_QueryContribution_nor['검색량'] = pd.to_numeric(
-                df_QueryContribution_nor.get('검색량', 0), errors='coerce'
-            ).fillna(0).astype(int)
-
-        df_QueryContribution_nor["기본 검색량"] = (
-            df_QueryContribution_nor["검색량"] - df_QueryContribution_nor[channels_nor].sum(axis=1)
-        ).clip(lower=0)
-
-        for col in (channels_nor + ['기본 검색량']):
-            df_QueryContribution_nor[f"{col}_비중"] = np.where(
-                df_QueryContribution_nor['검색량'] > 0,
-                df_QueryContribution_nor[col] / df_QueryContribution_nor['검색량'] * 100,
-                0.0
-            ).round(2)
-
-        ordered_cols_nor = (
-            ['날짜','검색량','기본 검색량','기본 검색량_비중'] +
-            [c for pair in [(ch, f"{ch}_비중") for ch in channels_nor] for c in pair]
-        )
-        df_QueryContribution_nor = df_QueryContribution_nor[ordered_cols_nor].sort_values("날짜", ascending=True)
-
-        # 기간 슬라이더 (키 유지: slider_02)
-        from pandas.tseries.offsets import MonthEnd
-        df_QueryContribution_nor["날짜_dt"] = pd.to_datetime(df_QueryContribution_nor["날짜"], format="%Y-%m-%d", errors="coerce")
-        start_period = (df_QueryContribution_nor["날짜_dt"].min().to_period("M")
-                        if df_QueryContribution_nor["날짜_dt"].notna().any()
-                        else pd.Timestamp.now().to_period("M"))
-        curr_period  = pd.Timestamp.now().to_period("M")
-        month_options = [p.to_timestamp() for p in pd.period_range(start=start_period, end=curr_period, freq="M")]
-        now = pd.Timestamp.now()
-        curr_ts = now.to_period("M").to_timestamp()
-        prev_ts = (now.to_period("M") - 1).to_timestamp()
-
-        st.markdown(" ")
-        selected_range = st.select_slider(
-            "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
-            options=month_options,
-            value=(prev_ts, curr_ts),
-            format_func=lambda x: x.strftime("%Y-%m"),
-            key="slider_02"
-        )
-        start_sel, end_sel = selected_range
-        period_start = start_sel
-        period_end   = end_sel + MonthEnd(0)
-
-        df_filtered_nor = df_QueryContribution_nor[
-            (df_QueryContribution_nor["날짜_dt"] >= period_start) &
-            (df_QueryContribution_nor["날짜_dt"] <= period_end)
-        ].copy()
-        df_filtered_nor["날짜"] = df_filtered_nor["날짜_dt"].dt.strftime("%Y-%m-%d")
-
-        plot_cols = channels_nor + ['기본 검색량']
-        df_long = df_filtered_nor.melt(id_vars='날짜', value_vars=plot_cols, var_name='콘텐츠', value_name='기여량')
-        render_stacked_bar(df_long, x="날짜", y="기여량", color="콘텐츠")
-
-        render_style_ctb(df_filtered_nor.drop(columns=['날짜_dt']), brand='누어')
-
-        
-    
-    # ────────────────────────────────────────────────────────────────
-    # 키워드별 검색량
-    # ────────────────────────────────────────────────────────────────
-    st.header(" ")
-    st.markdown("<h5 style='margin:0'>키워드별 검색량</h5>", unsafe_allow_html=True)  
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ주요 **키워드별 검색량**에 대해 증감 추이를 확인할 수 있습니다.", unsafe_allow_html=True)
-
-    tab1, tab2 = st.tabs(["슬립퍼", "누어"])
-    with tab1: 
-        df = query_slp.copy()
-
-        # ──────────── 월 단위 범위 슬라이더 추가 ────────────
-        # 1) 날짜 컬럼을 datetime 으로 변환
-        df['날짜_dt'] = pd.to_datetime(df['날짜'], format="%Y-%m-%d", errors="coerce")
-        df['날짜'] = df['날짜'].dt.strftime("%Y-%m-%d")
-
-
-        # 2) 전체 데이터 범위의 월 옵션 생성
-        start_period  = df['날짜_dt'].min().to_period("M")
-        curr_period   = pd.Timestamp.now().to_period("M")
-        all_periods   = pd.period_range(start=start_period, end=curr_period, freq="M")
-        month_options = [p.to_timestamp() for p in all_periods]
-
-        # 3) 기본값: 이전월 → 이번달
-        now     = pd.Timestamp.now()
-        curr_ts = now.to_period("M").to_timestamp()
-        prev_ts = (now.to_period("M") - 1).to_timestamp()
-
-        # 4) 범위 슬라이더
-        st.markdown(" ")
-        start_sel, end_sel = st.select_slider(
-            "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
-            options=month_options,
-            value=(prev_ts, curr_ts),
-            format_func=lambda x: x.strftime("%Y-%m"),
-            key="slider_03"
-        )
-
-        # 5) 선택 구간의 1일~말일 계산 & 필터링
-        period_start = start_sel
-        period_end   = end_sel + MonthEnd(0)
-        df = df[(df['날짜_dt'] >= period_start) & (df['날짜_dt'] <= period_end)].copy()
-
-        # ───────────────────── 기존 필터 영역 ─────────────────────
-        ft1, _p, ft2 = st.columns([3, 0.3, 1])
-        with ft1: 
-            keywords     = df['키워드'].unique().tolist()
-            default_kw   = [kw for kw in keywords if ('슬리퍼' in kw) or ('슬립퍼' in kw) or ('SLEEPER' in kw)] # SLEEPER 추까 (25.09.02)
-            sel_keywords = st.multiselect(
-                "키워드 선택", 
-                keywords, 
-                default=default_kw,
-                key="kw_select_03"
-            )       
-        with _p: pass
-        with ft2: 
-            chart_type = st.radio(
-                "시각화 유형 선택", 
-                ["누적 막대", "누적 영역", "꺾은선"], 
-                horizontal=True, 
-                index=0,
-                key="chart_type_03"
-            )
-
-        df_f = df[df['키워드'].isin(sel_keywords)].copy()
-
-        # y축 고정
-        y_col = "검색량"
-
-        # 1) 숫자형 변환 & 일별 집계
-        df_plot = df_f.copy()
-        df_plot[y_col] = pd.to_numeric(df_plot[y_col], errors="coerce").fillna(0)
-        plot_df = (
-            df_plot
-            .groupby(["날짜_dt", "키워드"], as_index=False)[y_col]
-            .sum()
-        )
-        if plot_df.empty:
-            st.warning("선택된 기간/키워드에 해당하는 데이터가 없습니다.")
-        else:
-            # 2) 일별 날짜 범위 생성
-            min_date = plot_df["날짜_dt"].min()
-            max_date = plot_df["날짜_dt"].max()
-            all_x    = pd.date_range(min_date, max_date)
-            x_col    = "날짜_dt"
-
-            # 3) MultiIndex 재색인으로 누락값 채움
-            all_keywords = plot_df['키워드'].unique()
-            idx = pd.MultiIndex.from_product([all_x, all_keywords],
-                                            names=[x_col, "키워드"])
-            plot_df = (
-                plot_df
-                .set_index([x_col, '키워드'])[y_col]
-                .reindex(idx, fill_value=0)
-                .reset_index()
-            )
-
-            # 4) chart_type 에 따른 시각화
-            if chart_type == "누적 막대":
-                fig = px.bar(
-                    plot_df,
-                    x=x_col,
-                    y=y_col,
-                    color="키워드",
-                    barmode="relative",
-                )
-                fig.update_layout(barmode="relative")
-                fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-                fig.update_traces(opacity=0.6)
-
-            elif chart_type == "누적 영역":
-                fig = px.area(
-                    plot_df,
-                    x=x_col,
-                    y=y_col,
-                    color="키워드",
-                )
-                fig.update_traces(opacity=0.3)
-
-            else:  # 꺾은선
-                fig = px.line(
-                    plot_df,
-                    x=x_col,
-                    y=y_col,
-                    color="키워드",
-                    markers=True,
-                )
-                fig.update_traces(opacity=0.6)
-
-            # x축 한글 포맷, 축 제목 숨기기
-            try:
-                fig.update_xaxes(tickformat="%m월 %d일")
-                fig.update_layout(xaxis_title=None, yaxis_title=None)
-                st.plotly_chart(fig, use_container_width=True)
-            except: pass
-            df_f = df_f[['날짜', '키워드', '검색량']]
-            st.dataframe(df_f,  row_height=30, hide_index=True)
+            with _p: pass
             
-    with tab2: 
-        df = query_nor.copy()
+            # ✅ 기간 선택
+            with c1:
+                rng = st.date_input(
+                    "기간 선택",
+                    value=[_def_s, _def_e],
+                    min_value=_min_d,
+                    max_value=_max_d,
+                    key=f"rng_{tk}",
+                )
 
-        # ──────────── 월 단위 범위 슬라이더 추가 ────────────
-        # 1) 날짜 컬럼을 datetime 으로 변환
-        df['날짜_dt'] = pd.to_datetime(df['날짜'], format="%Y-%m-%d", errors="coerce")
-        df['날짜'] = df['날짜'].dt.strftime("%Y-%m-%d")
+                # date_input 결과 normalize
+                if isinstance(rng, (list, tuple)) and len(rng) == 2:
+                    s_day, e_day = rng[0], rng[1]
+                else:
+                    s_day, e_day = _def_s, _def_e
 
+                if s_day > e_day:
+                    s_day, e_day = e_day, s_day
 
-        # 2) 전체 데이터 범위의 월 옵션 생성
-        start_period  = df['날짜_dt'].min().to_period("M")
-        curr_period   = pd.Timestamp.now().to_period("M")
-        all_periods   = pd.period_range(start=start_period, end=curr_period, freq="M")
-        month_options = [p.to_timestamp() for p in all_periods]
+            # ✅ 보기 선택
+            if (fixed_types is None) or (len(fixed_types) > 1):
+                with c2:
+                    view = st.selectbox("보기 선택", ["키워드유형별", "연령대별", "키워드별"], index=0, key=f"v_{tk}")
+            else:
+                with c2:
+                    view = st.selectbox("보기 선택", ["연령대별", "키워드별"], index=0, key=f"v_{tk}")
 
-        # 3) 기본값: 이전월 → 이번달
-        now     = pd.Timestamp.now()
-        curr_ts = now.to_period("M").to_timestamp()
-        prev_ts = (now.to_period("M") - 1).to_timestamp()
+            # ✅ 집계 단위
+            with c3:
+                gran = st.radio("집계 단위", ["일", "주"], horizontal=True, index=0, key=f"g_{tk}")
 
-        # 4) 범위 슬라이더
-        st.markdown(" ")
-        start_sel, end_sel = st.select_slider(
-            "🚀 기간 선택ㅤ(지난달부터 이번달까지가 기본 선택되어 있습니다)",
-            options=month_options,
-            value=(prev_ts, curr_ts),
-            format_func=lambda x: x.strftime("%Y-%m"),
-            key="slider_04"
-        )
+            # ✅ 그래프
+            with c4:
+                chart = st.radio("그래프", ["꺾은선", "누적막대"], horizontal=True, index=0, key=f"c_{tk}")
 
-        # 5) 선택 구간의 1일~말일 계산 & 필터링
-        period_start = start_sel
-        period_end   = end_sel + MonthEnd(0)
-        df = df[(df['날짜_dt'] >= period_start) & (df['날짜_dt'] <= period_end)].copy()
+            # ✅ 스케일
+            with c5:
+                scale = st.radio("스케일", ["절대값", "백분율"], horizontal=True, index=0, key=f"sc_{tk}")
 
-        # ───────────────────── 기존 필터 영역 ─────────────────────
-        ft1, _p, ft2 = st.columns([3, 0.3, 1])
-        with ft1: 
-            keywords     = df['키워드'].unique().tolist()
-            default_kw   = [kw for kw in keywords if ('누어' in kw) or ('NOOER' in kw)]
-            sel_keywords = st.multiselect(
-                "키워드 선택", 
-                keywords, 
-                default=default_kw,
-                key="kw_select_04"
-            )       
-        with _p: pass
-        with ft2: 
-            chart_type = st.radio(
-                "시각화 유형 선택", 
-                ["누적 막대", "누적 영역", "꺾은선"], 
-                horizontal=True, 
-                index=0,
-                key="chart_type_04"
+        s_dt = pd.to_datetime(s_day)
+        e_dt = pd.to_datetime(e_day)
+        d = d0[(d0["날짜"] >= s_dt) & (d0["날짜"] <= e_dt)]
+
+        if fixed_types is not None:
+            d = d[d["키워드유형"].astype(str).isin([str(x) for x in fixed_types])]
+
+        if d.empty:
+            st.warning("선택 기간/조건에 데이터가 없습니다.")
+            return
+
+        # ---------- Advanced filter
+        with st.expander("연령대 · 키워드 Filter", expanded=False):
+        
+            # 연령대
+            a_all = [a for a in AGE_ORDER if a in d["age_info"].astype(str).unique().tolist()]
+            a_sel = st.multiselect("연령대 선택", options=a_all, default=a_all, key=f"a_{tk}")
+            
+            # 키워드 NEW
+            k_all = sorted(d["키워드"].astype(str).dropna().unique().tolist())
+            use_custom_kw = st.checkbox(
+                f"키워드 개별 선택 (전체 {len(k_all)}개 중)",
+                value=False,
+                key=f"k_toggle_{tk}"
             )
+            if use_custom_kw:
+                k_sel = st.multiselect(
+                    "키워드 선택",
+                    options=k_all,
+                    default=k_all,
+                    key=f"k_{tk}"
+                )
+            else:
+                # ✅ UI는 안 보이지만 내부적으로는 전체 선택 유지
+                k_sel = k_all
 
-        df_f = df[df['키워드'].isin(sel_keywords)].copy()
+        d = d[
+            (d["age_info"].astype(str).isin([str(x) for x in a_sel])) &
+            (d["키워드"].astype(str).isin([str(x) for x in k_sel]))
+        ]
 
-        # y축 고정
-        y_col = "검색량"
+        if d.empty:
+            st.warning("고급 필터 적용 후 데이터가 없습니다.")
+            return
 
-        # 1) 숫자형 변환 & 일별 집계
-        df_plot = df_f.copy()
-        df_plot[y_col] = pd.to_numeric(df_plot[y_col], errors="coerce").fillna(0)
-        plot_df = (
-            df_plot
-            .groupby(["날짜_dt", "키워드"], as_index=False)[y_col]
-            .sum()
+        # ✅ period 컬럼은 2개만 만들고 재사용 (A 해결)
+        mode_label = "일별" if gran == "일" else "주별"
+        w_age = ui.add_period_columns(d, "날짜", mode_label)
+        w_kw  = ui.add_period_columns(_kw_total_base(d), "날짜", mode_label)
+
+        # ✅ 기간 마스터(dt_lbl): _period 기준으로 중복 제거 + 정렬 (B 해결)
+        dt_lbl = (
+            w_age[["_period_dt", "_period"]]
+            .assign(_period_dt=lambda x: pd.to_datetime(x["_period_dt"], errors="coerce"))
+            .dropna(subset=["_period_dt"])
+            .drop_duplicates(subset=["_period"])   # ✅ 표시 라벨 기준
+            .sort_values("_period_dt")
+            .reset_index(drop=True)
         )
-        if plot_df.empty:
-            st.warning("선택된 기간/키워드에 해당하는 데이터가 없습니다.")
+        if dt_lbl.empty:
+            st.warning("기간 컬럼 생성에 실패했습니다. 날짜 컬럼을 점검하세요.")
+            return
+
+        # ✅ Plotly는 pandas datetime 그대로 사용 (D 해결)
+        x_dt = pd.to_datetime(dt_lbl["_period_dt"], errors="coerce")
+        tick_text = dt_lbl["_period"].astype(str).tolist()
+        date_fmt = "%Y-%m-%d"
+
+        # ---------- Build aggregated series by view
+        if view == "키워드유형별":
+            g = (
+                w_kw.groupby(["_period_dt", "키워드유형"], as_index=False)
+                    .agg(val=("kw_total", "sum"))
+            )
+            dim_col = "키워드유형"
+
+        elif view == "연령대별":
+            g = (
+                w_age.groupby(["_period_dt", "age_info"], as_index=False)
+                     .agg(val=("abs_age", "sum"))
+            )
+            dim_col = "age_info"
+
+        else:  # "키워드별"
+            g = (
+                w_kw.groupby(["_period_dt", "키워드"], as_index=False)
+                    .agg(val=("kw_total", "sum"))
+            )
+            dim_col = "키워드"
+
+        # ✅ 축 기준을 dt_lbl(x_dt)로 강제 정렬/리인덱스
+        g["_period_dt"] = pd.to_datetime(g["_period_dt"], errors="coerce")
+        g = g.dropna(subset=["_period_dt"])
+
+        # dims 순서
+        if view == "연령대별":
+            dims = [a for a in AGE_ORDER if a in g[dim_col].astype(str).unique().tolist()]
         else:
-            # 2) 일별 날짜 범위 생성
-            min_date = plot_df["날짜_dt"].min()
-            max_date = plot_df["날짜_dt"].max()
-            all_x    = pd.date_range(min_date, max_date)
-            x_col    = "날짜_dt"
-
-            # 3) MultiIndex 재색인으로 누락값 채움
-            all_keywords = plot_df['키워드'].unique()
-            idx = pd.MultiIndex.from_product([all_x, all_keywords],
-                                            names=[x_col, "키워드"])
-            plot_df = (
-                plot_df
-                .set_index([x_col, '키워드'])[y_col]
-                .reindex(idx, fill_value=0)
-                .reset_index()
+            dims = (
+                g.groupby(dim_col)["val"].sum()
+                 .sort_values(ascending=False)
+                 .index.astype(str).tolist()
             )
 
-            # 4) chart_type 에 따른 시각화
-            if chart_type == "누적 막대":
-                fig = px.bar(
-                    plot_df,
-                    x=x_col,
-                    y=y_col,
-                    color="키워드",
-                    barmode="relative",
+        # 백분율
+        if scale == "백분율":
+            denom = g.groupby("_period_dt", dropna=False)["val"].transform("sum")
+            g2 = g.copy()
+            g2["val"] = np.where(denom > 0, g2["val"] / denom, 0.0).astype(float)
+        else:
+            g2 = g.copy()
+            g2["val"] = pd.to_numeric(g2["val"], errors="coerce").fillna(0)
+
+        # ---------- Chart (x는 _period_dt, 라벨은 ticktext로)
+        # ✅ (NEW) dims × 날짜 매트릭스를 한 번만 만들어 재사용
+        mat = (
+            g2.pivot_table(index="_period_dt", columns=dim_col, values="val", aggfunc="sum", fill_value=0)
+              .reindex(x_dt, fill_value=0)
+        )
+        
+        fig = go.Figure()
+        palette = px.colors.qualitative.Pastel
+        c_map = {k: palette[i % len(palette)] for i, k in enumerate(dims)}
+
+        if chart == "누적막대":
+            for k in dims:
+                s = mat[str(k)] if str(k) in mat.columns else pd.Series([0]*len(x_dt), index=x_dt)
+                fig.add_bar(
+                    x=x_dt,
+                    y=s.values,
+                    name=str(k),
+                    marker_color=c_map[k],
+                    opacity=0.8,
+                    hovertemplate=f"{k}<br>%{{x|{date_fmt}}}<br>"
+                                  + ("%{y:.1%}" if scale == "백분율" else "%{y:,.0f}")
+                                  + "<extra></extra>",
                 )
-                fig.update_layout(barmode="relative")
-                fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-                fig.update_traces(opacity=0.6)
+            fig.update_layout(barmode="relative")
 
-            elif chart_type == "누적 영역":
-                fig = px.area(
-                    plot_df,
-                    x=x_col,
-                    y=y_col,
-                    color="키워드",
+        else:
+            for k in dims:
+                s = mat[str(k)] if str(k) in mat.columns else pd.Series([0]*len(x_dt), index=x_dt)
+                fig.add_trace(go.Scatter(
+                    x=x_dt,
+                    y=s.values,
+                    mode="lines+markers",
+                    name=str(k),
+                    marker=dict(size=4),
+                    marker_color=c_map[k],
+                    hovertemplate=f"{k}<br>%{{x|{date_fmt}}}<br>"
+                                  + ("%{y:.1%}" if scale == "백분율" else "%{y:,.0f}")
+                                  + "<extra></extra>",
+                ))
+
+        # ✅ 주말 쉐이딩: 일별에서만
+        if mode_label == "일별":
+            ui.add_weekend_shading(fig, x_dt)
+
+
+        # ✅ x축 라벨: ticktext로 기간 문자열 표시
+        fig.update_xaxes(
+            type="date",
+            tickmode="array",
+            tickvals=x_dt,
+            ticktext=tick_text,
+        )
+        if scale == "백분율":
+            fig.update_yaxes(tickformat=".0%")
+
+        fig.update_layout(
+            height=300, margin=dict(l=10, r=10, t=10, b=10),
+            legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
+        )
+
+        st.plotly_chart(fig, use_container_width=True, key=f"fig_{tk}")
+
+
+        # ---------- Table : "날짜가 컬럼" (정렬은 _period_dt, 표시는 기간 문자열)
+        pt = mat.T  # index=dim, columns=날짜(dt)
+
+        col_map = dt_lbl.set_index("_period_dt")["_period"].to_dict()
+        pt = pt.rename(columns=col_map)
+
+        # 컬럼 순서 보장
+        pt = pt[[c for c in tick_text if c in pt.columns]]
+
+        if scale == "백분율":
+            pt = np.round(pt.astype(float) * 100, 1)
+            st.dataframe(pt.style.format("{:.1f}%"), row_height=30, use_container_width=True)
+        else:
+            pt = np.round(pt.astype(float)).astype(int)
+            st.dataframe(pt, row_height=30, use_container_width=True)
+        
+
+    # ---- Tabs: 전체 + 대분류(바깥) / 소분류(안쪽)
+    outer_tabs = st.tabs(outer_names)
+
+    for ot, maj in zip(outer_tabs, outer_names):
+        with ot:
+            if maj == "전체":
+                _render_block(df, tab_key="all", fixed_types=None)
+                continue
+
+            plain = sorted(list(major_map[maj]["plain"]))
+            subs_full = sorted(list(major_map[maj]["subs"]))
+            all_types = plain + subs_full
+
+            if len(subs_full) == 0:
+                _render_block(df, tab_key=f"maj_{maj}", fixed_types=all_types)
+                continue
+
+            inner_labels = ["전체"] + [t.split("_", 1)[1] for t in subs_full]
+            inner_tabs = st.tabs(inner_labels)
+
+            for it, sub_lbl in zip(inner_tabs, inner_labels):
+                with it:
+                    if sub_lbl == "전체":
+                        _render_block(df, tab_key=f"maj_{maj}_all", fixed_types=all_types)
+                    else:
+                        full_type = f"{maj}_{sub_lbl}"
+                        _render_block(df, tab_key=f"maj_{maj}_sub_{sub_lbl}", fixed_types=[full_type])
+
+
+    # ──────────────────────────────────
+    # 3) 검색량 급변 탐지
+    # ──────────────────────────────────
+    st.header(" ")
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>검색량 급변 탐지</span></h5>", unsafe_allow_html=True)
+    st.markdown(
+        ":gray-badge[:material/Info: Info]ㅤ특정 키워드에 대한 검색량이 급격하게 증가하거나 감소한 키워드를 탐지하여 시장 트렌드를 확인합니다. ",
+        unsafe_allow_html=True,
+    )
+
+    with st.popover("🧐 급상승 키워드, 어떤 기준으로 뽑나요?"):
+            st.markdown("""
+        **기간 내 검색 규모의 성장 폭이 가장 큰 키워드를 선정합니다.**  
+
+        - **선정 근거 (What)** 
+            - 연령대 비중이 아닌, 키워드 자체의 **전체 검색량**(abs_age 합계)에 집중합니다.
+            - **증감률**이 높을수록 최근 사용자들의 검색이 활발하게 발생한 키워드를 의미합니다.
+
+        * **계산 방식 (How)** 
+            - 최근 N일과 이전 N일의 절대 검색량을 대조하여 $\Delta$증감량과 $\Delta$증감률을 산출합니다.
+            - 예를 들어, 이전 기간 검색량이 4,000건에서 최근 6,400건으로 증가했다면
+                * 증감량은 +2,400건 이고, (= 6,400 - 4,000)
+                * 증감률은 +60% 입니다. (= 2,400 / 4,000)
+        """)
+
+    outer_tabs = st.tabs(outer_names)
+
+    def _render_spike_kw(d0: pd.DataFrame, tab_key: str, fixed_types: list[str] | None, is_all_tab: bool):
+        tk = _clean_key(tab_key)
+
+        k_mode = f"sp_mode_{tk}"
+        k_prev = f"sp_prev_{tk}"
+        k_cur  = f"sp_cur_{tk}"
+
+        if k_mode not in st.session_state:
+            st.session_state[k_mode] = "최근 7일"
+
+        if k_prev not in st.session_state or k_cur not in st.session_state:
+            ps, pe, cs, ce = _calc_ranges(_max_d, 7)
+            st.session_state[k_prev] = [ps, pe]
+            st.session_state[k_cur]  = [cs, ce]
+
+        def _sp_apply_win():
+            m = st.session_state[k_mode]
+            if m == "커스텀":
+                return
+            n_map = {"최근 7일": 7, "최근 14일": 14, "최근 30일": 30}
+            n = n_map.get(m, 7)
+            ps, pe, cs, ce = _calc_ranges(_max_d, n)
+            st.session_state[k_prev] = [ps, pe]
+            st.session_state[k_cur]  = [cs, ce]
+
+        with st.expander("Filter", expanded=True):
+            c1, c2, c3 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
+            c4, c5, c6 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
+
+            with c1:
+                st.radio(
+                    "기간 윈도우 설정",
+                    ["최근 7일", "최근 14일", "최근 30일", "커스텀"],
+                    horizontal=True,
+                    key=k_mode,
+                    on_change=_sp_apply_win,
                 )
-                fig.update_traces(opacity=0.3)
 
-            else:  # 꺾은선
-                fig = px.line(
-                    plot_df,
-                    x=x_col,
-                    y=y_col,
-                    color="키워드",
-                    markers=True,
+            lock = (st.session_state[k_mode] != "커스텀")
+
+            with c2:
+                prev_rng = st.date_input("이전기간 선택", key=k_prev, disabled=lock)
+            with c3:
+                cur_rng = st.date_input("비교기간(최근) 선택", key=k_cur, disabled=lock)
+
+            with c4:
+                show = st.radio(
+                    "증감 방향",
+                    ["둘다", "증가", "감소"],
+                    horizontal=True,
+                    index=0,
+                    key=f"sp_show_{tk}",
                 )
-                fig.update_traces(opacity=0.6)
+            with c5:
+                min_diff = st.number_input(
+                    "최소 증감량",
+                    min_value=0,
+                    value=50,
+                    step=10,
+                    key=f"sp_min_{tk}",
+                )
+            with c6:
+                topn = st.selectbox(
+                    "Top N",
+                    options=CFG["TOPK_OPTS"],
+                    index=CFG["TOPK_OPTS"].index(10) if 10 in CFG["TOPK_OPTS"] else 0,
+                    key=f"sp_topn_{tk}",
+                )
 
-            # x축 한글 포맷, 축 제목 숨기기
-            fig.update_xaxes(tickformat="%m월 %d일")
-            fig.update_layout(xaxis_title=None, yaxis_title=None)
-            st.plotly_chart(fig, use_container_width=True)
-            df_f = df_f[['날짜', '키워드', '검색량']]
-            st.dataframe(df_f, row_height=30,  hide_index=True)
+        # range normalize (QUICK INSIGHT 방식)
+        if not (isinstance(prev_rng, (list, tuple)) and len(prev_rng) == 2):
+            prev_rng = st.session_state[k_prev]
+        if not (isinstance(cur_rng, (list, tuple)) and len(cur_rng) == 2):
+            cur_rng = st.session_state[k_cur]
+
+        prev_s, prev_e = pd.to_datetime(prev_rng[0]), pd.to_datetime(prev_rng[1])
+        cur_s,  cur_e  = pd.to_datetime(cur_rng[0]),  pd.to_datetime(cur_rng[1])
+
+        if prev_s > prev_e:
+            prev_s, prev_e = prev_e, prev_s
+        if cur_s > cur_e:
+            cur_s, cur_e = cur_e, cur_s
+
+        d = d0[(d0["날짜"] >= min(prev_s, cur_s)) & (d0["날짜"] <= max(prev_e, cur_e))]
+        if fixed_types is not None:
+            d = d[d["키워드유형"].astype(str).isin([str(x) for x in fixed_types])]
+
+        if d.empty:
+            st.warning("선택 기간/조건에 데이터가 없습니다.")
+            return
+
+        # kw_total 대표 베이스는 한 번만 생성해서 재사용
+        base = _kw_total_base(d)
+
+        # (1) 기간 합계
+        if is_all_tab:
+            cur_sum = (
+                base[(base["날짜"] >= cur_s) & (base["날짜"] <= cur_e)]
+                .groupby(["키워드유형"], as_index=False)["kw_total"].sum()
+                .rename(columns={"kw_total": "비교기간(최근)"})
+            )
+            prev_sum = (
+                base[(base["날짜"] >= prev_s) & (base["날짜"] <= prev_e)]
+                .groupby(["키워드유형"], as_index=False)["kw_total"].sum()
+                .rename(columns={"kw_total": "이전기간"})
+            )
+            out = cur_sum.merge(prev_sum, on=["키워드유형"], how="outer")
+        else:
+            cur_sum = (
+                base[(base["날짜"] >= cur_s) & (base["날짜"] <= cur_e)]
+                .groupby(["키워드유형", "키워드"], as_index=False)["kw_total"].sum()
+                .rename(columns={"kw_total": "비교기간(최근)"})
+            )
+            prev_sum = (
+                base[(base["날짜"] >= prev_s) & (base["날짜"] <= prev_e)]
+                .groupby(["키워드유형", "키워드"], as_index=False)["kw_total"].sum()
+                .rename(columns={"kw_total": "이전기간"})
+            )
+            out = cur_sum.merge(prev_sum, on=["키워드유형", "키워드"], how="outer")
+
+        out["비교기간(최근)"] = pd.to_numeric(out["비교기간(최근)"], errors="coerce").fillna(0)
+        out["이전기간"]       = pd.to_numeric(out["이전기간"], errors="coerce").fillna(0)
+        out["증감량"]     = out["비교기간(최근)"] - out["이전기간"]
+        out["증감률"]         = np.where(out["이전기간"] > 0, out["증감량"] / out["이전기간"], np.nan)
+
+        # (2) 노이즈 컷 + 방향 필터
+        out = out[out["증감량"].abs() >= float(min_diff)]
+        if show == "증가":
+            out = out[out["증감량"] > 0]
+        elif show == "감소":
+            out = out[out["증감량"] < 0]
+
+        if out.empty:
+            st.info("조건을 만족하는 항목이 없습니다.")
+            return
+
+        # (3) TopN 적용
+        out["abs_diff"] = out["증감량"].abs()
+        if is_all_tab:
+            out = (
+                out.sort_values("abs_diff", ascending=False)
+                .head(int(topn))
+                .reset_index(drop=True)
+            )
+        else:
+            out = (
+                out.sort_values(["키워드유형", "abs_diff"], ascending=[True, False])
+                .groupby("키워드유형", as_index=False, group_keys=False)
+                .apply(lambda g: g.head(int(topn)))
+                .reset_index(drop=True)
+            )
+
+        # 표 데이터
+        if is_all_tab:
+            t = out[["키워드유형", "이전기간", "비교기간(최근)", "증감량", "증감률"]].copy()
+        else:
+            t = out[["키워드유형", "키워드", "이전기간", "비교기간(최근)", "증감량", "증감률"]].copy()
+
+        # (4) Dumbbell Chart
+        LINE_UP = "#2E7D32"   # 증가(초록)
+        LINE_DN = "#D32F2F"   # 감소(빨강)
+        LINE_EQ = "#64748B"   # 변화 없음(슬레이트)
+        MK_PREV = "#64748B"   # 이전기간 마커
+        MK_CUR  = "#181818"   # 최근기간 마커
+
+        dmb = out.assign(
+            prev=lambda x: pd.to_numeric(x["이전기간"], errors="coerce").fillna(0),
+            cur =lambda x: pd.to_numeric(x["비교기간(최근)"], errors="coerce").fillna(0),
+        )
+        dmb["diff"] = dmb["cur"] - dmb["prev"]
+        dmb["abs_diff"] = dmb["diff"].abs()
+
+        grp_col = None if is_all_tab else "키워드유형"
+        y_col   = "키워드유형" if is_all_tab else "키워드"
+        groups = [(None, dmb)] if grp_col is None else list(dmb.groupby(grp_col, dropna=False))
+
+        for gk, g0 in groups:
+            g = g0.sort_values("abs_diff", ascending=False).head(int(topn))
+            if g.empty:
+                continue
+
+            g = g.sort_values("abs_diff", ascending=True).reset_index(drop=True)
+
+            y_lbl = g[y_col].astype(str).tolist()
+            n = len(g)
+            h = max(200, n * 22 + 90) # 최소높이, 줄간격사이, 상단/하단 여백
+
+            prev = g["prev"].astype(float).to_numpy()
+            cur  = g["cur"].astype(float).to_numpy()
+            diff = (cur - prev)
+
+            x_min = float(min(prev.min(), cur.min()))
+            x_max = float(max(prev.max(), cur.max()))
+            span = max(x_max - x_min, 1.0)
+
+            # ✅ 오른쪽 고정 여백(축에 먼저 확보)
+            GUTTER_RATIO = 0.22   # 오른쪽 여백 비율(고정)
+            TEXT_PAD_RATIO = 0.045
+            text_pad = max(span * TEXT_PAD_RATIO, max(abs(x_max), 1.0) * 0.01, 1.0)
+            x_gutter_max = x_max + span * GUTTER_RATIO
+            x_axis_max   = max(x_gutter_max, x_max + text_pad * 3)
+
+            # 각 행 오른쪽 끝
+            x_end = np.maximum(prev, cur)
+
+            # ✅ 텍스트는 "선 끝 옆"에 두되, 항상 gutter 안쪽으로 clamp
+            x_text = x_end + text_pad
+            x_text = np.minimum(x_text, x_axis_max - text_pad * 0.6)
+
+            diff_txt = np.where(diff > 0, np.char.add("+", np.char.mod("%0.0f", diff)),
+                    np.where(diff < 0, np.char.mod("%0.0f", diff), "0"))
+
+            fig = go.Figure()
+
+            # 선
+            for i in range(n):
+                lc = LINE_UP if diff[i] > 0 else (LINE_DN if diff[i] < 0 else LINE_EQ)
+                fig.add_trace(go.Scatter(
+                    x=[prev[i], cur[i]],
+                    y=[y_lbl[i], y_lbl[i]],
+                    mode="lines",
+                    line=dict(width=3, color=lc),
+                    showlegend=False,
+                    hovertemplate=(
+                        f"{y_lbl[i]}<br>"
+                        f"이전 {prev[i]:,.0f} → 최근 {cur[i]:,.0f}<br>"
+                        f"증감 {diff[i]:+,.0f}<extra></extra>"
+                    ),
+                ))
+
+            # 기준선
+            # fig.add_vline(x=np.mean(prev), line_dash="dot", line_color="#64748B",
+            #                 annotation_text=f"이전 평균 {np.mean(prev):,.0f}",
+            #                 annotation_position="top left",)
+            # fig.add_vline(x=np.mean(cur), line_dash="dot", line_color="#181818",
+            #                 annotation_text=f"최근 평균 {np.mean(cur):,.0f}",
+            #                 annotation_position="bottom right",)
+
+            # 마커
+            fig.add_trace(go.Scatter(
+                x=prev, y=y_lbl,
+                mode="markers",
+                name="이전기간",
+                marker=dict(size=8, symbol="circle", color=MK_PREV),
+            ))
+            fig.add_trace(go.Scatter(
+                x=cur, y=y_lbl,
+                mode="markers",
+                name="비교기간(최근)",
+                marker=dict(size=8, symbol="diamond", color=MK_CUR),
+            ))
+
+            # 증감 텍스트 (겹침 방지: gutter 확보 + clamp)
+            fig.add_trace(go.Scatter(
+                x=x_text,
+                y=y_lbl,
+                mode="text",
+                text=diff_txt.tolist(),
+                textposition="middle left",
+                showlegend=False,
+                opacity=0.9,
+                cliponaxis=False,
+                hoverinfo="skip",
+            ))
+
+            fig.update_xaxes(range=[x_min, x_axis_max])
+
+            fig.update_layout(
+                height=h,
+                margin=dict(l=10, r=10, t=60, b=10),
+                legend=dict(
+                    orientation="h",
+                    x=1, xanchor="right",
+                    y=1.5, yanchor="top",
+                    title=None,
+                ),
+            )
+
+            fig.update_yaxes(
+                categoryorder="array",
+                categoryarray=y_lbl,
+                automargin=True
+            )
+
+            key_tag = "type" if is_all_tab else _clean_key(str(gk))
+            st.plotly_chart(fig, use_container_width=True, key=f"sp_dumbbell_{tk}_{key_tag}")
+
+        # (5) Table
+        t["이전기간"] = pd.to_numeric(t["이전기간"], errors="coerce").fillna(0).round(0).astype(int)
+        t["비교기간(최근)"] = pd.to_numeric(t["비교기간(최근)"], errors="coerce").fillna(0).round(0).astype(int)
+        t["증감량"] = pd.to_numeric(t["증감량"], errors="coerce").fillna(0).round(0).astype(int)
+
+        t_disp = t.copy()
+        t_disp["증감률(%)"] = (t_disp["증감률"] * 100).round(1)
+        t_disp = t_disp.drop(columns=["증감률", "abs_diff"], errors="ignore")
+
+        st.dataframe(
+            t_disp,
+            use_container_width=True,
+            hide_index=True,
+            row_height=30
+        )
+
+    for ot, maj in zip(outer_tabs, outer_names):
+        with ot:
+            if maj == "전체":
+                _render_spike_kw(df, tab_key="sp_all", fixed_types=None, is_all_tab=True)
+                continue
+
+            plain = sorted(list(major_map[maj]["plain"]))
+            subs_full = sorted(list(major_map[maj]["subs"]))
+            all_types = plain + subs_full
+
+            if len(subs_full) == 0:
+                _render_spike_kw(df, tab_key=f"sp_maj_{maj}", fixed_types=all_types, is_all_tab=False)
+                continue
+
+            inner_labels = ["전체"] + [t.split("_", 1)[1] for t in subs_full]
+            inner_tabs = st.tabs(inner_labels)
+
+            for it, sub_lbl in zip(inner_tabs, inner_labels):
+                with it:
+                    if sub_lbl == "전체":
+                        _render_spike_kw(df, tab_key=f"sp_maj_{maj}_all", fixed_types=all_types, is_all_tab=True)
+                    else:
+                        full_type = f"{maj}_{sub_lbl}"
+                        _render_spike_kw(df, tab_key=f"sp_maj_{maj}_sub_{sub_lbl}", fixed_types=[full_type], is_all_tab=False)
 
 
+    # ──────────────────────────────────
+    # 4) 연령대 급변 탐지
+    # ──────────────────────────────────
+    st.header(" ")
+    st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>연령대 급변 탐지</span></h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ단순 검색량을 넘어, 연령대별 비중 분포의 변화량을 측정하여 타겟층의 구조적 변화가 큰 키워드를 탐지합니다.")
+
+    with st.popover("🧐 연령층 변화, 어떻게 분석되나요?"):
+            st.markdown("""
+        **검색 규모는 비슷하더라도, 검색 연령대 구성이 얼마나 바뀌었는지에 집중합니다.**  
+
+        - **선정 근거 (What)** 
+            - 전체 검색량이 아닌, **연령대별 비중 분포**의 구조적 변화를 확인합니다.
+            - 이를 통해 주요 타겟층이 교체된 키워드를 찾아내는 것이 목적입니다.
+
+        * **계산 방식 (How)**
+            * 연령별 비중 차이의 절대값 합계인 **Shift Score**를 통해 변화폭을 지수화합니다.
+            * $$Shift \ Score \ (L1 \ Distance) = \sum_{i=1}^{n} |Share_{recent, i} - Share_{previous, i}|$$
+            * 예를 들어, 전체 검색량 10,000건 중 20대 비중이 20% → 45%로 증가했다면
+                * 검색량 변화는 0으로 규모 변화는 없지만,
+                * 타겟층이 완전히 바뀌었으므로 Shift Score가 높게 측정됩니다.
+        """)
+
+    outer_tabs = st.tabs(outer_names)
+
+    def _render_shift_detail(dd_cur: pd.DataFrame, key_tag: str):
+        dd_cur["age_info"] = pd.Categorical(dd_cur["age_info"], categories=AGE_ORDER, ordered=True)
+        dd_cur = dd_cur.sort_values("age_info")
+
+        g1, g2 = st.columns([1.2, 1])
+
+        with g1:
+            fig2 = go.Figure()
+            fig2.add_bar(
+                x=dd_cur["age_info"].astype(str),
+                y=dd_cur["share_prev"],
+                name="이전 비중",
+                opacity=0.6,
+                hovertemplate="%{x}<br>%{y:.1%}<extra></extra>",
+            )
+            fig2.add_bar(
+                x=dd_cur["age_info"].astype(str),
+                y=dd_cur["share_cur"],
+                name="최근 비중",
+                opacity=0.85,
+                hovertemplate="%{x}<br>%{y:.1%}<extra></extra>",
+            )
+            fig2.update_layout(
+                barmode="group",
+                height=300,
+                margin=dict(l=10, r=10, t=10, b=10),
+                yaxis_tickformat=".0%",
+                legend=dict(orientation="h", y=1.02, yanchor="bottom", x=1, xanchor="right"),
+            )
+            st.plotly_chart(fig2, use_container_width=True, key=f"shift_bar_{key_tag}")
+
+        with g2:
+            t3 = dd_cur[["age_info", "share_prev", "share_cur", "dshare"]].rename(columns={
+                "age_info": "연령대",
+                "share_prev": "이전(%)",
+                "share_cur": "최근(%)",
+                "dshare": "변화(pp)",
+            })
+            t3["이전(%)"] = (t3["이전(%)"] * 100).round(1)
+            t3["최근(%)"] = (t3["최근(%)"] * 100).round(1)
+            t3["변화(pp)"] = (t3["변화(pp)"] * 100).round(1)
+            st.dataframe(t3, use_container_width=True, hide_index=True, row_height=30)
+
+    def _render_shift_kw(d0: pd.DataFrame, tab_key: str, fixed_types: list[str] | None, is_all_tab: bool):
+        tk = _clean_key(tab_key)
+
+        k_mode = f"shift_mode_{tk}"
+        k_prev = f"shift_prev_{tk}"
+        k_cur  = f"shift_cur_{tk}"
+
+        if k_mode not in st.session_state:
+            st.session_state[k_mode] = "최근 7일"
+
+        if k_prev not in st.session_state or k_cur not in st.session_state:
+            ps, pe, cs, ce = _calc_ranges(_max_d, 7)
+            st.session_state[k_prev] = [ps, pe]
+            st.session_state[k_cur]  = [cs, ce]
+
+        def _shift_apply_win():
+            m0 = st.session_state[k_mode]
+            if m0 == "커스텀":
+                return
+            n_map = {"최근 7일": 7, "최근 14일": 14, "최근 30일": 30}
+            n = n_map.get(m0, 7)
+            ps, pe, cs, ce = _calc_ranges(_max_d, n)
+            st.session_state[k_prev] = [ps, pe]
+            st.session_state[k_cur]  = [cs, ce]
+
+        def _norm_rng(rng, key):
+            if not (isinstance(rng, (list, tuple)) and len(rng) == 2):
+                rng = st.session_state[key]
+            s, e = pd.to_datetime(rng[0]), pd.to_datetime(rng[1])
+            return (e, s) if s > e else (s, e)
+
+        def _build_m(cur_x: pd.DataFrame, prev_x: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
+            cd = cur_x.groupby(keys + ["age_info"], as_index=False)["abs_age"].sum()
+            pd0 = prev_x.groupby(keys + ["age_info"], as_index=False)["abs_age"].sum()
+
+            cd["den"] = cd.groupby(keys)["abs_age"].transform("sum")
+            cd["share_cur"] = np.where(cd["den"] > 0, cd["abs_age"] / cd["den"], 0.0)
+
+            pd0["den"] = pd0.groupby(keys)["abs_age"].transform("sum")
+            pd0["share_prev"] = np.where(pd0["den"] > 0, pd0["abs_age"] / pd0["den"], 0.0)
+
+            mm = cd[keys + ["age_info", "share_cur"]].merge(
+                pd0[keys + ["age_info", "share_prev"]],
+                on=keys + ["age_info"],
+                how="outer",
+            )
+            mm["share_cur"] = mm["share_cur"].fillna(0.0)
+            mm["share_prev"] = mm["share_prev"].fillna(0.0)
+            mm["dshare"] = mm["share_cur"] - mm["share_prev"]
+            return mm
+
+        def _build_top(mm: pd.DataFrame, keys: list[str], min_diff: float, topn2: int) -> pd.DataFrame:
+            sc = (
+                mm.groupby(keys, as_index=False)
+                .agg(shift_score=("dshare", lambda x: float(np.abs(x).sum()) * 100.0))
+            )
+            up = (
+                mm.sort_values("dshare", ascending=False)
+                .groupby(keys, as_index=False)
+                .head(2)
+                .groupby(keys)["age_info"]
+                .apply(lambda s: ", ".join([str(x) for x in s.tolist()]))
+                .reset_index()
+                .rename(columns={"age_info": "증가 연령대 Top2"})
+            )
+            dn = (
+                mm.sort_values("dshare", ascending=True)
+                .groupby(keys, as_index=False)
+                .head(2)
+                .groupby(keys)["age_info"]
+                .apply(lambda s: ", ".join([str(x) for x in s.tolist()]))
+                .reset_index()
+                .rename(columns={"age_info": "감소 연령대 Top2"})
+            )
+            o2 = sc.merge(up, on=keys, how="left").merge(dn, on=keys, how="left")
+            o2["shift_score"] = pd.to_numeric(o2["shift_score"], errors="coerce").fillna(0).round(1)
+            o2 = o2[o2["shift_score"] >= float(min_diff)]
+            return o2.sort_values("shift_score", ascending=False).head(int(topn2)).reset_index(drop=True)
+
+        # ✅ Filter(3영역 구조), c4만 pass
+        with st.expander("Filter", expanded=True):
+            c1, c2, c3 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
+            c4, c5, c6 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
+
+            with c1:
+                st.radio(
+                    "기간 윈도우 설정",
+                    ["최근 7일", "최근 14일", "최근 30일", "커스텀"],
+                    horizontal=True,
+                    key=k_mode,
+                    on_change=_shift_apply_win,
+                )
+
+            lock = (st.session_state[k_mode] != "커스텀")
+
+            with c2:
+                prev_rng = st.date_input("이전기간 선택", key=k_prev, disabled=lock)
+            with c3:
+                cur_rng = st.date_input("비교기간(최근) 선택", key=k_cur, disabled=lock)
+
+            with c4:
+                pass
+
+            with c5:
+                min_diff = st.number_input(
+                    "최소 변화점수(Shift Score)",
+                    min_value=0.0,
+                    value=3.0,
+                    step=0.5,
+                    format="%.1f",
+                    key=f"shift_min_{tk}",
+                )
+
+            with c6:
+                topn2 = st.selectbox(
+                    "Top N",
+                    options=CFG["TOPK_OPTS"],
+                    index=CFG["TOPK_OPTS"].index(10) if 10 in CFG["TOPK_OPTS"] else 0,
+                    key=f"shift_topn_{tk}",
+                )
+
+        prev_s, prev_e = _norm_rng(prev_rng, k_prev)
+        cur_s,  cur_e  = _norm_rng(cur_rng, k_cur)
+
+        d = d0[(d0["날짜"] >= min(prev_s, cur_s)) & (d0["날짜"] <= max(prev_e, cur_e))]
+        if fixed_types is not None:
+            d = d[d["키워드유형"].astype(str).isin([str(x) for x in fixed_types])]
+
+        if d.empty:
+            st.warning("선택 기간/조건에 데이터가 없습니다.")
+            return
+
+        cur_a  = d[(d["날짜"] >= cur_s) & (d["날짜"] <= cur_e)]
+        prev_a = d[(d["날짜"] >= prev_s) & (d["날짜"] <= prev_e)]
+
+        keys = ["키워드유형"] if is_all_tab else ["키워드유형", "키워드"]
+        mm = _build_m(cur_a, prev_a, keys=keys)
 
 
-if __name__ == '__main__':
+        out2_disp = _build_top(mm, keys=keys, min_diff=float(min_diff), topn2=int(topn2))
+        if out2_disp.empty:
+            st.info("조건을 만족하는 항목이 없습니다.")
+            return
+        out2_disp = out2_disp.reset_index(drop=True)
+
+
+        # ✅ 1 : 1
+        st.markdown(" ")
+        L2, R2 = st.columns([1, 1], gap="large", vertical_alignment="top")
+
+        with L2:
+            st.markdown("<h6 style='margin:0;'>🔥 변화점수 TOP</h6>", unsafe_allow_html=True)
+            st.markdown(
+                "<p style='margin:-10px 0 12px 0; color:#6c757d; font-size:13px;'>"
+                "연령대 비중 분포의 변화가 큰 키워드(유형)와, 어떤 연령대에서 증감했는지 확인합니다."
+                "</p>",
+                unsafe_allow_html=True
+            )
+            st.dataframe(out2_disp, use_container_width=True, hide_index=True, height=335, row_height=30)
+
+        with R2:
+            st.markdown("<h6 style='margin:0;'>🔥 연령대 변화</h6>", unsafe_allow_html=True)
+            st.markdown(
+                "<p style='margin:-10px 0 12px 0; color:#6c757d; font-size:13px;'>"
+                "선택한 키워드(유형)의 이전/최근 연령대 비중을 비교합니다."
+                "</p>",
+                unsafe_allow_html=True
+            )
+            if is_all_tab:
+                pick_type = st.selectbox(
+                    "", # 제목 없이
+                    options=out2_disp["키워드유형"].astype(str).tolist(),
+                    index=0,
+                    key=f"shift_pick_type_{tk}",
+                    label_visibility="collapsed",
+                )
+                dd_cur = mm[mm["키워드유형"].astype(str) == str(pick_type)]
+            else:
+                sel_opts = out2_disp["키워드"].astype(str).tolist()
+                sel_val = st.selectbox(
+                    "",
+                    options=sel_opts,
+                    index=0,
+                    key=f"shift_pick_kw_{tk}",
+                    label_visibility="collapsed",
+                )
+                i = int(sel_opts.index(sel_val))
+                pick_type2 = str(out2_disp.loc[i, "키워드유형"])
+                pick_kw    = str(out2_disp.loc[i, "키워드"])
+                dd_cur = mm[
+                    (mm["키워드유형"].astype(str) == pick_type2) &
+                    (mm["키워드"].astype(str) == pick_kw)
+                ]
+
+            _render_shift_detail(dd_cur, key_tag=tk)
+
+        return
+
+    for ot, maj in zip(outer_tabs, outer_names):
+        with ot:
+            if maj == "전체":
+                _render_shift_kw(df, tab_key="shift_all", fixed_types=None, is_all_tab=True)
+                continue
+
+            plain = sorted(list(major_map[maj]["plain"]))
+            subs_full = sorted(list(major_map[maj]["subs"]))
+            all_types = plain + subs_full
+
+            if len(subs_full) == 0:
+                _render_shift_kw(df, tab_key=f"shift_maj_{maj}", fixed_types=all_types, is_all_tab=False)
+                continue
+
+            inner_labels = ["전체"] + [t.split("_", 1)[1] for t in subs_full]
+            inner_tabs = st.tabs(inner_labels)
+
+            for it, sub_lbl in zip(inner_tabs, inner_labels):
+                with it:
+                    if sub_lbl == "전체":
+                        _render_shift_kw(df, tab_key=f"shift_maj_{maj}_all", fixed_types=all_types, is_all_tab=True)
+                    else:
+                        full_type = f"{maj}_{sub_lbl}"
+                        _render_shift_kw(df, tab_key=f"shift_maj_{maj}_sub_{sub_lbl}", fixed_types=[full_type], is_all_tab=False)
+
+
+if __name__ == "__main__":
     main()

@@ -63,15 +63,15 @@ pages = {
         st.Page("views/view02.py", title="ㅤPDP조회 대시보드"),
         st.Page("views/view03.py", title="ㅤ장바구니 대시보드"),
         st.Page("views/view04.py", title="ㅤ쇼룸 대시보드"),
-        st.Page("views/view05.py", title="ㅤCMP 대시보드 ✨ᵁᴾᴰᴬᵀᴱ"),
+        st.Page("views/view05.py", title="ㅤCMP 대시보드"),
     ],
     "GOAL": [
         st.Page("views/view21.py", title="ㅤ퍼포먼스 대시보드"),
         # st.Page("views/view22.py", title="ㅤ(매출 종합 대시보드)"),
     ],
     "BUZZ": [
-        st.Page("views/view31.py", title="ㅤ키워드 대시보드 ✨ᵁᴾᴰᴬᵀᴱ"),
-        st.Page("views/view32.py", title="ㅤ언드·PPL 대시보드"),
+        st.Page("views/view31.py", title="ㅤ언드·PPL 대시보드 ✨ᵁᴾᴰᴬᵀᴱ"),
+        st.Page("views/view32.py", title="ㅤ키워드 대시보드 ✨ᵁᴾᴰᴬᵀᴱ"),
     ],
 }
 
