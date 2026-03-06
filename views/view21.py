@@ -18,7 +18,8 @@ from modules.ui_common import style_format, style_cmap
 
 from google.oauth2.service_account import Credentials
 import gspread
-
+from io import BytesIO # 추가
+from openpyxl import Workbook # 추가
 
 # ──────────────────────────────────
 # CONFIG
@@ -522,6 +523,34 @@ def main():
             if df_cmp is not None:
                 df_cmp = df_cmp[df_cmp[column].isin(sel)]
         return df, df_cmp
+
+    # (26.03.06) 엑셀 다운로드
+    def excel_bytes(df: pd.DataFrame) -> bytes:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "report"
+
+        # MultiIndex 컬럼인 경우: 헤더 2줄 저장
+        if isinstance(df.columns, pd.MultiIndex):
+            header_top = [str(x[0]) if pd.notna(x[0]) else "" for x in df.columns]
+            header_bottom = [str(x[1]) if pd.notna(x[1]) else "" for x in df.columns]
+
+            ws.append(header_top)
+            ws.append(header_bottom)
+
+            for row in df.itertuples(index=False, name=None):
+                ws.append(list(row))
+
+        # 일반 컬럼인 경우: 헤더 1줄 저장
+        else:
+            ws.append([str(c) for c in df.columns])
+            for row in df.itertuples(index=False, name=None):
+                ws.append(list(row))
+
+        bio = BytesIO()
+        wb.save(bio)
+        bio.seek(0)
+        return bio.getvalue()
 
 
     # ──────────────────────────────────
@@ -1133,7 +1162,35 @@ def main():
 
 
     # 표 (데이터프레임)
-    # st.markdown("###### Report")
+    # if pivot_cols or show_totals:
+    #     if show_totals:
+    #         df_sel = df_filtered.assign(period=f"{start_date_str} ~ {end_date_str}")
+
+    #         if use_compare:
+    #             df_cmp = df_filtered_cmp.assign(period=f"{default_comp_s_str} ~ {default_comp_e_str}")
+    #             df_combined = pd.concat([df_sel, df_cmp], ignore_index=True)
+    #         else:
+    #             df_combined = df_sel
+
+    #         group_keys = ["period"] + pivot_cols
+    #         df_pivot = pivot_perf(df_combined, group_keys)
+    #         render_style_perf(df_pivot, group_keys)
+
+    #     else:
+    #         df_sel = pivot_perf(df_filtered, pivot_cols).assign(period=f"{start_date_str} ~ {end_date_str}")
+
+    #         if use_compare:
+    #             df_cmp = pivot_perf(df_filtered_cmp, pivot_cols).assign(period=f"{default_comp_s_str} ~ {default_comp_e_str}")
+    #             df_pivot = pd.concat([df_sel, df_cmp], ignore_index=True)
+    #         else:
+    #             df_pivot = df_sel
+
+    #         render_style_perf(df_pivot, ["period"] + pivot_cols)
+
+    # else:
+    #     st.warning("피벗할 행 필드를 하나 이상 선택해 주세요.")
+
+    # 표 (데이터프레임)
     if pivot_cols or show_totals:
         if show_totals:
             df_sel = df_filtered.assign(period=f"{start_date_str} ~ {end_date_str}")
@@ -1146,8 +1203,6 @@ def main():
 
             group_keys = ["period"] + pivot_cols
             df_pivot = pivot_perf(df_combined, group_keys)
-            render_style_perf(df_pivot, group_keys)
-
 
         else:
             df_sel = pivot_perf(df_filtered, pivot_cols).assign(period=f"{start_date_str} ~ {end_date_str}")
@@ -1158,8 +1213,21 @@ def main():
             else:
                 df_pivot = df_sel
 
-            render_style_perf(df_pivot, ["period"] + pivot_cols)
+            group_keys = ["period"] + pivot_cols
 
+        df_export = render_decor_perf(df_pivot, group_keys)
+
+        # 1) 표 먼저 출력
+        render_style_perf(df_pivot, group_keys)
+
+        # 2) 표 아래에 다운로드 버튼 배치
+        st.download_button(
+            label="엑셀 다운로드",
+            data=excel_bytes(df_export),
+            file_name=f"ORANGE_Perf_Report_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            icon="💾",
+            )
 
     else:
         st.warning("피벗할 행 필드를 하나 이상 선택해 주세요.")

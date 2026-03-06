@@ -307,8 +307,8 @@ def render_eng_graph(df: pd.DataFrame, channel_name: str, target_metric: str) ->
         )
 
 
-# B. 채널별 검색 기여량 (CTB)
-def build_ctb_rawdf( # 브랜드별 / 검색 기여량 DF 원본 생성
+# B. 채널별 검색량 기여도 (CTB)
+def build_ctb_rawdf( # 브랜드별 / 검색량 기여도 DF 원본 생성
     brand_name: str,
     query_sum_df: pd.DataFrame,
     ppl_df: pd.DataFrame,
@@ -924,18 +924,18 @@ def main():
         )
 
     # ────────────────────────────────────────────────────────────────
-    # 2) 채널별 검색 기여량
+    # 2) 채널별 검색량 기여도
     # ────────────────────────────────────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>채널별 검색 기여량</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ검색량을 '기본 검색량'과 '채널 검색량'으로 나눠, 특정 채널이 이끌어낸 검색 비중을 통해 파급력을 측정합니다.", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>채널별 검색량 기여도</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ검색량을 '기본 검색량'과 채널별 '기여 검색량'으로 나눠, 특정 채널이 이끌어낸 파급력을 측정합니다.", unsafe_allow_html=True)
 
     with st.popover("🧐 작성 예정"):
             st.markdown("""
 
         """)
 
-    # PPL_ACTION + PPL_LIST 기준으로 채널별 검색 기여량 pivot DF 생성
+    # PPL_ACTION + PPL_LIST 기준으로 채널별 검색량 기여도 pivot DF 생성
     ppl_action2 = PPL_ACTION[['날짜', 'utm_content', 'SearchVolume_contribution']]
     ppl_action3 = pd.merge(ppl_action2, PPL_LIST, on=['utm_content'], how='left')
     ppl_action3 = ppl_action3[['날짜', '채널명', 'SearchVolume_contribution']]
