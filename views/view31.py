@@ -780,7 +780,7 @@ def main():
         st.markdown(
             """
             <div style="font-size:14px;line-height:1.5;">
-            피피엘 채널별 성과, 랜딩이후 사용자 행동, 전체 검색량 대비 채널별 검색 기여량 <br>
+            언드 시트와 네이버 DataLab 데이터를 기반으로 <b>채널별 성과와 브랜드별 검색량 및 파급 효과</b>를 확인하는 대시보드입니다.<br>
             </div>
             <div style="color:#6c757d;font-size:14px;line-height:2.0;">
             ※ 전일 데이터 업데이트 시점은 09시~10시 입니다.
@@ -788,7 +788,7 @@ def main():
             """,
             unsafe_allow_html=True,
         )
-
+    
     with col2:
         latest_ch = get_max()
         st.markdown(
