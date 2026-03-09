@@ -863,34 +863,33 @@ def main():
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>DEEP INSIGHT</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ브랜드·품목·캠페인·소재·키워드 등 분석 목적에 맞는 행 필드를 선택하여 상세 성과 데이터를 자유롭게 재구성(Pivot)합니다.", unsafe_allow_html=True) 
-        
-    with st.popover("🤔 고급필터 정규식 사용 방법"):
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ브랜드·품목·캠페인·소재·키워드 등 목적에 맞는 행 필드를 다중 선택하여 상세 성과 데이터를 자유롭게 재구성(Pivot)합니다.", unsafe_allow_html=True) 
+    
+    with st.popover("🤔 고급 필터 정규식, 어떻게 쓰나요?"):
         st.markdown("""
-    - **단일 입력**  
-    입력한 단어/패턴을 **포함**하는 값을 찾습니다.  
-    예) `슬립퍼` : 슬립퍼 캠페인만 조회  
-    예) `low` : low 퍼널 캠페인만 조회  
+        ##### 🛠️ 검색 연산자 가이드
+        찾고자 하는 캠페인이나 데이터 단어들 사이에 아래 기호를 넣어 검색 범위를 조절할 수 있습니다.
 
-    - **OR (`|`)**  
-    여러 패턴 중 **하나라도 포함**하면 매칭됩니다.  
-    예) `스테이블|시그니처` : 스테이블 또는 시그니처 포함
+        | 기호 | 기능 | 예시 |
+        | :---: | :--- | :--- |
+        | **`\|`** | **OR** | `A\|B` (A 또는 B 포함) |
+        | **`&`** | **AND** | `A&B` (A와 B 모두 포함) |
+        | **`!`** | **NOT** | `!A` (A가 포함된 항목 제외) |
+        | **`^` / `$`** | **시작 / 끝** | `^A` (A로 시작), `B$` (B로 종료) |
 
-    - **AND (`&`)**  
-    입력한 **모든 패턴이 포함**되어야 매칭됩니다.  
-    예) `low&시그니처` : low도 있고 시그니처도 있는 값
+        #####  
+        ##### 🚀 검색 활용 예시
+        * **특정 키워드 제외** : `슬립퍼&!프로모션`
+            * '슬립퍼' 캠페인 중 '프로모션'이 붙은 항목만 쏙 빼고 조회
+        * **다중 조건 포함** : `누어&low&!매트리스`
+            * '누어'이면서 'low' 퍼널이지만 '매트리스'는 제외하고 싶을 때
+        * **그룹화 활용** : `슬립퍼&(허쉬|시그)`
+            * '슬립퍼 허쉬'와 '슬립퍼 시그니처'를 한 번에 조회
+        * **위치 지정** : `^BSA` 또는 `MO$`
+            * 'BSA'로 시작하는 캠페인 혹은 'MO'로 끝나는 매체만 필터링
+        """)
 
-    - **제외 (`!`)**  
-    `!패턴`은 해당 패턴을 **제외**합니다.  
-    예) `!누어` : 누어 포함된 값 제외  
-    예) `슬립퍼&!프로모션` : 슬립퍼 중 프로모션 제외  
 
-    - 여러 기호를 함께 사용하거나, 기본 정규표현식 문법도 사용 가능합니다.  
-    예) `^BSA` : BSA로 시작   
-    예) `MO$` : MO로 끝  
-    예) `슬립퍼&(허쉬|시그)` : 슬립퍼 허쉬 또는 슬립퍼 시그니처  
-    예) `누어&low&!매트리스` : 누어 low 중 매트리스만 제외  
-    """)
 
 
     st.markdown(" ")
@@ -907,7 +906,7 @@ def main():
         pivot_cols.remove("event_date")
 
     # 필터
-    with st.expander("기본 필터", expanded=False):
+    with st.expander("기본 Filter", expanded=False):
         ft1, ft2, ft3, ft4, ft5, ft6 = st.columns(6)
         with ft1:
             df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "media_name", text_filter=False)
@@ -922,7 +921,7 @@ def main():
         with ft6:
             df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "product_type", text_filter=False)
 
-    with st.expander("고급 필터", expanded=False):
+    with st.expander("고급 Filter", expanded=False):
         ft7, ft8, ft9, ft10 = st.columns([2, 1, 2, 1])
         with ft7:
             df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "campaign_name", text_filter=False)

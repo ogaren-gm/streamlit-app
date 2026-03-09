@@ -877,7 +877,7 @@ def main():
     if not channel_opts:
         st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
     else:
-        with st.expander("Filter", expanded=True):
+        with st.expander("공통 Filter", expanded=True):
             f1, f2, _p, f3 = st.columns([1, 1, 0.08, 1.45], vertical_alignment="bottom")
 
             with f1:
@@ -930,10 +930,10 @@ def main():
     st.markdown("<h5 style='margin:0'>채널별 검색량 기여도</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ검색량을 '기본 검색량'과 채널별 '기여 검색량'으로 나눠, 특정 채널이 이끌어낸 파급력을 측정합니다.", unsafe_allow_html=True)
 
-    with st.popover("🧐 작성 예정"):
-            st.markdown("""
+    # with st.popover("🧐 작성 예정"):
+    #         st.markdown("""
 
-        """)
+    #     """)
 
     # PPL_ACTION + PPL_LIST 기준으로 채널별 검색량 기여도 pivot DF 생성
     ppl_action2 = PPL_ACTION[['날짜', 'utm_content', 'SearchVolume_contribution']]
@@ -952,7 +952,7 @@ def main():
     last_day_prev_month = first_day_this_month - timedelta(days=1)
     first_day_prev_month = last_day_prev_month.replace(day=1)
 
-    with st.expander("Filter", expanded=False):
+    with st.expander("공통 Filter", expanded=True):
         f1, f2 = st.columns([1, 2.53], vertical_alignment="bottom")
         with f1: 
             selected_dates = st.date_input(
@@ -969,7 +969,7 @@ def main():
 
     # 렌더링
     # 1. 전체 + 브랜드별 탭 구성
-    brand_tabs_labels = ["브랜드 전체"] + [f"{brand}" for brand in CFG["BRAND_LIST"]]
+    brand_tabs_labels = ["전체"] + [f"{brand}" for brand in CFG["BRAND_LIST"]]
     tabs = st.tabs(brand_tabs_labels)
     # 2. 브랜드별 df 구성
     query_sum_map = {
@@ -977,14 +977,14 @@ def main():
         for brand_name in CFG["BRAND_LIST"]
     }
     # 3. 전체 df 구성 (groupby 필수)
-    query_sum_map["브랜드 전체"] = (
+    query_sum_map["전체"] = (
         QUERY_SUM
         .groupby("날짜", as_index=False)["검색량"]
         .sum()
     )
     channels_by_brand_all = {
         **CHANNELS_BY_BRAND,
-        "브랜드 전체": [
+        "전체": [
             ch
             for brand_name in CFG["BRAND_LIST"]
             for ch in CHANNELS_BY_BRAND.get(brand_name, [])
@@ -1025,8 +1025,8 @@ def main():
 
     with tabs[0]:
         tab_ctb(
-            "브랜드 전체",
-            query_sum_map["브랜드 전체"],
+            "전체",
+            query_sum_map["전체"],
             ppl_action3,
             channels_by_brand_all,
             start_date,
@@ -1058,7 +1058,7 @@ def main():
     last_day_prev_month = first_day_this_month - timedelta(days=1)
     first_day_prev_month = last_day_prev_month.replace(day=1)
 
-    with st.expander("Filter", expanded=True):
+    with st.expander("공통 Filter", expanded=True):
         f1, _p, f2 = st.columns([1, 0.08, 2.45], vertical_alignment="bottom") 
         with f1:
             selected_dates = st.date_input(
@@ -1089,7 +1089,7 @@ def main():
     }
 
     if query_df_map:
-        query_df_map["브랜드 전체"] = pd.concat(
+        query_df_map["전체"] = pd.concat(
             [
                 query_df_map[brand_name].assign(브랜드=brand_name)
                 for brand_name in CFG["BRAND_LIST"]
@@ -1150,12 +1150,12 @@ def main():
     if not query_df_map:
         st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
     else:
-        brand_tabs_labels = ["브랜드 전체"] + [brand for brand in CFG["BRAND_LIST"] if brand in query_df_map]
+        brand_tabs_labels = ["전체"] + [brand for brand in CFG["BRAND_LIST"] if brand in query_df_map]
         tabs = st.tabs(brand_tabs_labels)
 
         with tabs[0]:
             tab_kwd(
-                query_df_map["브랜드 전체"],
+                query_df_map["전체"],
                 tk="kw_all",
                 is_all=True
             )

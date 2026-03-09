@@ -738,7 +738,7 @@ def main():
     
     st.markdown(" ")
     st.markdown("<h5 style='margin:0'> 전체 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ조회부터 예약 신청, 확정, 최종 방문으로 이어지는 단계별 유입량과 주요 전환 지표(BPL, VPL, VPR)의 추이를 확인합니다.", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ조회부터 방문까지 이어지는 단계별 유입량과 주요 전환 지표(BPL, VPL, VPR) 추이를 확인합니다.", unsafe_allow_html=True)
 
     st.markdown(
         """
@@ -1006,7 +1006,7 @@ def main():
 
     with tab2:
         # ✅ 동요일 급증 감지
-        st.markdown(":gray-badge[:material/Info: Info]ㅤ지난주 같은 요일의 평균 수치와 비교하여 급증하거나 급락한 요일을 탐지합니다.")
+        st.markdown(":gray-badge[:material/Info: Info]ㅤ지난주 동일 요일의 수치와 비교하여 급증하거나 급락한 날을 탐지합니다.")
         
         with st.expander("Filter", expanded=True):
             cA, cB, cC = st.columns([1, 1, 2], vertical_alignment="center")
@@ -1240,7 +1240,7 @@ def main():
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>CROSS INSIGHT</span></h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ분석 기준과 구성 기준을 교차 선택하여 특정 고객군이나 지점별로 어떤 특성이 두드러지는지 상관관계를 심층 분석합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ두 가지 기준을 교차 선택하여 특정 고객군이나 지점별로 두드러지는 특성과 상관관계를 분석합니다.")
 
     DIM_OPTS = {
         "쇼룸형태": "shrm_type",

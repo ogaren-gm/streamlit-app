@@ -410,23 +410,34 @@ def main():
     # ──────────────────────────────────
     st.markdown(" ")
     st.markdown("<h5 style='margin:0'>트래픽 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ트래픽의 전반적인 증감 추이와 방문 형태별(신규/재방문) 비중 변화를 확인합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ트래픽의 전반적인 증감 추이와 방문 형태(신규/재방문) 비중 변화를 확인합니다.")
 
-    with st.popover("🤔 유저 VS 세션"):
+    with st.popover("🤔 유저 vs 세션 vs 이벤트, 뭐가 다른가요?"):
         st.markdown("""
-    - **유저수 (user_pseudo_id)**  
-    고유 사람 수 (중복 제거).
+        ##### 💡 한 눈에 이해하는 지표 가이드
+        지표의 범위를 **쇼핑몰 방문**에 비유하면 이해가 빨라요!
 
-    - **세션수 (pseudo_session_id)**  
-    방문 단위 수 (같은 사람도 방문이 나뉘면 세션이 늘어남).
+        | 구분 | 개념 | 비유 |
+        | :--- | :--- | :--- |
+        | **유저수** | 방문한 **사람**의 수 | 쇼핑몰에 들어온 손님 수 |
+        | **세션수** | 방문한 **횟수** | 손님이 문을 열고 들어온 횟수 |
+        | **이벤트수** | 발생한 **행동**의 수 | 손님이 상품을 보거나 장바구니에 담은 횟수 |  
+        
+        #####  
+        ##### 📊 실제 사례로 보기
+        **손님 A**가 **오전**에 방문하여 `시그니처`를 조회하고, **오후**에 재방문하여 `시그니처`와 `허쉬`를 조회했다면?   
+        
+        | 지표 구분 | 집계 결과 | 이유 |
+        | :--- | :--- | :--- |
+        | **유저수** | **1** | 동일 인물(A)이므로 1명으로 집계 |
+        | **세션수** | **2** | 오전/오후 방문이 나뉘어 2회로 집계 |
+        | **이벤트수** | **3** | 상품 조회를 총 3번 수행하여 3건으로 집계 |
 
-    - **예시**  
-    사람 A가 1월 1일 오전에 방문 후 이탈, 오후에 재방문했다면  
-    1월 1일의 **유저수=1**, **세션수=2** 입니다.
-    """)
+        ※ 한 유저가 여러 번 방문할 수 있기 때문에, 보통 **유저수 < 세션수 < 이벤트수** 순으로 수치가 커집니다.
+        """)
 
-    with st.expander("Filter", expanded=False):
-        r0_1, r0_2 = st.columns([1.3, 2.7], vertical_alignment="bottom")
+    with st.expander("공통 Filter", expanded=True):
+        r0_1, r0_2 = st.columns([1,4], vertical_alignment="bottom")
         with r0_1:
             mode_1 = st.radio("기간 단위", ["일별", "주별"], horizontal=True, key="mode_1")
         with r0_2:
@@ -434,7 +445,7 @@ def main():
                 "집계 단위",
                 ["유저수", "세션수"],
                 selection_mode="multi",
-                default=["세션수"],
+                default=["유저수", "세션수"],
                 key="units_1",
             )
 
@@ -542,12 +553,13 @@ def main():
 
     st.dataframe(styled, row_height=30, hide_index=True)
 
+
     # ──────────────────────────────────
     # 2) 트래픽 현황
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>트래픽 현황</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ유입 경로(매체)와 지리적 위치(지역/권역)에 따른 트래픽 분포 및 상세 비중을 비교 분석합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ유입 매체와 지리적 위치(지역/권역)에 따른 트래픽 분포 및 상세 비중을 비교 분석합니다.")
 
     def _select_opt(df0, col, label, key):
         s = _safe_dim_series(df0, col)
@@ -597,7 +609,6 @@ def main():
         grp["_period_dt"] = pd.to_datetime(grp["_period_dt"], errors="coerce")
         grp = grp.dropna(subset=["_period_dt"]).sort_values("_period_dt").reset_index(drop=True)
 
-        # ✅ 차트: 일별은 x를 datetime으로 고정 + ticktext 강제 (중복 라벨 차단)
         chart_key = f"stack::{dim_label}::{dim_col}::{mode}::{unit}::{topk}"
         if extra_filter:
             chart_key += "::" + "::".join([f"{k}={v}" for k, v in sorted(extra_filter.items())])
@@ -649,126 +660,111 @@ def main():
             x_col = "기간"
             ui.render_stack_graph(grp, x=x_col, y=unit, color=dim_label, key=chart_key, show_value_in_hover=True)
 
-
         long = grp[["기간", dim_label, unit]].rename(columns={unit: "값"})
         pv = ui.build_pivot_table(long, index_col=dim_label, col_col="기간", val_col="값")
-                
+
         styled = ui.style_format(pv, decimals_map={c: 0 for c in pv.columns if c != dim_label})
         st.dataframe(styled, row_height=30, hide_index=True)
+
+    with st.expander("공통 Filter", expanded=True):
+        cf1, cf2, cf3, _p = st.columns([1, 1, 1, 2], vertical_alignment="bottom")
+        with cf1:
+            traffic_mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="traffic_mode")
+        with cf2:
+            traffic_unit = st.radio("집계 단위", ["유저수", "세션수"], index=1, horizontal=True, key="traffic_unit")
+        with cf3:
+            traffic_topk = st.selectbox("표시 Top K", CFG["TOPK_OPTS"], index=1, key="traffic_topk")
 
 
     tab_geo_kr, tab_geo, tab_src, tab_mix, tab_dev = st.tabs(["접속권역", "접속지역", "유입매체", "매체X지역", "디바이스"])
 
     with tab_geo_kr:
-        with st.expander("Filter", expanded=True):
-            c1, c2, c3, _p = st.columns([1, 1, 1, 2], vertical_alignment="bottom")
+        with st.expander("탭별 Filter", expanded=False):
+            c1, _p = st.columns([1, 4], vertical_alignment="bottom")
             with c1:
-                mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="gk_m")
-            with c2:
-                unit = st.radio("집계 단위", ["유저수", "세션수"], index=1, horizontal=True, key="gk_u")
-            with c3:
                 sel = _select_opt(df, "geo__city_kr", "권역 선택", "gk_s")
-            with _p:
-                pass
-        render_dim_trend(df, mode, unit, "geo__city_kr", "접속권역", 10, {"geo__city_kr": sel})
+        render_dim_trend(df, traffic_mode, traffic_unit, "geo__city_kr", "접속권역", traffic_topk, {"geo__city_kr": sel})
 
     with tab_geo:
-        with st.expander("Filter", expanded=True):
-            c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1], vertical_alignment="bottom")
+        with st.expander("탭별 Filter", expanded=False):
+            c1, c2, _p = st.columns([1, 1, 3], vertical_alignment="bottom")
             with c1:
-                mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="g_m")
-            with c2:
-                unit = st.radio("집계 단위", ["유저수", "세션수"], index=1, horizontal=True, key="g_u")
-            with c3:
                 sel_kr = _select_opt(df, "geo__city_kr", "권역 선택", "g_kr")
-            with c4:
+            with c2:
                 sel = _select_opt(df, "geo__city", "지역 선택", "g_c")
-            with c5:
-                topk = st.selectbox("표시 Top K", CFG["TOPK_OPTS"], index=1, key="g_k")
 
-        render_dim_trend(df, mode, unit, "geo__city", "접속지역", topk, {"geo__city_kr": sel_kr, "geo__city": sel})
+        render_dim_trend(df, traffic_mode, traffic_unit, "geo__city", "접속지역", traffic_topk, {"geo__city_kr": sel_kr, "geo__city": sel})
 
     with tab_src:
-        with st.expander("Filter", expanded=True):
-            c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1], vertical_alignment="bottom")
+        with st.expander("탭별 Filter", expanded=False):
+            c1, c2, _p = st.columns([1, 1, 3], vertical_alignment="bottom")
             with c1:
-                mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="s_m")
+                sel_dim = st.selectbox("유입 기준 선택", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"], index=0, key="s_d")
             with c2:
-                unit = st.radio("집계 단위", ["유저수", "세션수"], index=1, horizontal=True, key="s_u")
-            with c3:
-                sel_dim = st.selectbox("유입 단위", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"], index=0, key="s_d")
-            with c4:
                 dim_col, dim_label = _get_src_dim(sel_dim)
                 sel = _select_opt(df, dim_col, f"{dim_label} 선택", "s_v")
-            with c5:
-                topk = st.selectbox("표시 Top K", CFG["TOPK_OPTS"], index=1, key="s_k")
 
         extra = {} if sel == "전체" else {dim_col: sel}
-        render_dim_trend(df, mode, unit, dim_col, dim_label, topk, extra)
+        render_dim_trend(df, traffic_mode, traffic_unit, dim_col, dim_label, traffic_topk, extra)
 
     with tab_mix:
-        with st.expander("Filter", expanded=True):
-            c1, c2, c3, _p, c4, c5, c6 = st.columns([1, 1, 1, 0.2, 1, 1, 1], vertical_alignment="bottom")
+        with st.expander("탭별 Filter", expanded=False):
+            c1, c2, c3, _p = st.columns([1, 1, 1, 2], vertical_alignment="bottom")
             with c1:
-                mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="m_m")
-            with c2:
-                unit = st.radio("집계 단위", ["유저수", "세션수"], index=1, horizontal=True, key="m_u")
-            with c3:
                 sel_src = _select_opt(df, "_sourceMedium", "소스/매체 선택", "m_s")
-            with _p:
-                pass
-            with c4:
+            with c2:
                 dim_mode = st.radio("권역/지역 선택", ["권역", "지역"], index=0, horizontal=True, key="m_d")
-            with c5:
+            with c3:
                 dim_col, dim_label = ("geo__city_kr", "접속권역") if dim_mode == "권역" else ("geo__city", "접속지역")
                 sel = _select_opt(df, dim_col, f"{'권역' if dim_mode == '권역' else '지역'} 선택", "m_v")
-            with c6:
-                topk = st.selectbox("표시 Top K", CFG["TOPK_OPTS"], index=1, key="m_k")
 
         extra = {"_sourceMedium": sel_src}
         if sel != "전체":
             extra[dim_col] = sel
 
-        render_dim_trend(df, mode, unit, dim_col, dim_label, topk, extra)
+        render_dim_trend(df, traffic_mode, traffic_unit, dim_col, dim_label, traffic_topk, extra)
 
     with tab_dev:
-        with st.expander("Filter", expanded=True):
-            c1, c2, c3, _p = st.columns([1, 1, 1, 2], vertical_alignment="bottom")
+        with st.expander("탭별 Filter", expanded=False):
+            c1, _p = st.columns([1, 4], vertical_alignment="bottom")
             with c1:
-                mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="d_m")
-            with c2:
-                unit = st.radio("집계 단위", ["유저수", "세션수"], index=1, horizontal=True, key="d_u")
-            with c3:
                 sel = _select_opt(df, "device__category", "디바이스 선택", "d_v")
-            with _p:
-                pass
-        render_dim_trend(df, mode, unit, "device__category", "디바이스", None, {"device__category": sel})
+        render_dim_trend(df, traffic_mode, traffic_unit, "device__category", "디바이스", traffic_topk, {"device__category": sel})
+
 
     # ──────────────────────────────────
     # 3) 이벤트 추이
     # ──────────────────────────────────
     st.header(" ")
     st.markdown("<h5 style='margin:0'>이벤트 추이</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ제품 탐색부터 전환 의도까지, 사용자의 구매 여정별 핵심 행동 지표(이벤트)의 변화를 확인합니다.")
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ제품 탐색부터 전환 의도까지, 사용자의 구매 여정별 핵심 행동 이벤트의 변화를 확인합니다.")
 
-    with st.popover("🤔 유저 VS 세션 VS 이벤트"):
+    with st.popover("🤔 유저 vs 세션 vs 이벤트, 뭐가 다른가요?"):
         st.markdown("""
-    - **유저수 (user_pseudo_id)**  
-    고유 사람 수 (중복 제거).
+        ##### 💡 한 눈에 이해하는 지표 가이드
+        지표의 범위를 **쇼핑몰 방문**에 비유하면 이해가 빨라요!
 
-    - **세션수 (pseudo_session_id)**  
-    방문 단위 수 (같은 사람도 방문이 나뉘면 세션이 늘어남).
+        | 구분 | 개념 | 비유 |
+        | :--- | :--- | :--- |
+        | **유저수** | 방문한 **사람**의 수 | 쇼핑몰에 들어온 손님 수 |
+        | **세션수** | 방문한 **횟수** | 손님이 문을 열고 들어온 횟수 |
+        | **이벤트수** | 발생한 **행동**의 수 | 손님이 상품을 보거나 장바구니에 담은 횟수 |  
+        
+        #####  
+        ##### 📊 실제 사례로 보기
+        **손님 A**가 **오전**에 방문하여 `시그니처`를 조회하고, **오후**에 재방문하여 `시그니처`와 `허쉬`를 조회했다면?   
+        
+        | 지표 구분 | 집계 결과 | 이유 |
+        | :--- | :--- | :--- |
+        | **유저수** | **1** | 동일 인물(A)이므로 1명으로 집계 |
+        | **세션수** | **2** | 오전/오후 방문이 나뉘어 2회로 집계 |
+        | **이벤트수** | **3** | 상품 조회를 총 3번 수행하여 3건으로 집계 |
 
-    - **이벤트수 (add_to_cart)**  
-    한 방문(세션) 안에서 발생한 행동의 총 횟수.
+        ※ 한 유저가 여러 번 방문할 수 있기 때문에, 보통 **유저수 < 세션수 < 이벤트수** 순으로 수치가 커집니다.
+        """)
 
-    - **예시**  
-    사람 A가 1월 1일 오전에 시그니처를 조회 후 이탈, 오후에 시그니처와 허쉬를 재조회했다면  
-    1월 1일의 **유저수=1**, **세션수=2**, **이벤트수=3** 입니다.
-    """)
-
-    with st.expander("Filter", expanded=True):
-        c31, c32 = st.columns([1.3, 2.7], vertical_alignment="bottom")
+    with st.expander("공통 Filter", expanded=True):
+        c31, c32 = st.columns([1,4], vertical_alignment="bottom")
         with c31:
             mode_3 = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="mode_3")
         with c32:
@@ -847,7 +843,7 @@ def main():
             df_f = df_f.iloc[0:0]
 
         if df_f.empty:
-            st.info("선택한 이벤트의 발생 데이터가 없습니다.")
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
             return
 
         # (2) 탭별 추가 필터 적용
@@ -859,7 +855,7 @@ def main():
         tmp = ui.add_period_columns(df_f, "event_date", mode)
         dt_map = _build_dt_map(tmp)
 
-        # dim 컬럼 준비 + TopK + 기타 처리 (공통 helper 사용)
+        # dim 컬럼 준비 + TopK + 기타 처리
         s = _safe_dim_series(tmp, dim_col)
         tmp["_dim2"] = _apply_topk_bucket(s, topk)
 
@@ -912,111 +908,78 @@ def main():
         styled = ui.style_format(pv, decimals_map={c: 0 for c in pv.columns if c != dim_label})
         st.dataframe(styled, row_height=30, hide_index=True)
 
+    with st.expander("공통 Filter", expanded=True):
+        cf1, cf2, cf3, cf4, _p = st.columns([1, 1, 1, 1, 1], vertical_alignment="bottom")
+        with cf1:
+            e4_mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="e4_mode")
+        with cf2:
+            e4_unit = st.radio("집계 단위", ["유저수", "세션수", "이벤트수"], index=1, horizontal=True, key="e4_unit")
+        with cf3:
+            e4_sel_ev_label = st.selectbox("이벤트 선택", ev_label_opts, index=0, key="e4_sel_ev")
+        with cf4:
+            e4_topk = st.selectbox("표시 Top K", CFG["TOPK_OPTS"], index=1, key="e4_topk")
+
+    ev_col = ev_label_to_col.get(e4_sel_ev_label, "view_item")
 
     tab_e_geo_kr, tab_e_geo, tab_e_src = st.tabs(["접속권역", "접속지역", "유입매체"])
 
     with tab_e_geo_kr:
-        with st.expander("Filter", expanded=True):
-            c1, _p1, c2, c3, c4, _p2 = st.columns([1.9, 0.1, 1, 1.5, 1,2], vertical_alignment="bottom")
+        with st.expander("탭별 Filter", expanded=False):
+            c1, _p = st.columns([1, 4], vertical_alignment="bottom")
             with c1:
-                sel_ev_label = st.selectbox("이벤트 선택", ev_label_opts, index=0, key="e4_ev_gk")
-            with _p1:
-                pass
-            with c2:
-                mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="e4_m_gk")
-            with c3:
-                unit = st.radio("집계 단위", ["유저수", "세션수", "이벤트수"], index=1, horizontal=True, key="e4_u_gk")
-            with c4:
                 sel = _select_opt(df, "geo__city_kr", "권역 선택", "e4_gk_s")
-            with _p2:
-                pass
 
-        ev_col = ev_label_to_col.get(sel_ev_label, "view_item")
         pivot_event_dim_trend(
             df_in=df,
             ev_col=ev_col,
-            mode=mode,
-            unit=unit,
+            mode=e4_mode,
+            unit=e4_unit,
             dim_col="geo__city_kr",
             dim_label="접속권역",
-            topk=10,
+            topk=e4_topk,
             extra_filter={"geo__city_kr": sel},
         )
 
     with tab_e_geo:
-        with st.expander("Filter", expanded=True):
-            c1, _p1, c2, c3, c4, c5, c6 = st.columns([1.9, 0.1, 1, 1.5, 1, 1, 1], vertical_alignment="bottom")
+        with st.expander("탭별 Filter", expanded=False):
+            c1, c2, _p = st.columns([1, 1, 3], vertical_alignment="bottom")
             with c1:
-                sel_ev_label = st.selectbox("이벤트 선택", ev_label_opts, index=0, key="e4_ev_g")
-            with _p1:
-                pass
-            with c2:
-                mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="e4_m_g")
-            with c3:
-                unit = st.radio("집계 단위", ["유저수", "세션수", "이벤트수"], index=1, horizontal=True, key="e4_u_g")
-            with c4:
                 sel_kr = _select_opt(df, "geo__city_kr", "권역 선택", "e4_g_kr")
-            with c5:
+            with c2:
                 sel = _select_opt(df, "geo__city", "지역 선택", "e4_g_c")
-            with c6:
-                topk = st.selectbox(
-                    "표시 Top K",
-                    CFG["TOPK_OPTS"],
-                    index=1,
-                    key="e4_g_k",
-                )
 
-        ev_col = ev_label_to_col.get(sel_ev_label, "view_item")
         extra = {"geo__city_kr": sel_kr, "geo__city": sel}
         pivot_event_dim_trend(
             df_in=df,
             ev_col=ev_col,
-            mode=mode,
-            unit=unit,
+            mode=e4_mode,
+            unit=e4_unit,
             dim_col="geo__city",
             dim_label="접속지역",
-            topk=topk,
+            topk=e4_topk,
             extra_filter=extra,
         )
 
     with tab_e_src:
-        with st.expander("Filter", expanded=True):
-            c1, _p1, c2, c3, c4, c5, c6 = st.columns([1.9, 0.1, 1, 1.5, 1, 1, 1], vertical_alignment="bottom")
+        with st.expander("탭별 Filter", expanded=False):
+            c1, c2, _p = st.columns([1, 1, 3], vertical_alignment="bottom")
             with c1:
-                sel_ev_label = st.selectbox("이벤트 선택", ev_label_opts, index=0, key="e4_ev_s")
-            with _p1:
-                pass
+                sel_dim = st.selectbox("유입 기준 선택", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"], index=0, key="e4_s_d")
             with c2:
-                mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="e4_m_s")
-            with c3:
-                unit = st.radio("집계 단위", ["유저수", "세션수", "이벤트수"], index=1, horizontal=True, key="e4_u_s")
-            with c4:
-                sel_dim = st.selectbox("유입 기준", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"], index=0, key="e4_s_d")
-            with c5:
                 dim_col, dim_label = _get_src_dim(sel_dim)
                 sel = _select_opt(df, dim_col, f"{dim_label} 선택", "e4_s_v")
-            with c6:
-                topk = st.selectbox(
-                    "표시 Top K",
-                    CFG["TOPK_OPTS"],
-                    index=1,
-                    key="e4_s_k",
-                )
 
-        ev_col = ev_label_to_col.get(sel_ev_label, "view_item")
         extra = {} if sel == "전체" else {dim_col: sel}
         pivot_event_dim_trend(
             df_in=df,
             ev_col=ev_col,
-            mode=mode,
-            unit=unit,
+            mode=e4_mode,
+            unit=e4_unit,
             dim_col=dim_col,
             dim_label=dim_label,
-            topk=topk,
+            topk=e4_topk,
             extra_filter=extra,
         )
-
-
 
 if __name__ == "__main__":
     main()

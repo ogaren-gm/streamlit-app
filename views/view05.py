@@ -153,21 +153,6 @@ def main():
     st.markdown(CFG["CSS_BLOCK_CONTAINER"], unsafe_allow_html=True)
     st.markdown(CFG["CSS_TABS"], unsafe_allow_html=True)
 
-    # # ──────────────────────────────────
-    # # B) Sidebar / Filter
-    # # ──────────────────────────────────
-    # st.sidebar.header("Filter")
-    # today = datetime.now().date()
-    # default_end = today - timedelta(days=1)
-    # default_start = today - timedelta(days=CFG["DEFAULT_LOOKBACK_DAYS"])
-
-    # start_date, end_date = st.sidebar.date_input(
-    #     "기간 선택",
-    #     value=[default_start, default_end],
-    #     max_value=default_end
-    # )
-    # cs = start_date.strftime("%Y%m%d")
-    # ce = (end_date + timedelta(days=1)).strftime("%Y%m%d")
 
     # ──────────────────────────────────
     # B) Sidebar / Filter
@@ -409,26 +394,38 @@ def main():
     st.markdown("<h5 style='margin:0'>CMP 추이</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ전체 트래픽 대비 캠페인 페이지 유입량 변화를 확인하고, 사용자가 페이지에 처음 랜딩했는지 혹은 탐색 중 경유했는지에 따른 유형별 비중을 분석합니다.")
 
-    with st.popover("🤔 CMP 랜딩 VS CMP 경유"):
+    with st.popover("🤔 CMP 랜딩 vs 경유, 어떻게 다른가요?"):
         st.markdown("""
-    - **CMP 랜딩-**  
-    세션이 **CMP 페이지에서 시작**해요.  
-    이후 다른 페이지로 이동해 탐색하지만, **CMP로 다시 돌아오지는 않아요**.
+        ##### 💡 세션의 시작점과 이동 경로 가이드
+        세션이 어디서 시작되었는지, 그리고 CMP 페이지를 어떻게 이용했는지에 따라 구분됩니다.
 
+        | 구분 | 세션 시작점 | CMP 재방문 여부 |
+        | :--- | :--- | :--- |
+        | **CMP 랜딩-** | **CMP 페이지** | 없음 (타 페이지 이동 후 종료) |
+        | **CMP 랜딩+** | **CMP 페이지** | 있음 (타 페이지 이동 후 다시 CMP 방문) |
+        | **CMP 경유** | **일반 페이지** | 있음 (탐색 중 CMP 페이지 방문) |
 
-    - **CMP 랜딩+**  
-    세션이 **CMP 페이지에서 시작**해요.  
-    다른 페이지를 둘러본 뒤, **CMP를 다시 한 번 방문**해요.
+        #####  
+        ##### 🛣️ 상세 이동 경로 사례
+        유저의 클릭 흐름에 따른 데이터 집계 예시입니다.
 
+        * **CMP 랜딩 (-)**
+            * `CMP 페이지` ➔ 상품 상세 ➔ 종료
+            * CMP가 세션의 시작점이자 유일한 CMP 방문인 경우
+        * **CMP 랜딩 (+)**
+            * `CMP 페이지` ➔ 상품 상세 ➔ `CMP 페이지` ➔ 장바구니
+            * CMP로 시작해서 다른 곳을 본 뒤 다시 CMP로 돌아온 경우
+        * **CMP 경유**
+            * 메인 홈 ➔ 상품 상세 ➔ `CMP 페이지` ➔ 주문하기
+            * 외부나 일반 페이지로 들어와 탐색 도중 CMP를 방문한 경우
 
-    - **CMP 경유**  
-    세션은 **다른 페이지에서 시작**해요.  
-    탐색 중에 **CMP 페이지를 한 번 이상 방문**해요.
-    """)
+        ※ 최초 유입 성과를 보려면 **랜딩**을, 서비스 탐색 중 보조적인 역할을 보려면 **경유** 지표를 확인하세요.
+        """)
+
 
     # 필터
-    with st.expander("Filter", expanded=False):
-        r0_1, r0_2 = st.columns([1.3, 2.7], vertical_alignment="bottom")
+    with st.expander("공통 Filter", expanded=True):
+        r0_1, r0_2 = st.columns([1, 5], vertical_alignment="bottom")
         with r0_1:
             mode_1 = st.radio("기간 단위", ["일별", "주별"], horizontal=True, key="mode_1")
         with r0_2:
@@ -687,8 +684,8 @@ def main():
         st.dataframe(styled, row_height=30, hide_index=True)
 
     # 탭 없이 
-    with st.expander("Filter", expanded=True):
-        c1, c2, c3, c4, c5, c6 = st.columns([0.8, 0.9, 1.9, 1, 1, 1], vertical_alignment="bottom")
+    with st.expander("공통 Filter", expanded=True):
+        c1, c2, c3, _p = st.columns([1,1,2,1], vertical_alignment="bottom")
         with c1:
             mode = st.radio("기간 단위", ["일별", "주별"], index=0, horizontal=True, key="s_m")
         with c2:
@@ -700,6 +697,7 @@ def main():
                 default=["CMP 랜딩+", "CMP 랜딩-", "CMP 경유"],
                 key="s_flag",
             )
+        c4, c5, c6, _p = st.columns([1,1,1,2], vertical_alignment="bottom")
         with c4:
             sel_dim = st.selectbox("유입 단위", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"], index=0, key="s_d")
         with c5:
@@ -721,8 +719,8 @@ def main():
     st.markdown(":gray-badge[:material/Info: Info]ㅤ캠페인 콘텐츠에 대한 사용자의 몰입도(스크롤 뎁스)와 주요 행동 버튼(CTA)의 클릭 반응률을 측정합니다.", unsafe_allow_html=True)
 
     # -- 필터
-    with st.expander("Filter", expanded=True):
-        f1, f2, f3, f4 = st.columns([1, 2, 1.2, 1.2], vertical_alignment="bottom")
+    with st.expander("공통 Filter", expanded=True):
+        f1, f2, f3, f4 = st.columns([1, 2, 1,1], vertical_alignment="bottom")
 
         with f1:
             cmp_unit = st.radio(
@@ -882,7 +880,7 @@ def main():
     with c1:
         st.markdown("""
                     <h6 style="margin:0;">📊 Scroll 1. 최대 도달 뎁스</h6>
-                    <p style="margin:-10px 0 12px 0; color:#6c757d; font-size:13px;">사용자가 최종적으로 어디까지 내려서 확인했는지 보여줍니다.</p>
+                    <p style="margin:-10px 0 12px 0; color:#6c757d; font-size:13px;">페이지의 어느 지점까지 스크롤하여 탐색했는지 확인합니다.</p>
                     """,
                     unsafe_allow_html=True)    
         # 표!
@@ -918,7 +916,7 @@ def main():
     with c2:
         st.markdown("""
                     <h6 style="margin:0;">📊 Scroll 2. 구간별 이탈률</h6>
-                    <p style="margin:-10px 0 12px 0; color:#6c757d; font-size:13px;">사용자가 더 보지 않고 어디에서 멈추는지 보여줍니다.</p>
+                    <p style="margin:-10px 0 12px 0; color:#6c757d; font-size:13px;">탐색을 중단하고 이탈한 구간을 확인합니다.</p>
                     """,
                     unsafe_allow_html=True)   
         # 표!
@@ -935,8 +933,8 @@ def main():
     with c3:
         st.markdown("""
                     <h6 style="margin:0;">📊 CTA 1. TYPE별 클릭률</h6>
-                    <p style="margin:-10px 0 12px 0; color:#6c757d; font-size:13px;">CTA를 "유형" 기준으로 묶어, 반응도를 확인합니다.
-                    (☑체크박스를 클릭해 오른쪽 표를 선택 유형들로 필터링합니다.) </p>
+                    <p style="margin:-10px 0 12px 0; color:#6c757d; font-size:13px;">CTA를 유형별로 그룹화하여 클릭 반응도를 확인합니다.
+                    (☑ 체크박스를 클릭해 오른쪽 표를 선택 유형들로 필터링합니다.) </p>
                     """,
                     unsafe_allow_html=True)   
 
@@ -1049,8 +1047,8 @@ def main():
     st.markdown(":gray-badge[:material/Info: Info]ㅤ캠페인 페이지 방문 이후 제품 상세 조회(PDP), 장바구니 담기, 구매 등 실질적인 비즈니스 가치로 이어지는 사용자 행동의 확장성을 분석합니다.", unsafe_allow_html=True)
 
     # ── Filter
-    with st.expander("Filter", expanded=True):
-        a1, a2, a3, a4 = st.columns([1, 2, 1.2, 1.2], vertical_alignment="bottom")
+    with st.expander("공통 Filter", expanded=True):
+        a1, a2, a3, a4 = st.columns([1, 2, 1,1], vertical_alignment="bottom")
 
         with a1:
             act_unit = st.radio(
@@ -1135,7 +1133,7 @@ def main():
         )
 
         if "page_location" not in d0.columns:
-            st.warning("page_location 컬럼이 없습니다.")
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
         else:
             d0["page_location"] = (
                 d0["page_location"].astype(str)
@@ -1151,7 +1149,7 @@ def main():
             d1_src = d0[~m_cmp]
 
             if d1_src.empty:
-                st.warning("캠페인 페이지를 제외하면 분석할 이동 페이지가 없습니다.")
+                st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
             else:
                 # ✅ 집계수: 해당 페이지에서 1번이라도 행동한 세션/유저 수
                 p_base = (
@@ -1223,7 +1221,7 @@ def main():
         ]
 
         if src.empty:
-            st.warning("분석할 이벤트가 없습니다.")
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
         else:
             # 이벤트별 발생 세션/유저수
             e_cnt = (
@@ -1274,7 +1272,7 @@ def main():
         st.markdown(
             "<p style='margin:-10px 0 12px 0; color:#6c757d; font-size:13px;'>"
             "사용자가 어떤 제품을 많이 조회했는지 확인합니다. "
-            "(☑체크박스를 클릭해 오른쪽 표를 선택 제품들로 필터링합니다.)"
+            "(☑ 체크박스를 클릭해 오른쪽 표를 선택 제품들로 필터링합니다.)"
             "</p>",
             unsafe_allow_html=True
         )
@@ -1284,7 +1282,7 @@ def main():
         tot_view = int(d_view[cnt_key].nunique())
 
         if tot_view == 0:
-            st.warning("선택된 조건에서 view_item 발생이 없습니다.")
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
             edited = st.data_editor(
                 pd.DataFrame(columns=["product_name", "집계수", "비중(%)", "이벤트수", "평균조회수", "제품 선택"]),
                 use_container_width=True,
@@ -1347,7 +1345,7 @@ def main():
 
         d1_f = d0[d0["product_name"].astype(str).isin([str(x) for x in sel_products])]
         if d1_f.empty:
-            st.warning("선택된 제품 조건에 해당하는 데이터가 없습니다.")
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
         else:
             all_events = base_events
 

@@ -352,10 +352,10 @@ def main():
     # ──────────────────────────────────
     st.markdown(" ")
     st.markdown("<h5 style='margin:0'>QUICK INSIGHT</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ키워드 유형별 검색량 증감 흐름과 현재 핵심 키워드로 트렌드를 빠르게 확인합니다.", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ키워드 유형별 검색량 증감 흐름과 현재 핵심 키워드를 최근 트렌드를 요약합니다.", unsafe_allow_html=True)
 
     # Filter
-    with st.expander("Filter", expanded=False):
+    with st.expander("공통 Filter", expanded=False):
         f1, f2, f3 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
 
         if "qi_mode" not in st.session_state:
@@ -500,7 +500,6 @@ def main():
 
     st.markdown(" ")
 
-
     # ──────────────────────────────────
     # 2) 검색량 추이 
     # ──────────────────────────────────
@@ -508,73 +507,185 @@ def main():
     st.markdown("<h5 style='margin:0'>검색량 추이</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ키워드 유형, 개별 키워드, 연령대별 검색량의 변화를 확인합니다.", unsafe_allow_html=True)
 
-    def _render_block(d0: pd.DataFrame, tab_key: str, fixed_types: list[str] | None):
+    def _norm_date_range(rng):
+        if isinstance(rng, (list, tuple)) and len(rng) == 2:
+            s_day, e_day = rng[0], rng[1]
+        else:
+            s_day, e_day = _def_s, _def_e
+        return (e_day, s_day) if s_day > e_day else (s_day, e_day)
+
+    def _build_series(d: pd.DataFrame, view: str, gran: str):
+        mode_label = "일별" if gran == "일" else "주별"
+        w_age = ui.add_period_columns(d, "날짜", mode_label)
+        w_kw = ui.add_period_columns(_kw_total_base(d), "날짜", mode_label)
+
+        dt_lbl = (
+            w_age[["_period_dt", "_period"]]
+            .assign(_period_dt=lambda x: pd.to_datetime(x["_period_dt"], errors="coerce"))
+            .dropna(subset=["_period_dt"])
+            .drop_duplicates(subset=["_period"])
+            .sort_values("_period_dt")
+            .reset_index(drop=True)
+        )
+
+        if view == "키워드유형별":
+            g = (
+                w_kw.groupby(["_period_dt", "키워드유형"], as_index=False)
+                .agg(val=("kw_total", "sum"))
+            )
+            dim_col = "키워드유형"
+        elif view == "연령대별":
+            g = (
+                w_age.groupby(["_period_dt", "age_info"], as_index=False)
+                .agg(val=("abs_age", "sum"))
+            )
+            dim_col = "age_info"
+        else:
+            g = (
+                w_kw.groupby(["_period_dt", "키워드"], as_index=False)
+                .agg(val=("kw_total", "sum"))
+            )
+            dim_col = "키워드"
+
+        g["_period_dt"] = pd.to_datetime(g["_period_dt"], errors="coerce")
+        g = g.dropna(subset=["_period_dt"])
+
+        return dt_lbl, g, dim_col, mode_label
+
+    def _resolve_dims(g: pd.DataFrame, dim_col: str, view: str):
+        if view == "연령대별":
+            return [a for a in AGE_ORDER if a in g[dim_col].astype(str).unique().tolist()]
+        return (
+            g.groupby(dim_col)["val"].sum()
+            .sort_values(ascending=False)
+            .index.astype(str).tolist()
+        )
+
+    def _build_matrix(g: pd.DataFrame, dim_col: str, x_dt, scale: str):
+        if scale == "백분율":
+            denom = g.groupby("_period_dt", dropna=False)["val"].transform("sum")
+            g2 = g.copy()
+            g2["val"] = np.where(denom > 0, g2["val"] / denom, 0.0).astype(float)
+        else:
+            g2 = g.copy()
+            g2["val"] = pd.to_numeric(g2["val"], errors="coerce").fillna(0)
+
+        mat = (
+            g2.pivot_table(index="_period_dt", columns=dim_col, values="val", aggfunc="sum", fill_value=0)
+            .reindex(x_dt, fill_value=0)
+        )
+        return mat
+
+    def _render_chart(mat, dims, x_dt, tick_text, date_fmt, chart, scale, mode_label, key_tag):
+        fig = go.Figure()
+        palette = px.colors.qualitative.Pastel
+        c_map = {k: palette[i % len(palette)] for i, k in enumerate(dims)}
+
+        if chart == "누적막대":
+            for k in dims:
+                s = mat[str(k)] if str(k) in mat.columns else pd.Series([0] * len(x_dt), index=x_dt)
+                fig.add_bar(
+                    x=x_dt,
+                    y=s.values,
+                    name=str(k),
+                    marker_color=c_map[k],
+                    opacity=0.8,
+                    hovertemplate=f"{k}<br>%{{x|{date_fmt}}}<br>"
+                                  + ("%{y:.1%}" if scale == "백분율" else "%{y:,.0f}")
+                                  + "<extra></extra>",
+                )
+            fig.update_layout(barmode="relative")
+        else:
+            for k in dims:
+                s = mat[str(k)] if str(k) in mat.columns else pd.Series([0] * len(x_dt), index=x_dt)
+                fig.add_trace(go.Scatter(
+                    x=x_dt,
+                    y=s.values,
+                    mode="lines+markers",
+                    name=str(k),
+                    marker=dict(size=4),
+                    marker_color=c_map[k],
+                    hovertemplate=f"{k}<br>%{{x|{date_fmt}}}<br>"
+                                  + ("%{y:.1%}" if scale == "백분율" else "%{y:,.0f}")
+                                  + "<extra></extra>",
+                ))
+
+        if mode_label == "일별":
+            ui.add_weekend_shading(fig, x_dt)
+
+        fig.update_xaxes(
+            type="date",
+            tickmode="array",
+            tickvals=x_dt,
+            ticktext=tick_text,
+        )
+        if scale == "백분율":
+            fig.update_yaxes(tickformat=".0%")
+
+        fig.update_layout(
+            height=300,
+            margin=dict(l=10, r=10, t=10, b=10),
+            legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
+        )
+        st.plotly_chart(fig, use_container_width=True, key=f"fig_{key_tag}")
+
+    def _render_table(mat, dt_lbl, tick_text, scale):
+        pt = mat.T
+        col_map = dt_lbl.set_index("_period_dt")["_period"].to_dict()
+        pt = pt.rename(columns=col_map)
+        pt = pt[[c for c in tick_text if c in pt.columns]]
+
+        if scale == "백분율":
+            pt = np.round(pt.astype(float) * 100, 1)
+            st.dataframe(pt.style.format("{:.1f}%"), row_height=30, use_container_width=True)
+        else:
+            pt = np.round(pt.astype(float)).astype(int)
+            st.dataframe(pt, row_height=30, use_container_width=True)
+
+    def _render_block(
+        d0: pd.DataFrame,
+        tab_key: str,
+        fixed_types: list[str] | None,
+        s_day,
+        e_day,
+        gran: str,
+        chart: str,
+        scale: str,
+        allow_type_view: bool,
+    ):
         tk = _clean_key(tab_key)
 
-        # ---------- Filter
-        with st.expander("Filter", expanded=True):
-            c1, c2, _p, c3, c4, c5 = st.columns([2.2, 1.8, 0.2, 1, 1.4, 1.1], vertical_alignment="bottom")
-
-            with _p: pass
-            
-            # ✅ 기간 선택
-            with c1:
-                rng = st.date_input(
-                    "기간 선택",
-                    value=[_def_s, _def_e],
-                    min_value=_min_d,
-                    max_value=_max_d,
-                    key=f"rng_{tk}",
-                )
-
-                # date_input 결과 normalize
-                if isinstance(rng, (list, tuple)) and len(rng) == 2:
-                    s_day, e_day = rng[0], rng[1]
-                else:
-                    s_day, e_day = _def_s, _def_e
-
-                if s_day > e_day:
-                    s_day, e_day = e_day, s_day
-
-            # ✅ 보기 선택
-            if (fixed_types is None) or (len(fixed_types) > 1):
-                with c2:
-                    view = st.selectbox("보기 선택", ["키워드유형별", "연령대별", "키워드별"], index=0, key=f"v_{tk}")
-            else:
-                with c2:
-                    view = st.selectbox("보기 선택", ["연령대별", "키워드별"], index=0, key=f"v_{tk}")
-
-            # ✅ 집계 단위
-            with c3:
-                gran = st.radio("집계 단위", ["일", "주"], horizontal=True, index=0, key=f"g_{tk}")
-
-            # ✅ 그래프
-            with c4:
-                chart = st.radio("그래프", ["꺾은선", "누적막대"], horizontal=True, index=0, key=f"c_{tk}")
-
-            # ✅ 스케일
-            with c5:
-                scale = st.radio("스케일", ["절대값", "백분율"], horizontal=True, index=0, key=f"sc_{tk}")
-
-        s_dt = pd.to_datetime(s_day)
-        e_dt = pd.to_datetime(e_day)
-        d = d0[(d0["날짜"] >= s_dt) & (d0["날짜"] <= e_dt)]
-
+        d = d0[(d0["날짜"] >= pd.to_datetime(s_day)) & (d0["날짜"] <= pd.to_datetime(e_day))]
         if fixed_types is not None:
             d = d[d["키워드유형"].astype(str).isin([str(x) for x in fixed_types])]
 
         if d.empty:
-            st.warning("선택 기간/조건에 데이터가 없습니다.")
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
             return
 
-        # ---------- Advanced filter
-        with st.expander("연령대 · 키워드 Filter", expanded=False):
-        
-            # 연령대
-            a_all = [a for a in AGE_ORDER if a in d["age_info"].astype(str).unique().tolist()]
-            a_sel = st.multiselect("연령대 선택", options=a_all, default=a_all, key=f"a_{tk}")
+        # ---------- Filter
+        with st.expander("탭별 Filter", expanded=False):
+            f1, f2 = st.columns([2, 3], vertical_alignment="bottom")
             
-            # 키워드 NEW
+            with f1:
+                if allow_type_view:
+                    view = st.selectbox(
+                        "보기 선택",
+                        ["키워드유형별", "연령대별", "키워드별"],
+                        index=0,
+                        key=f"v_{tk}",
+                    )
+                else:
+                    view = st.selectbox(
+                        "보기 선택",
+                        ["연령대별", "키워드별"],
+                        index=0,
+                        key=f"v_{tk}",
+                    )
+            with f2:
+                a_all = [a for a in AGE_ORDER if a in d["age_info"].astype(str).unique().tolist()]
+                a_sel = st.multiselect("연령대 선택", options=a_all, default=a_all, key=f"a_{tk}")
+
             k_all = sorted(d["키워드"].astype(str).dropna().unique().tolist())
             use_custom_kw = st.checkbox(
                 f"키워드 개별 선택 (전체 {len(k_all)}개 중)",
@@ -589,7 +700,6 @@ def main():
                     key=f"k_{tk}"
                 )
             else:
-                # ✅ UI는 안 보이지만 내부적으로는 전체 선택 유지
                 k_sel = k_all
 
         d = d[
@@ -598,157 +708,49 @@ def main():
         ]
 
         if d.empty:
-            st.warning("고급 필터 적용 후 데이터가 없습니다.")
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
             return
 
-        # ✅ period 컬럼은 2개만 만들고 재사용 (A 해결)
-        mode_label = "일별" if gran == "일" else "주별"
-        w_age = ui.add_period_columns(d, "날짜", mode_label)
-        w_kw  = ui.add_period_columns(_kw_total_base(d), "날짜", mode_label)
+        dt_lbl, g, dim_col, mode_label = _build_series(d, view, gran)
 
-        # ✅ 기간 마스터(dt_lbl): _period 기준으로 중복 제거 + 정렬 (B 해결)
-        dt_lbl = (
-            w_age[["_period_dt", "_period"]]
-            .assign(_period_dt=lambda x: pd.to_datetime(x["_period_dt"], errors="coerce"))
-            .dropna(subset=["_period_dt"])
-            .drop_duplicates(subset=["_period"])   # ✅ 표시 라벨 기준
-            .sort_values("_period_dt")
-            .reset_index(drop=True)
-        )
         if dt_lbl.empty:
-            st.warning("기간 컬럼 생성에 실패했습니다. 날짜 컬럼을 점검하세요.")
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
             return
 
-        # ✅ Plotly는 pandas datetime 그대로 사용 (D 해결)
         x_dt = pd.to_datetime(dt_lbl["_period_dt"], errors="coerce")
         tick_text = dt_lbl["_period"].astype(str).tolist()
         date_fmt = "%Y-%m-%d"
+        dims = _resolve_dims(g, dim_col, view)
+        mat = _build_matrix(g, dim_col, x_dt, scale)
 
-        # ---------- Build aggregated series by view
-        if view == "키워드유형별":
-            g = (
-                w_kw.groupby(["_period_dt", "키워드유형"], as_index=False)
-                    .agg(val=("kw_total", "sum"))
+        _render_chart(mat, dims, x_dt, tick_text, date_fmt, chart, scale, mode_label, tk)
+        _render_table(mat, dt_lbl, tick_text, scale)
+
+    # ---------- 공통 Filter
+    with st.expander("공통 Filter", expanded=True):
+        c1, c2, c3, c4 = st.columns([2,1,1,1], vertical_alignment="bottom")
+        # ✅ 기간 선택
+        with c1:
+            rng = st.date_input(
+                "기간 선택",
+                value=[_def_s, _def_e],
+                min_value=_min_d,
+                max_value=_max_d,
+                key="rng_common_trend",
             )
-            dim_col = "키워드유형"
+            s_day, e_day = _norm_date_range(rng)
 
-        elif view == "연령대별":
-            g = (
-                w_age.groupby(["_period_dt", "age_info"], as_index=False)
-                     .agg(val=("abs_age", "sum"))
-            )
-            dim_col = "age_info"
+        # ✅ 집계 단위
+        with c2:
+            gran = st.radio("집계 단위", ["일", "주"], horizontal=True, index=0, key="g_common_trend")
 
-        else:  # "키워드별"
-            g = (
-                w_kw.groupby(["_period_dt", "키워드"], as_index=False)
-                    .agg(val=("kw_total", "sum"))
-            )
-            dim_col = "키워드"
+        # ✅ 그래프
+        with c3:
+            chart = st.radio("그래프", ["꺾은선", "누적막대"], horizontal=True, index=0, key="c_common_trend")
 
-        # ✅ 축 기준을 dt_lbl(x_dt)로 강제 정렬/리인덱스
-        g["_period_dt"] = pd.to_datetime(g["_period_dt"], errors="coerce")
-        g = g.dropna(subset=["_period_dt"])
-
-        # dims 순서
-        if view == "연령대별":
-            dims = [a for a in AGE_ORDER if a in g[dim_col].astype(str).unique().tolist()]
-        else:
-            dims = (
-                g.groupby(dim_col)["val"].sum()
-                 .sort_values(ascending=False)
-                 .index.astype(str).tolist()
-            )
-
-        # 백분율
-        if scale == "백분율":
-            denom = g.groupby("_period_dt", dropna=False)["val"].transform("sum")
-            g2 = g.copy()
-            g2["val"] = np.where(denom > 0, g2["val"] / denom, 0.0).astype(float)
-        else:
-            g2 = g.copy()
-            g2["val"] = pd.to_numeric(g2["val"], errors="coerce").fillna(0)
-
-        # ---------- Chart (x는 _period_dt, 라벨은 ticktext로)
-        # ✅ (NEW) dims × 날짜 매트릭스를 한 번만 만들어 재사용
-        mat = (
-            g2.pivot_table(index="_period_dt", columns=dim_col, values="val", aggfunc="sum", fill_value=0)
-              .reindex(x_dt, fill_value=0)
-        )
-        
-        fig = go.Figure()
-        palette = px.colors.qualitative.Pastel
-        c_map = {k: palette[i % len(palette)] for i, k in enumerate(dims)}
-
-        if chart == "누적막대":
-            for k in dims:
-                s = mat[str(k)] if str(k) in mat.columns else pd.Series([0]*len(x_dt), index=x_dt)
-                fig.add_bar(
-                    x=x_dt,
-                    y=s.values,
-                    name=str(k),
-                    marker_color=c_map[k],
-                    opacity=0.8,
-                    hovertemplate=f"{k}<br>%{{x|{date_fmt}}}<br>"
-                                  + ("%{y:.1%}" if scale == "백분율" else "%{y:,.0f}")
-                                  + "<extra></extra>",
-                )
-            fig.update_layout(barmode="relative")
-
-        else:
-            for k in dims:
-                s = mat[str(k)] if str(k) in mat.columns else pd.Series([0]*len(x_dt), index=x_dt)
-                fig.add_trace(go.Scatter(
-                    x=x_dt,
-                    y=s.values,
-                    mode="lines+markers",
-                    name=str(k),
-                    marker=dict(size=4),
-                    marker_color=c_map[k],
-                    hovertemplate=f"{k}<br>%{{x|{date_fmt}}}<br>"
-                                  + ("%{y:.1%}" if scale == "백분율" else "%{y:,.0f}")
-                                  + "<extra></extra>",
-                ))
-
-        # ✅ 주말 쉐이딩: 일별에서만
-        if mode_label == "일별":
-            ui.add_weekend_shading(fig, x_dt)
-
-
-        # ✅ x축 라벨: ticktext로 기간 문자열 표시
-        fig.update_xaxes(
-            type="date",
-            tickmode="array",
-            tickvals=x_dt,
-            ticktext=tick_text,
-        )
-        if scale == "백분율":
-            fig.update_yaxes(tickformat=".0%")
-
-        fig.update_layout(
-            height=300, margin=dict(l=10, r=10, t=10, b=10),
-            legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
-        )
-
-        st.plotly_chart(fig, use_container_width=True, key=f"fig_{tk}")
-
-
-        # ---------- Table : "날짜가 컬럼" (정렬은 _period_dt, 표시는 기간 문자열)
-        pt = mat.T  # index=dim, columns=날짜(dt)
-
-        col_map = dt_lbl.set_index("_period_dt")["_period"].to_dict()
-        pt = pt.rename(columns=col_map)
-
-        # 컬럼 순서 보장
-        pt = pt[[c for c in tick_text if c in pt.columns]]
-
-        if scale == "백분율":
-            pt = np.round(pt.astype(float) * 100, 1)
-            st.dataframe(pt.style.format("{:.1f}%"), row_height=30, use_container_width=True)
-        else:
-            pt = np.round(pt.astype(float)).astype(int)
-            st.dataframe(pt, row_height=30, use_container_width=True)
-        
+        # ✅ 스케일
+        with c4:
+            scale = st.radio("스케일", ["절대값", "백분율"], horizontal=True, index=0, key="sc_common_trend")
 
     # ---- Tabs: 전체 + 대분류(바깥) / 소분류(안쪽)
     outer_tabs = st.tabs(outer_names)
@@ -756,7 +758,17 @@ def main():
     for ot, maj in zip(outer_tabs, outer_names):
         with ot:
             if maj == "전체":
-                _render_block(df, tab_key="all", fixed_types=None)
+                _render_block(
+                    df,
+                    tab_key="all",
+                    fixed_types=None,
+                    s_day=s_day,
+                    e_day=e_day,
+                    gran=gran,
+                    chart=chart,
+                    scale=scale,
+                    allow_type_view=True,
+                )
                 continue
 
             plain = sorted(list(major_map[maj]["plain"]))
@@ -764,7 +776,17 @@ def main():
             all_types = plain + subs_full
 
             if len(subs_full) == 0:
-                _render_block(df, tab_key=f"maj_{maj}", fixed_types=all_types)
+                _render_block(
+                    df,
+                    tab_key=f"maj_{maj}",
+                    fixed_types=all_types,
+                    s_day=s_day,
+                    e_day=e_day,
+                    gran=gran,
+                    chart=chart,
+                    scale=scale,
+                    allow_type_view=False,
+                )
                 continue
 
             inner_labels = ["전체"] + [t.split("_", 1)[1] for t in subs_full]
@@ -773,10 +795,31 @@ def main():
             for it, sub_lbl in zip(inner_tabs, inner_labels):
                 with it:
                     if sub_lbl == "전체":
-                        _render_block(df, tab_key=f"maj_{maj}_all", fixed_types=all_types)
+                        _render_block(
+                            df,
+                            tab_key=f"maj_{maj}_all",
+                            fixed_types=all_types,
+                            s_day=s_day,
+                            e_day=e_day,
+                            gran=gran,
+                            chart=chart,
+                            scale=scale,
+                            allow_type_view=False,
+                        )
                     else:
                         full_type = f"{maj}_{sub_lbl}"
-                        _render_block(df, tab_key=f"maj_{maj}_sub_{sub_lbl}", fixed_types=[full_type])
+                        _render_block(
+                            df,
+                            tab_key=f"maj_{maj}_sub_{sub_lbl}",
+                            fixed_types=[full_type],
+                            s_day=s_day,
+                            e_day=e_day,
+                            gran=gran,
+                            chart=chart,
+                            scale=scale,
+                            allow_type_view=False,
+                        )
+
 
 
     # ──────────────────────────────────
@@ -789,112 +832,42 @@ def main():
         unsafe_allow_html=True,
     )
 
-    with st.popover("🧐 급상승 키워드, 어떤 기준으로 뽑나요?"):
-            st.markdown("""
-        **기간 내 검색 규모의 성장 폭이 가장 큰 키워드를 선정합니다.**  
+    # with st.popover("🧐 급상승 키워드, 어떤 기준으로 뽑나요?"):
+    #         st.markdown("""
+    #     **기간 내 검색 규모의 성장 폭이 가장 큰 키워드를 선정합니다.**  
 
-        - **선정 근거 (What)** 
-            - 연령대 비중이 아닌, 키워드 자체의 **전체 검색량**(abs_age 합계)에 집중합니다.
-            - **증감률**이 높을수록 최근 사용자들의 검색이 활발하게 발생한 키워드를 의미합니다.
+    #     - **선정 근거 (What)** 
+    #         - 연령대 비중이 아닌, 키워드 자체의 **전체 검색량**(abs_age 합계)에 집중합니다.
+    #         - **증감률**이 높을수록 최근 사용자들의 검색이 활발하게 발생한 키워드를 의미합니다.
 
-        * **계산 방식 (How)** 
-            - 최근 N일과 이전 N일의 절대 검색량을 대조하여 $\Delta$증감량과 $\Delta$증감률을 산출합니다.
-            - 예를 들어, 이전 기간 검색량이 4,000건에서 최근 6,400건으로 증가했다면
-                * 증감량은 +2,400건 이고, (= 6,400 - 4,000)
-                * 증감률은 +60% 입니다. (= 2,400 / 4,000)
-        """)
+    #     * **계산 방식 (How)** 
+    #         - 최근 N일과 이전 N일의 절대 검색량을 대조하여 $\Delta$증감량과 $\Delta$증감률을 산출합니다.
+    #         - 예를 들어, 이전 기간 검색량이 4,000건에서 최근 6,400건으로 증가했다면
+    #             * 증감량은 +2,400건 이고, (= 6,400 - 4,000)
+    #             * 증감률은 +60% 입니다. (= 2,400 / 4,000)
+    #     """)
 
-    outer_tabs = st.tabs(outer_names)
-
-    def _render_spike_kw(d0: pd.DataFrame, tab_key: str, fixed_types: list[str] | None, is_all_tab: bool):
+    def _render_spike_kw(
+        d0: pd.DataFrame,
+        tab_key: str,
+        fixed_types: list[str] | None,
+        is_all_tab: bool,
+        prev_s,
+        prev_e,
+        cur_s,
+        cur_e,
+        show: str,
+        min_diff: float,
+        topn: int,
+    ):
         tk = _clean_key(tab_key)
-
-        k_mode = f"sp_mode_{tk}"
-        k_prev = f"sp_prev_{tk}"
-        k_cur  = f"sp_cur_{tk}"
-
-        if k_mode not in st.session_state:
-            st.session_state[k_mode] = "최근 7일"
-
-        if k_prev not in st.session_state or k_cur not in st.session_state:
-            ps, pe, cs, ce = _calc_ranges(_max_d, 7)
-            st.session_state[k_prev] = [ps, pe]
-            st.session_state[k_cur]  = [cs, ce]
-
-        def _sp_apply_win():
-            m = st.session_state[k_mode]
-            if m == "커스텀":
-                return
-            n_map = {"최근 7일": 7, "최근 14일": 14, "최근 30일": 30}
-            n = n_map.get(m, 7)
-            ps, pe, cs, ce = _calc_ranges(_max_d, n)
-            st.session_state[k_prev] = [ps, pe]
-            st.session_state[k_cur]  = [cs, ce]
-
-        with st.expander("Filter", expanded=True):
-            c1, c2, c3 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
-            c4, c5, c6 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
-
-            with c1:
-                st.radio(
-                    "기간 윈도우 설정",
-                    ["최근 7일", "최근 14일", "최근 30일", "커스텀"],
-                    horizontal=True,
-                    key=k_mode,
-                    on_change=_sp_apply_win,
-                )
-
-            lock = (st.session_state[k_mode] != "커스텀")
-
-            with c2:
-                prev_rng = st.date_input("이전기간 선택", key=k_prev, disabled=lock)
-            with c3:
-                cur_rng = st.date_input("비교기간(최근) 선택", key=k_cur, disabled=lock)
-
-            with c4:
-                show = st.radio(
-                    "증감 방향",
-                    ["둘다", "증가", "감소"],
-                    horizontal=True,
-                    index=0,
-                    key=f"sp_show_{tk}",
-                )
-            with c5:
-                min_diff = st.number_input(
-                    "최소 증감량",
-                    min_value=0,
-                    value=50,
-                    step=10,
-                    key=f"sp_min_{tk}",
-                )
-            with c6:
-                topn = st.selectbox(
-                    "Top N",
-                    options=CFG["TOPK_OPTS"],
-                    index=CFG["TOPK_OPTS"].index(10) if 10 in CFG["TOPK_OPTS"] else 0,
-                    key=f"sp_topn_{tk}",
-                )
-
-        # range normalize (QUICK INSIGHT 방식)
-        if not (isinstance(prev_rng, (list, tuple)) and len(prev_rng) == 2):
-            prev_rng = st.session_state[k_prev]
-        if not (isinstance(cur_rng, (list, tuple)) and len(cur_rng) == 2):
-            cur_rng = st.session_state[k_cur]
-
-        prev_s, prev_e = pd.to_datetime(prev_rng[0]), pd.to_datetime(prev_rng[1])
-        cur_s,  cur_e  = pd.to_datetime(cur_rng[0]),  pd.to_datetime(cur_rng[1])
-
-        if prev_s > prev_e:
-            prev_s, prev_e = prev_e, prev_s
-        if cur_s > cur_e:
-            cur_s, cur_e = cur_e, cur_s
 
         d = d0[(d0["날짜"] >= min(prev_s, cur_s)) & (d0["날짜"] <= max(prev_e, cur_e))]
         if fixed_types is not None:
             d = d[d["키워드유형"].astype(str).isin([str(x) for x in fixed_types])]
 
         if d.empty:
-            st.warning("선택 기간/조건에 데이터가 없습니다.")
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
             return
 
         # kw_total 대표 베이스는 한 번만 생성해서 재사용
@@ -927,9 +900,9 @@ def main():
             out = cur_sum.merge(prev_sum, on=["키워드유형", "키워드"], how="outer")
 
         out["비교기간(최근)"] = pd.to_numeric(out["비교기간(최근)"], errors="coerce").fillna(0)
-        out["이전기간"]       = pd.to_numeric(out["이전기간"], errors="coerce").fillna(0)
-        out["증감량"]     = out["비교기간(최근)"] - out["이전기간"]
-        out["증감률"]         = np.where(out["이전기간"] > 0, out["증감량"] / out["이전기간"], np.nan)
+        out["이전기간"] = pd.to_numeric(out["이전기간"], errors="coerce").fillna(0)
+        out["증감량"] = out["비교기간(최근)"] - out["이전기간"]
+        out["증감률"] = np.where(out["이전기간"] > 0, out["증감량"] / out["이전기간"], np.nan)
 
         # (2) 노이즈 컷 + 방향 필터
         out = out[out["증감량"].abs() >= float(min_diff)]
@@ -973,13 +946,13 @@ def main():
 
         dmb = out.assign(
             prev=lambda x: pd.to_numeric(x["이전기간"], errors="coerce").fillna(0),
-            cur =lambda x: pd.to_numeric(x["비교기간(최근)"], errors="coerce").fillna(0),
+            cur=lambda x: pd.to_numeric(x["비교기간(최근)"], errors="coerce").fillna(0),
         )
         dmb["diff"] = dmb["cur"] - dmb["prev"]
         dmb["abs_diff"] = dmb["diff"].abs()
 
         grp_col = None if is_all_tab else "키워드유형"
-        y_col   = "키워드유형" if is_all_tab else "키워드"
+        y_col = "키워드유형" if is_all_tab else "키워드"
         groups = [(None, dmb)] if grp_col is None else list(dmb.groupby(grp_col, dropna=False))
 
         for gk, g0 in groups:
@@ -991,10 +964,10 @@ def main():
 
             y_lbl = g[y_col].astype(str).tolist()
             n = len(g)
-            h = max(200, n * 22 + 90) # 최소높이, 줄간격사이, 상단/하단 여백
+            h = max(200, n * 22 + 90)  # 최소높이, 줄간격사이, 상단/하단 여백
 
             prev = g["prev"].astype(float).to_numpy()
-            cur  = g["cur"].astype(float).to_numpy()
+            cur = g["cur"].astype(float).to_numpy()
             diff = (cur - prev)
 
             x_min = float(min(prev.min(), cur.min()))
@@ -1006,7 +979,7 @@ def main():
             TEXT_PAD_RATIO = 0.045
             text_pad = max(span * TEXT_PAD_RATIO, max(abs(x_max), 1.0) * 0.01, 1.0)
             x_gutter_max = x_max + span * GUTTER_RATIO
-            x_axis_max   = max(x_gutter_max, x_max + text_pad * 3)
+            x_axis_max = max(x_gutter_max, x_max + text_pad * 3)
 
             # 각 행 오른쪽 끝
             x_end = np.maximum(prev, cur)
@@ -1015,8 +988,11 @@ def main():
             x_text = x_end + text_pad
             x_text = np.minimum(x_text, x_axis_max - text_pad * 0.6)
 
-            diff_txt = np.where(diff > 0, np.char.add("+", np.char.mod("%0.0f", diff)),
-                    np.where(diff < 0, np.char.mod("%0.0f", diff), "0"))
+            diff_txt = np.where(
+                diff > 0,
+                np.char.add("+", np.char.mod("%0.0f", diff)),
+                np.where(diff < 0, np.char.mod("%0.0f", diff), "0")
+            )
 
             fig = go.Figure()
 
@@ -1109,10 +1085,104 @@ def main():
             row_height=30
         )
 
+    k_mode = "sp_mode_common"
+    k_prev = "sp_prev_common"
+    k_cur = "sp_cur_common"
+
+    if k_mode not in st.session_state:
+        st.session_state[k_mode] = "최근 7일"
+
+    if k_prev not in st.session_state or k_cur not in st.session_state:
+        ps, pe, cs, ce = _calc_ranges(_max_d, 7)
+        st.session_state[k_prev] = [ps, pe]
+        st.session_state[k_cur] = [cs, ce]
+
+    def _sp_apply_win_common():
+        m = st.session_state[k_mode]
+        if m == "커스텀":
+            return
+        n_map = {"최근 7일": 7, "최근 14일": 14, "최근 30일": 30}
+        n = n_map.get(m, 7)
+        ps, pe, cs, ce = _calc_ranges(_max_d, n)
+        st.session_state[k_prev] = [ps, pe]
+        st.session_state[k_cur] = [cs, ce]
+
+    with st.expander("공통 Filter", expanded=False):
+        c1, c2, c3 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
+        c4, c5, c6 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
+
+        with c1:
+            st.radio(
+                "기간 윈도우 설정",
+                ["최근 7일", "최근 14일", "최근 30일", "커스텀"],
+                horizontal=True,
+                key=k_mode,
+                on_change=_sp_apply_win_common,
+            )
+
+        lock = (st.session_state[k_mode] != "커스텀")
+
+        with c2:
+            prev_rng = st.date_input("이전기간 선택", key=k_prev, disabled=lock)
+        with c3:
+            cur_rng = st.date_input("비교기간(최근) 선택", key=k_cur, disabled=lock)
+
+        with c4:
+            show = st.radio(
+                "증감 방향",
+                ["둘다", "증가", "감소"],
+                horizontal=True,
+                index=0,
+                key="sp_show_common",
+            )
+        with c5:
+            min_diff = st.number_input(
+                "최소 증감량",
+                min_value=0,
+                value=50,
+                step=10,
+                key="sp_min_common",
+            )
+        with c6:
+            topn = st.selectbox(
+                "Top N",
+                options=CFG["TOPK_OPTS"],
+                index=CFG["TOPK_OPTS"].index(10) if 10 in CFG["TOPK_OPTS"] else 0,
+                key="sp_topn_common",
+            )
+
+    # range normalize (QUICK INSIGHT 방식)
+    if not (isinstance(prev_rng, (list, tuple)) and len(prev_rng) == 2):
+        prev_rng = st.session_state[k_prev]
+    if not (isinstance(cur_rng, (list, tuple)) and len(cur_rng) == 2):
+        cur_rng = st.session_state[k_cur]
+
+    prev_s, prev_e = pd.to_datetime(prev_rng[0]), pd.to_datetime(prev_rng[1])
+    cur_s, cur_e = pd.to_datetime(cur_rng[0]), pd.to_datetime(cur_rng[1])
+
+    if prev_s > prev_e:
+        prev_s, prev_e = prev_e, prev_s
+    if cur_s > cur_e:
+        cur_s, cur_e = cur_e, cur_s
+
+    outer_tabs = st.tabs(outer_names)
+
     for ot, maj in zip(outer_tabs, outer_names):
         with ot:
             if maj == "전체":
-                _render_spike_kw(df, tab_key="sp_all", fixed_types=None, is_all_tab=True)
+                _render_spike_kw(
+                    df,
+                    tab_key="sp_all",
+                    fixed_types=None,
+                    is_all_tab=True,
+                    prev_s=prev_s,
+                    prev_e=prev_e,
+                    cur_s=cur_s,
+                    cur_e=cur_e,
+                    show=show,
+                    min_diff=float(min_diff),
+                    topn=int(topn),
+                )
                 continue
 
             plain = sorted(list(major_map[maj]["plain"]))
@@ -1120,7 +1190,19 @@ def main():
             all_types = plain + subs_full
 
             if len(subs_full) == 0:
-                _render_spike_kw(df, tab_key=f"sp_maj_{maj}", fixed_types=all_types, is_all_tab=False)
+                _render_spike_kw(
+                    df,
+                    tab_key=f"sp_maj_{maj}",
+                    fixed_types=all_types,
+                    is_all_tab=False,
+                    prev_s=prev_s,
+                    prev_e=prev_e,
+                    cur_s=cur_s,
+                    cur_e=cur_e,
+                    show=show,
+                    min_diff=float(min_diff),
+                    topn=int(topn),
+                )
                 continue
 
             inner_labels = ["전체"] + [t.split("_", 1)[1] for t in subs_full]
@@ -1129,10 +1211,34 @@ def main():
             for it, sub_lbl in zip(inner_tabs, inner_labels):
                 with it:
                     if sub_lbl == "전체":
-                        _render_spike_kw(df, tab_key=f"sp_maj_{maj}_all", fixed_types=all_types, is_all_tab=True)
+                        _render_spike_kw(
+                            df,
+                            tab_key=f"sp_maj_{maj}_all",
+                            fixed_types=all_types,
+                            is_all_tab=True,
+                            prev_s=prev_s,
+                            prev_e=prev_e,
+                            cur_s=cur_s,
+                            cur_e=cur_e,
+                            show=show,
+                            min_diff=float(min_diff),
+                            topn=int(topn),
+                        )
                     else:
                         full_type = f"{maj}_{sub_lbl}"
-                        _render_spike_kw(df, tab_key=f"sp_maj_{maj}_sub_{sub_lbl}", fixed_types=[full_type], is_all_tab=False)
+                        _render_spike_kw(
+                            df,
+                            tab_key=f"sp_maj_{maj}_sub_{sub_lbl}",
+                            fixed_types=[full_type],
+                            is_all_tab=False,
+                            prev_s=prev_s,
+                            prev_e=prev_e,
+                            cur_s=cur_s,
+                            cur_e=cur_e,
+                            show=show,
+                            min_diff=float(min_diff),
+                            topn=int(topn),
+                        )
 
 
     # ──────────────────────────────────
@@ -1142,24 +1248,21 @@ def main():
     st.markdown("<h5 style='margin:0'><span style='color:#FF4B4B;'>연령대 급변 탐지</span></h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ단순 검색량을 넘어, 연령대별 비중 분포의 변화량을 측정하여 타겟층의 구조적 변화가 큰 키워드를 탐지합니다.")
 
-    with st.popover("🧐 연령층 변화, 어떻게 분석되나요?"):
-            st.markdown("""
-        **검색 규모는 비슷하더라도, 검색 연령대 구성이 얼마나 바뀌었는지에 집중합니다.**  
+    # with st.popover("🧐 연령층 변화, 어떻게 분석되나요?"):
+    #         st.markdown("""
+    #     **검색 규모는 비슷하더라도, 검색 연령대 구성이 얼마나 바뀌었는지에 집중합니다.**  
 
-        - **선정 근거 (What)** 
-            - 전체 검색량이 아닌, **연령대별 비중 분포**의 구조적 변화를 확인합니다.
-            - 이를 통해 주요 타겟층이 교체된 키워드를 찾아내는 것이 목적입니다.
+    #     - **선정 근거 (What)** 
+    #         - 전체 검색량이 아닌, **연령대별 비중 분포**의 구조적 변화를 확인합니다.
+    #         - 이를 통해 주요 타겟층이 교체된 키워드를 찾아내는 것이 목적입니다.
 
-        * **계산 방식 (How)**
-            * 연령별 비중 차이의 절대값 합계인 **Shift Score**를 통해 변화폭을 지수화합니다.
-            * $$Shift \ Score \ (L1 \ Distance) = \sum_{i=1}^{n} |Share_{recent, i} - Share_{previous, i}|$$
-            * 예를 들어, 전체 검색량 10,000건 중 20대 비중이 20% → 45%로 증가했다면
-                * 검색량 변화는 0으로 규모 변화는 없지만,
-                * 타겟층이 완전히 바뀌었으므로 Shift Score가 높게 측정됩니다.
-        """)
-
-    outer_tabs = st.tabs(outer_names)
-
+    #     * **계산 방식 (How)**
+    #         * 연령별 비중 차이의 절대값 합계인 **Shift Score**를 통해 변화폭을 지수화합니다.
+    #         * $$Shift \ Score \ (L1 \ Distance) = \sum_{i=1}^{n} |Share_{recent, i} - Share_{previous, i}|$$
+    #         * 예를 들어, 전체 검색량 10,000건 중 20대 비중이 20% → 45%로 증가했다면
+    #             * 검색량 변화는 0으로 규모 변화는 없지만,
+    #             * 타겟층이 완전히 바뀌었으므로 Shift Score가 높게 측정됩니다.
+    #     """)
     def _render_shift_detail(dd_cur: pd.DataFrame, key_tag: str):
         dd_cur["age_info"] = pd.Categorical(dd_cur["age_info"], categories=AGE_ORDER, ordered=True)
         dd_cur = dd_cur.sort_values("age_info")
@@ -1203,36 +1306,19 @@ def main():
             t3["변화(pp)"] = (t3["변화(pp)"] * 100).round(1)
             st.dataframe(t3, use_container_width=True, hide_index=True, row_height=30)
 
-    def _render_shift_kw(d0: pd.DataFrame, tab_key: str, fixed_types: list[str] | None, is_all_tab: bool):
+    def _render_shift_kw(
+        d0: pd.DataFrame,
+        tab_key: str,
+        fixed_types: list[str] | None,
+        is_all_tab: bool,
+        prev_s,
+        prev_e,
+        cur_s,
+        cur_e,
+        min_diff: float,
+        topn2: int,
+    ):
         tk = _clean_key(tab_key)
-
-        k_mode = f"shift_mode_{tk}"
-        k_prev = f"shift_prev_{tk}"
-        k_cur  = f"shift_cur_{tk}"
-
-        if k_mode not in st.session_state:
-            st.session_state[k_mode] = "최근 7일"
-
-        if k_prev not in st.session_state or k_cur not in st.session_state:
-            ps, pe, cs, ce = _calc_ranges(_max_d, 7)
-            st.session_state[k_prev] = [ps, pe]
-            st.session_state[k_cur]  = [cs, ce]
-
-        def _shift_apply_win():
-            m0 = st.session_state[k_mode]
-            if m0 == "커스텀":
-                return
-            n_map = {"최근 7일": 7, "최근 14일": 14, "최근 30일": 30}
-            n = n_map.get(m0, 7)
-            ps, pe, cs, ce = _calc_ranges(_max_d, n)
-            st.session_state[k_prev] = [ps, pe]
-            st.session_state[k_cur]  = [cs, ce]
-
-        def _norm_rng(rng, key):
-            if not (isinstance(rng, (list, tuple)) and len(rng) == 2):
-                rng = st.session_state[key]
-            s, e = pd.to_datetime(rng[0]), pd.to_datetime(rng[1])
-            return (e, s) if s > e else (s, e)
 
         def _build_m(cur_x: pd.DataFrame, prev_x: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
             cd = cur_x.groupby(keys + ["age_info"], as_index=False)["abs_age"].sum()
@@ -1282,72 +1368,25 @@ def main():
             o2 = o2[o2["shift_score"] >= float(min_diff)]
             return o2.sort_values("shift_score", ascending=False).head(int(topn2)).reset_index(drop=True)
 
-        # ✅ Filter(3영역 구조), c4만 pass
-        with st.expander("Filter", expanded=True):
-            c1, c2, c3 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
-            c4, c5, c6 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
-
-            with c1:
-                st.radio(
-                    "기간 윈도우 설정",
-                    ["최근 7일", "최근 14일", "최근 30일", "커스텀"],
-                    horizontal=True,
-                    key=k_mode,
-                    on_change=_shift_apply_win,
-                )
-
-            lock = (st.session_state[k_mode] != "커스텀")
-
-            with c2:
-                prev_rng = st.date_input("이전기간 선택", key=k_prev, disabled=lock)
-            with c3:
-                cur_rng = st.date_input("비교기간(최근) 선택", key=k_cur, disabled=lock)
-
-            with c4:
-                pass
-
-            with c5:
-                min_diff = st.number_input(
-                    "최소 변화점수(Shift Score)",
-                    min_value=0.0,
-                    value=3.0,
-                    step=0.5,
-                    format="%.1f",
-                    key=f"shift_min_{tk}",
-                )
-
-            with c6:
-                topn2 = st.selectbox(
-                    "Top N",
-                    options=CFG["TOPK_OPTS"],
-                    index=CFG["TOPK_OPTS"].index(10) if 10 in CFG["TOPK_OPTS"] else 0,
-                    key=f"shift_topn_{tk}",
-                )
-
-        prev_s, prev_e = _norm_rng(prev_rng, k_prev)
-        cur_s,  cur_e  = _norm_rng(cur_rng, k_cur)
-
         d = d0[(d0["날짜"] >= min(prev_s, cur_s)) & (d0["날짜"] <= max(prev_e, cur_e))]
         if fixed_types is not None:
             d = d[d["키워드유형"].astype(str).isin([str(x) for x in fixed_types])]
 
         if d.empty:
-            st.warning("선택 기간/조건에 데이터가 없습니다.")
+            st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
             return
 
-        cur_a  = d[(d["날짜"] >= cur_s) & (d["날짜"] <= cur_e)]
+        cur_a = d[(d["날짜"] >= cur_s) & (d["날짜"] <= cur_e)]
         prev_a = d[(d["날짜"] >= prev_s) & (d["날짜"] <= prev_e)]
 
         keys = ["키워드유형"] if is_all_tab else ["키워드유형", "키워드"]
         mm = _build_m(cur_a, prev_a, keys=keys)
-
 
         out2_disp = _build_top(mm, keys=keys, min_diff=float(min_diff), topn2=int(topn2))
         if out2_disp.empty:
             st.info("조건을 만족하는 항목이 없습니다.")
             return
         out2_disp = out2_disp.reset_index(drop=True)
-
 
         # ✅ 1 : 1
         st.markdown(" ")
@@ -1373,7 +1412,7 @@ def main():
             )
             if is_all_tab:
                 pick_type = st.selectbox(
-                    "", # 제목 없이
+                    "",  # 제목 없이
                     options=out2_disp["키워드유형"].astype(str).tolist(),
                     index=0,
                     key=f"shift_pick_type_{tk}",
@@ -1391,7 +1430,7 @@ def main():
                 )
                 i = int(sel_opts.index(sel_val))
                 pick_type2 = str(out2_disp.loc[i, "키워드유형"])
-                pick_kw    = str(out2_disp.loc[i, "키워드"])
+                pick_kw = str(out2_disp.loc[i, "키워드"])
                 dd_cur = mm[
                     (mm["키워드유형"].astype(str) == pick_type2) &
                     (mm["키워드"].astype(str) == pick_kw)
@@ -1401,10 +1440,96 @@ def main():
 
         return
 
+    k_mode = "shift_mode_common"
+    k_prev = "shift_prev_common"
+    k_cur = "shift_cur_common"
+
+    if k_mode not in st.session_state:
+        st.session_state[k_mode] = "최근 7일"
+
+    if k_prev not in st.session_state or k_cur not in st.session_state:
+        ps, pe, cs, ce = _calc_ranges(_max_d, 7)
+        st.session_state[k_prev] = [ps, pe]
+        st.session_state[k_cur] = [cs, ce]
+
+    def _shift_apply_win_common():
+        m0 = st.session_state[k_mode]
+        if m0 == "커스텀":
+            return
+        n_map = {"최근 7일": 7, "최근 14일": 14, "최근 30일": 30}
+        n = n_map.get(m0, 7)
+        ps, pe, cs, ce = _calc_ranges(_max_d, n)
+        st.session_state[k_prev] = [ps, pe]
+        st.session_state[k_cur] = [cs, ce]
+
+    def _norm_rng_common(rng, key):
+        if not (isinstance(rng, (list, tuple)) and len(rng) == 2):
+            rng = st.session_state[key]
+        s, e = pd.to_datetime(rng[0]), pd.to_datetime(rng[1])
+        return (e, s) if s > e else (s, e)
+
+    # ✅ Filter(3영역 구조), c4만 pass
+    with st.expander("공통 Filter", expanded=False):
+        c1, c2, c3 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
+        c4, c5, c6 = st.columns([1.3, 1.2, 1.2], vertical_alignment="bottom")
+
+        with c1:
+            st.radio(
+                "기간 윈도우 설정",
+                ["최근 7일", "최근 14일", "최근 30일", "커스텀"],
+                horizontal=True,
+                key=k_mode,
+                on_change=_shift_apply_win_common,
+            )
+
+        lock = (st.session_state[k_mode] != "커스텀")
+
+        with c2:
+            prev_rng = st.date_input("이전기간 선택", key=k_prev, disabled=lock)
+        with c3:
+            cur_rng = st.date_input("비교기간(최근) 선택", key=k_cur, disabled=lock)
+
+        with c4:
+            pass
+
+        with c5:
+            min_diff = st.number_input(
+                "최소 변화점수(Shift Score)",
+                min_value=0.0,
+                value=3.0,
+                step=0.5,
+                format="%.1f",
+                key="shift_min_common",
+            )
+
+        with c6:
+            topn2 = st.selectbox(
+                "Top N",
+                options=CFG["TOPK_OPTS"],
+                index=CFG["TOPK_OPTS"].index(10) if 10 in CFG["TOPK_OPTS"] else 0,
+                key="shift_topn_common",
+            )
+
+    prev_s, prev_e = _norm_rng_common(prev_rng, k_prev)
+    cur_s, cur_e = _norm_rng_common(cur_rng, k_cur)
+
+    outer_tabs = st.tabs(outer_names)
+
     for ot, maj in zip(outer_tabs, outer_names):
         with ot:
             if maj == "전체":
-                _render_shift_kw(df, tab_key="shift_all", fixed_types=None, is_all_tab=True)
+                _render_shift_kw(
+                    df,
+                    tab_key="shift_all",
+                    fixed_types=None,
+                    is_all_tab=True,
+                    prev_s=prev_s,
+                    prev_e=prev_e,
+                    cur_s=cur_s,
+                    cur_e=cur_e,
+                    min_diff=float(min_diff),
+                    topn2=int(topn2),
+                )
                 continue
 
             plain = sorted(list(major_map[maj]["plain"]))
@@ -1412,7 +1537,18 @@ def main():
             all_types = plain + subs_full
 
             if len(subs_full) == 0:
-                _render_shift_kw(df, tab_key=f"shift_maj_{maj}", fixed_types=all_types, is_all_tab=False)
+                _render_shift_kw(
+                    df,
+                    tab_key=f"shift_maj_{maj}",
+                    fixed_types=all_types,
+                    is_all_tab=False,
+                    prev_s=prev_s,
+                    prev_e=prev_e,
+                    cur_s=cur_s,
+                    cur_e=cur_e,
+                    min_diff=float(min_diff),
+                    topn2=int(topn2),
+                )
                 continue
 
             inner_labels = ["전체"] + [t.split("_", 1)[1] for t in subs_full]
@@ -1421,10 +1557,32 @@ def main():
             for it, sub_lbl in zip(inner_tabs, inner_labels):
                 with it:
                     if sub_lbl == "전체":
-                        _render_shift_kw(df, tab_key=f"shift_maj_{maj}_all", fixed_types=all_types, is_all_tab=True)
+                        _render_shift_kw(
+                            df,
+                            tab_key=f"shift_maj_{maj}_all",
+                            fixed_types=all_types,
+                            is_all_tab=True,
+                            prev_s=prev_s,
+                            prev_e=prev_e,
+                            cur_s=cur_s,
+                            cur_e=cur_e,
+                            min_diff=float(min_diff),
+                            topn2=int(topn2),
+                        )
                     else:
                         full_type = f"{maj}_{sub_lbl}"
-                        _render_shift_kw(df, tab_key=f"shift_maj_{maj}_sub_{sub_lbl}", fixed_types=[full_type], is_all_tab=False)
+                        _render_shift_kw(
+                            df,
+                            tab_key=f"shift_maj_{maj}_sub_{sub_lbl}",
+                            fixed_types=[full_type],
+                            is_all_tab=False,
+                            prev_s=prev_s,
+                            prev_e=prev_e,
+                            cur_s=cur_s,
+                            cur_e=cur_e,
+                            min_diff=float(min_diff),
+                            topn2=int(topn2),
+                        )
 
 
 if __name__ == "__main__":
