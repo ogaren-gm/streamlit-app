@@ -1115,7 +1115,7 @@ def main():
             render_kwd_df(df, is_all=True)
             return
 
-        with st.expander("키워드 Filter", expanded=False):
+        with st.expander("탭별 Filter", expanded=False):
             k_all = sorted(df["키워드"].astype(str).dropna().unique().tolist())
             use_custom_kw = st.checkbox(
                 f"키워드 개별 선택 (전체 {len(k_all)}개 중)",
