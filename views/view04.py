@@ -742,8 +742,10 @@ def main():
                     x="event_date",
                     y="value",
                     color=row_col,
-                    barmode="stack",
+                    barmode="stack", #relative
                 )
+                fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+
                 fig.update_layout(
                     height=240,
                     margin=dict(l=0, r=0, t=10, b=10),
@@ -751,12 +753,13 @@ def main():
                 )
                 fig.update_xaxes(title=None)
                 fig.update_yaxes(title=None)
+                
                 st.plotly_chart(
                     fig,
                     use_container_width=True,
                     key=f"cum::{key_tag}::{ttl}",
                 )
-
+                
                 st.dataframe(pt, use_container_width=True, hide_index=True, row_height=30, height=200)
 
     def render_block_card(df_base: pd.DataFrame, df_aw_base: pd.DataFrame):
