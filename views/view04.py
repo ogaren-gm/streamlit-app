@@ -939,6 +939,7 @@ def main():
             custom_data=[col_col, "cnt", "pct"],
             category_orders={row_col: row_order, col_col: col_order},
         )
+        fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
         fig.update_traces(
             hovertemplate="%{customdata[0]}<br>값=%{customdata[1]:,.0f}<br>비중=%{customdata[2]:.1f}%<extra></extra>"
         )
