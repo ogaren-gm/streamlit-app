@@ -68,12 +68,45 @@ COLS_LABELMAP = {
     "noshow_rate": "노쇼 비중 (%)",
 }
 
-ALL_LABEL = "전체"
-
 
 # ──────────────────────────────────
 # HELPER
 # ──────────────────────────────────
+def _safe_sum(df: pd.DataFrame, col: str) -> float:
+    if df is None or df.empty or col not in df.columns:
+        return 0.0
+    return float(pd.to_numeric(df[col], errors="coerce").fillna(0).sum())
+
+
+def _safe_rate(n: float, d: float) -> float:
+    return (n / d * 100.0) if d > 0 else 0.0
+
+
+def _standardize_df(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    """필요한 컬럼만 추출하여 문자열 정제 및 공백 제거를 수행합니다."""
+    if df is None or df.empty: 
+        return pd.DataFrame()
+    
+    # 존재하는 컬럼만 필터링
+    valid_cols = [c for c in cols if c in df.columns]
+    d = df[valid_cols].copy()
+    
+    for c in valid_cols:
+        if c == "weight":
+            d[c] = pd.to_numeric(d[c], errors="coerce").fillna(0)
+        else:
+            # 문자열로 변환 후 양 끝 공백 제거
+            d[c] = d[c].astype(str).replace(["None", "nan", "<NA>"], "").str.strip()
+            
+    return d
+
+
+def _get_age_order(vals: list[str]) -> list[str]:
+    base = ["20대", "30대", "40대", "50대", "60대 이상"]
+    base_in = [x for x in base if x in vals]
+    return base_in + [x for x in sorted(vals) if x not in base_in]
+
+
 def parse_shrm(df: pd.DataFrame) -> pd.DataFrame:
     if "shrm_name" in df.columns:
         ss = df["shrm_name"].astype("string").fillna("").astype(str).str.strip()
@@ -85,20 +118,33 @@ def parse_shrm(df: pd.DataFrame) -> pd.DataFrame:
         df["shrm_type"], df["shrm_branch"], df["shrm_region"] = "", "", ""
     return df
 
-def get_dim_options(df: pd.DataFrame, col: str, *, all_label: str = "전체") -> list[str]:
+
+def dim_options(df: pd.DataFrame, col: str, *, all_label: str = "전체") -> list[str]:
+    # 필터 UI에 넣을 선택지 목록을 만드는 함수
+    # 특정 컬럼 값을 뽑아서 ["전체", "강남", "부산", ...] 같은 옵션 리스트 생성
+    
     if df is None or df.empty or col not in df.columns:
         return [all_label]
     s = df[col].astype("string").fillna("").astype(str).str.strip()
     s = s[s != ""]
-    return [all_label] + s.value_counts(dropna=False).index.astype(str).tolist()
+    
+    unique_vals = s.unique().tolist()
+    sorted_vals = sorted([str(x) for x in unique_vals])
+    
+    return [all_label] + sorted_vals
 
-def filter_dim(df: pd.DataFrame, dim_col: str, dim_val: str, *, all_label: str = "전체") -> pd.DataFrame:
+
+def filter_by_dim(df: pd.DataFrame, dim_col: str, dim_val: str, *, all_label: str = "전체") -> pd.DataFrame:
+    # 데이터프레임을 필터링
+    # 단, "강남"을 선택했으면, shrm_branch == "강남"인 행만 남긴 df 자체를 반환
+    
     if df is None or df.empty or dim_val == all_label:
         return df
     if dim_col not in df.columns:
         return df
     s = df[dim_col].astype("string").fillna("").astype(str).str.strip()
     return df[s == str(dim_val).strip()].copy()
+
 
 def filter_by_date(df: pd.DataFrame, date_rng: tuple | list, col: str = "event_date", def_s=None, def_e=None) -> pd.DataFrame:
     if df is None or df.empty or col not in df.columns:
@@ -109,15 +155,8 @@ def filter_by_date(df: pd.DataFrame, date_rng: tuple | list, col: str = "event_d
         start_dt, end_dt = def_s, def_e
     return df[(df[col] >= pd.to_datetime(start_dt)) & (df[col] <= pd.to_datetime(end_dt))].copy()
 
-def _safe_sum(_df: pd.DataFrame, col: str) -> float:
-    if _df is None or _df.empty or col not in _df.columns:
-        return 0.0
-    return float(pd.to_numeric(_df[col], errors="coerce").fillna(0).sum())
 
-def _safe_rate(n: float, d: float) -> float:
-    return (n / d * 100.0) if d > 0 else 0.0
-
-# --- PART 1: Funnel & Performance Helpers ---
+# 1번 영역
 def _build_long_df1(df1: pd.DataFrame) -> pd.DataFrame:
     base = [c for c in COLS_SHOWROOM if c in df1.columns]
     out = df1.loc[:, base + ["visit_type"]].copy()
@@ -126,6 +165,7 @@ def _build_long_df1(df1: pd.DataFrame) -> pd.DataFrame:
     out["event_type"] = out["visit_type"].map({"예약": "visit_reserved", "워크인": "visit_walkin"})
     out["cnt"] = 1
     return out.groupby(base + ["event_type"], dropna=False, as_index=False)["cnt"].sum()
+
 
 def _build_long_df2(df2: pd.DataFrame) -> pd.DataFrame:
     base = [c for c in COLS_SHOWROOM if c in df2.columns]
@@ -138,9 +178,11 @@ def _build_long_df2(df2: pd.DataFrame) -> pd.DataFrame:
     out["cnt"] = pd.to_numeric(out["cnt"], errors="coerce").fillna(0)
     return out
 
-def build_total_table(df: pd.DataFrame, start_dt, end_dt, dim_col: str | None = None, dim_val: str | None = None) -> pd.DataFrame:
+
+def build_daily(df: pd.DataFrame, start_dt, end_dt, dim_col: str | None = None, dim_val: str | None = None) -> pd.DataFrame:
+    
     daily = filter_by_date(df, (start_dt, end_dt))
-    daily = filter_dim(daily, dim_col, dim_val, all_label=ALL_LABEL)
+    daily = filter_by_dim(daily, dim_col, dim_val, all_label="전체")
 
     daily = (daily.groupby(["event_date", "event_type"], dropna=False)["cnt"]
              .sum().reset_index().pivot(index="event_date", columns="event_type", values="cnt")
@@ -159,7 +201,8 @@ def build_total_table(df: pd.DataFrame, start_dt, end_dt, dim_col: str | None = 
     
     return daily[[c for c in COLS_TOTAL if c in daily.columns]]
 
-def render_total_card(df: pd.DataFrame):
+
+def render_daily_card(df: pd.DataFrame):
     # 카드 마크다운
     st.markdown(
         """
@@ -233,40 +276,36 @@ def render_total_card(df: pd.DataFrame):
     st.markdown(" ")
 
 
-def render_selected_graph(daily: pd.DataFrame, tab_key: str, view_type: str):
-    if daily.empty:
-        st.warning("데이터가 없습니다.")
-        return
-
+def render_daily_graph(df: pd.DataFrame, tab_key: str, view_type: str):
     fig = go.Figure()
 
     if view_type == "1. 전체 방문 추이":
         fig.add_trace(go.Bar(
-            x=daily["날짜"],
-            y=daily["visit_reserved"],
+            x=df["날짜"],
+            y=df["visit_reserved"],
             name="방문수(예약)",
             marker_color="#3b82f6"))
         fig.add_trace(go.Bar(
-            x=daily["날짜"],
-            y=daily["visit_walkin"],
+            x=df["날짜"],
+            y=df["visit_walkin"],
             name="방문수(워크인)",
             marker_color="#10b981",
-            text=daily["visit_total"], textposition="outside", cliponaxis=False,
+            text=df["visit_total"], textposition="outside", cliponaxis=False,
             hovertemplate="방문수(워크인): %{y:,.0f}<extra></extra>"))
         fig.update_layout(barmode="stack", height=330, yaxis_title="방문수", hovermode="x unified")
 
     elif view_type == "2. 예약 VS 워크인 비중":
         fig.add_trace(go.Bar(
-            x=daily["날짜"],
-            y=daily["visit_reserved_rate"],
+            x=df["날짜"],
+            y=df["visit_reserved_rate"],
             name="방문수(예약)", 
             marker_color="#3b82f6",
             texttemplate="%{y:.0f}%",
             textposition="inside",
             hovertemplate="%{y:.0f}%"))
         fig.add_trace(go.Bar(
-            x=daily["날짜"], 
-            y=daily["visit_walkin_rate"], 
+            x=df["날짜"], 
+            y=df["visit_walkin_rate"], 
             name="방문수(워크인)", 
             marker_color="#10b981",
             texttemplate="%{y:.0f}%",
@@ -276,14 +315,14 @@ def render_selected_graph(daily: pd.DataFrame, tab_key: str, view_type: str):
 
     elif view_type == "4. 조회 대비 예약":
         fig.add_trace(go.Bar(
-            x=daily["날짜"], 
-            y=daily["look_cnt"], 
+            x=df["날짜"], 
+            y=df["look_cnt"], 
             name="조회수",
             yaxis="y1", 
             marker_color="#e4dbd7"))
         fig.add_trace(go.Scatter(
-            x=daily["날짜"], 
-            y=daily["bookreq_rate"], 
+            x=df["날짜"], 
+            y=df["bookreq_rate"], 
             mode="lines+markers", 
             name="예약신청률", 
             yaxis="y2", 
@@ -299,18 +338,18 @@ def render_selected_graph(daily: pd.DataFrame, tab_key: str, view_type: str):
                 return f"노쇼 ({noshow_cnt:.0f}건)"
             else:
                 return "👍"
-        noshow_text = daily.apply(make_noshow_text, axis=1)
+        noshow_text = df.apply(make_noshow_text, axis=1)
         
         fig.add_trace(go.Bar(
-            x=daily["날짜"], 
-            y=daily["res_cnt"], 
+            x=df["날짜"], 
+            y=df["res_cnt"], 
             name="예약이용수", 
             marker_color="#cfdcf0",
             text=noshow_text, textposition="outside", cliponaxis=False,
             hovertemplate="예약이용수: %{y:,.0f}<extra></extra>"))
         fig.add_trace(go.Bar(
-            x=daily["날짜"], 
-            y=daily["visit_reserved"], 
+            x=df["날짜"], 
+            y=df["visit_reserved"], 
             name="방문수(예약)", 
             marker_color="#3b82f6"))
         fig.update_layout(barmode="overlay", height=330, yaxis_title="방문수", hovermode="x unified")
@@ -320,35 +359,136 @@ def render_selected_graph(daily: pd.DataFrame, tab_key: str, view_type: str):
     fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), bargap=0.5, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None))
     st.plotly_chart(fig, use_container_width=True, key=f"fig_{view_type[:2]}_{tab_key}")
 
-def render_total_table(daily: pd.DataFrame):
-    tbl = daily.copy()
-    tbl = tbl[['날짜', 'look_cnt', 'bookreq_cnt', 'bookreq_rate', 'res_cnt', 'visit_total', 'visit_reserved', 'visit_walkin', 'visit_reserved_rate', 'visit_walkin_rate', 'noshow_rate']]
-    tbl["날짜"] = pd.to_datetime(tbl["날짜"], errors="coerce").dt.strftime("%Y-%m-%d")
-    tbl = tbl.set_index("날짜").T.reset_index().rename(columns={"index": "지표"})
-    tbl["event_type"] = tbl["event_type"].map(COLS_LABELMAP).fillna(tbl["event_type"])
-    st.dataframe(tbl, use_container_width=True, row_height=30, hide_index=True)
+
+def render_daily_table(df: pd.DataFrame):
+    df = df[['날짜', 'look_cnt', 'bookreq_cnt', 'bookreq_rate', 'res_cnt', 'visit_total', 'visit_reserved', 'visit_walkin', 'visit_reserved_rate', 'visit_walkin_rate', 'noshow_rate']]
+    
+    df["날짜"] = pd.to_datetime(df["날짜"], errors="coerce").dt.strftime("%Y-%m-%d")
+    df = df.set_index("날짜").T.reset_index().rename(columns={"index": "지표"})
+    df["event_type"] = df["event_type"].map(COLS_LABELMAP).fillna(df["event_type"])
+    st.dataframe(df, use_container_width=True, row_height=30, hide_index=True)
 
 
-# --- PART 2: Customer & Target Helpers ---
-def _clean_dim(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-    if df is None or df.empty: return pd.DataFrame()
-    d = df[cols].copy()
-    for c in cols:
-        if c == "weight": d[c] = pd.to_numeric(d[c], errors="coerce").fillna(0)
-        else: d[c] = d[c].astype("string").fillna("").astype(str).str.strip()
-    return d
+# 2번 영역
+def build_resv(df: pd.DataFrame, start_dt, end_dt, dim_col: str | None = None, dim_val: str | None = None) -> pd.DataFrame:
 
-def _get_age_order(vals: list[str]) -> list[str]:
-    base = ["20대", "30대", "40대", "50대", "60대 이상"]
-    base_in = [x for x in base if x in vals]
-    return base_in + [x for x in sorted(vals) if x not in base_in]
+    resv = filter_by_date(df, (start_dt, end_dt))
+
+    if dim_col and dim_col in resv.columns and dim_val not in [None, "", "전체"]:
+        s = resv[dim_col].astype("string").fillna("").astype(str).str.strip()
+        resv = resv[s == str(dim_val).strip()]
+
+    resv["shrm_branch"] = resv["shrm_branch"].astype("string").fillna("").astype(str).str.strip()
+    resv["cnt"] = pd.to_numeric(resv["cnt"], errors="coerce").fillna(0)
+
+    out = (
+        resv.groupby(["event_date", "shrm_branch"], dropna=False, as_index=False)["cnt"]
+        .sum()
+        .rename(columns={"event_date": "날짜", "cnt": "res_cnt"})
+        .sort_values(["날짜", "shrm_branch"])
+        .reset_index(drop=True)
+    )
+
+    return out
 
 
-def _render_1d_bar(df_base: pd.DataFrame, col: str, key: str, weight_col: str | None = None):
-    d = _clean_dim(df_base, [col] + ([weight_col] if weight_col else []))
+def render_resv_graph(df: pd.DataFrame, key_tag: str):
+    # 날짜별 합계
+    g = (
+        df.groupby("날짜", dropna=False, as_index=False)["res_cnt"]
+        .sum()
+        .sort_values("날짜")
+    )
+
+    # 날짜별 hover용 지점 내역
+    h = (
+        df.groupby(["날짜", "shrm_branch"], dropna=False, as_index=False)["res_cnt"]
+        .sum()
+    )
+    h = h[h["res_cnt"] > 0]
+
+    hover_map = (
+        h.assign(txt=h["shrm_branch"].astype(str) + ": " + h["res_cnt"].map(lambda x: f"{x:,.0f}"))
+        .groupby("날짜")["txt"]
+        .apply(lambda s: "<br>".join(s.tolist()))
+        .to_dict()
+    )
+    g["hover_txt"] = g["날짜"].map(hover_map).fillna("")
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=g["날짜"],
+        y=g["res_cnt"],
+        name="예약이용수",
+        showlegend=True,
+        marker_color="#cfdcf0",
+        text=g["res_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""),
+        textposition="outside",
+        cliponaxis=False,
+        customdata=g["hover_txt"],
+        hovertemplate="%{customdata}<extra></extra>",
+    ))
+
+    fig.update_traces(marker_opacity=0.8)
+    fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+    fig.update_layout(
+        barmode="stack",
+        height=330,
+        hovermode="x unified",
+        margin=dict(l=10, r=10, t=10, b=10),
+        bargap=0.5,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            title=None
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True, key=f"resv_fig_{key_tag}")
+
+
+def render_resv_table(df: pd.DataFrame):
+
+    df["날짜"] = pd.to_datetime(df["날짜"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+    pt = (
+        df.pivot_table(
+            index="shrm_branch",
+            columns="날짜",
+            values="res_cnt",
+            aggfunc="sum",
+            fill_value=0
+        )
+        .reset_index()
+    )
+
+    date_cols = sorted([c for c in pt.columns if c != "shrm_branch"])
+    if date_cols:
+        pt["_sum"] = pt[date_cols].sum(axis=1)
+        pt = pt[["shrm_branch"] + date_cols + ["_sum"]]
+        pt = pt.sort_values(["_sum", "shrm_branch"], ascending=[False, True]).drop(columns="_sum").reset_index(drop=True)
+
+    styled = ui.style_cmap(
+        pt,
+        gradient_rules=[
+            {"cols": [c for c in pt.columns if c not in ["shrm_branch"]], "cmap": "YlOrBr", "cmap_span": (0.0, 0.3)},
+        ],
+    )
+
+    st.dataframe(styled, use_container_width=True, row_height=30, hide_index=True)
+
+
+# 3번 영역
+def render_d1_bar(df_base: pd.DataFrame, col: str, key: str, weight_col: str | None = None):
+
+    target_cols = [col] + ([weight_col] if weight_col else [])
+    d = _standardize_df(df_base, target_cols)
     d = d[d[col] != ""]
     if d.empty:
-        st.warning("데이터 없음"); return
+        return
     
     g = d.groupby(col, dropna=False)[weight_col].sum().reset_index(name="cnt") if weight_col else d.groupby(col, dropna=False).size().reset_index(name="cnt")
     g["pct"] = g["cnt"] / g["cnt"].sum() * 100
@@ -364,10 +504,13 @@ def _render_1d_bar(df_base: pd.DataFrame, col: str, key: str, weight_col: str | 
     st.plotly_chart(fig, use_container_width=True, key=key)
 
 
-def _render_2d_stack(df_base: pd.DataFrame, row_col: str, col_col: str, key: str, weight_col: str | None = None):
-    d = _clean_dim(df_base, [row_col, col_col] + ([weight_col] if weight_col else []))
+def render_d2_stack(df_base: pd.DataFrame, row_col: str, col_col: str, key: str, weight_col: str | None = None):
+    
+    target_cols = [row_col, col_col] + ([weight_col] if weight_col else [])
+    d = _standardize_df(df_base, target_cols)
     d = d[(d[row_col] != "") & (d[col_col] != "")]
-    if d.empty: return
+    if d.empty:
+        return
     
     g = d.groupby([row_col, col_col], dropna=False)[weight_col].sum().reset_index(name="cnt") if weight_col else d.groupby([row_col, col_col], dropna=False).size().reset_index(name="cnt")
     
@@ -395,7 +538,7 @@ def _render_2d_stack(df_base: pd.DataFrame, row_col: str, col_col: str, key: str
     st.plotly_chart(fig, use_container_width=True, key=key)
 
 
-def _render_dynamic_insight(df_base: pd.DataFrame, df_aw_base: pd.DataFrame):
+def render_prof_insight(df_base: pd.DataFrame, df_aw_base: pd.DataFrame):
     if df_base is None or df_base.empty: return
     
     # 데이터 추출 및 분석 로직
@@ -448,11 +591,11 @@ def _render_dynamic_insight(df_base: pd.DataFrame, df_aw_base: pd.DataFrame):
         unsafe_allow_html=True,
     )
 
-def render_profile_block(df_base: pd.DataFrame, df_aw_base: pd.DataFrame, key_tag: str):
-    _render_dynamic_insight(df_base, df_aw_base)
+
+def render_prof_block(df_base: pd.DataFrame, df_aw_base: pd.DataFrame, key_tag: str):
+    render_prof_insight(df_base, df_aw_base)
     
-    # 아이콘과 제목을 결합한 헬퍼 함수 (가독성을 위해)
-    def section_title(icon_name, title):
+    def _icon(icon_name, title):
         return f"""
             <div style="display: flex; align-items: flex-start; gap: 6px;">
                 <span class="material-symbols-outlined" style="font-size: 17px; color: #475569;padding-top: 6px;">{icon_name}</span>
@@ -462,35 +605,36 @@ def render_profile_block(df_base: pd.DataFrame, df_aw_base: pd.DataFrame, key_ta
 
     c1, c2, c3, c4 = st.columns(4, vertical_alignment="top")
     with c1: 
-        st.markdown(section_title("bed", "연령대"), unsafe_allow_html=True)
-        _render_1d_bar(df_base, "demo_age", f"age::{key_tag}")
+        st.markdown(_icon("bed", "연령대"), unsafe_allow_html=True)
+        render_d1_bar(df_base, "demo_age", f"age::{key_tag}")
     with c2: 
-        st.markdown(section_title("bed", "연령대 × 성별"), unsafe_allow_html=True)
-        _render_2d_stack(df_base, "demo_age", "demo_gender", f"age_gen::{key_tag}")
+        st.markdown(_icon("bed", "연령대 × 성별"), unsafe_allow_html=True)
+        render_d2_stack(df_base, "demo_age", "demo_gender", f"age_gen::{key_tag}")
     with c3: 
-        st.markdown(section_title("bed", "구매목적"), unsafe_allow_html=True)
-        _render_1d_bar(df_base, "purchase_purpose", f"purp::{key_tag}")
+        st.markdown(_icon("bed", "구매목적"), unsafe_allow_html=True)
+        render_d1_bar(df_base, "purchase_purpose", f"purp::{key_tag}")
     with c4: 
-        st.markdown(section_title("bed", "구매목적 × 연령대"), unsafe_allow_html=True)
-        _render_2d_stack(df_base, "purchase_purpose", "demo_age", f"purp_age::{key_tag}")
+        st.markdown(_icon("bed", "구매목적 × 연령대"), unsafe_allow_html=True)
+        render_d2_stack(df_base, "purchase_purpose", "demo_age", f"purp_age::{key_tag}")
 
     st.markdown(" ")
     c5, c6, c7, c8 = st.columns(4, vertical_alignment="top")
     with c5: 
-        st.markdown(section_title("bed", "인지단계"), unsafe_allow_html=True)
-        _render_1d_bar(df_aw_base, "awareness_type_a", f"aw_a::{key_tag}", "weight")
+        st.markdown(_icon("bed", "인지단계"), unsafe_allow_html=True)
+        render_d1_bar(df_aw_base, "awareness_type_a", f"aw_a::{key_tag}", "weight")
     with c6: 
-        st.markdown(section_title("bed", "인지단계 × 인지채널"), unsafe_allow_html=True)
-        _render_2d_stack(df_aw_base, "awareness_type_a", "awareness_type_b", f"aw_ab::{key_tag}", "weight")
+        st.markdown(_icon("bed", "인지단계 × 인지채널"), unsafe_allow_html=True)
+        render_d2_stack(df_aw_base, "awareness_type_a", "awareness_type_b", f"aw_ab::{key_tag}", "weight")
     with c7: 
-        st.markdown(section_title("bed", "구매목적 × 인지채널"), unsafe_allow_html=True)
-        _render_2d_stack(df_aw_base, "purchase_purpose", "awareness_type_b", f"purp_aw::{key_tag}", "weight")
+        st.markdown(_icon("bed", "구매목적 × 인지채널"), unsafe_allow_html=True)
+        render_d2_stack(df_aw_base, "purchase_purpose", "awareness_type_b", f"purp_aw::{key_tag}", "weight")
     with c8: 
-        st.markdown(section_title("bed", "연령대 × 인지채널"), unsafe_allow_html=True)
-        _render_2d_stack(df_aw_base, "demo_age", "awareness_type_b", f"age_aw::{key_tag}", "weight")
+        st.markdown(_icon("bed", "연령대 × 인지채널"), unsafe_allow_html=True)
+        render_d2_stack(df_aw_base, "demo_age", "awareness_type_b", f"age_aw::{key_tag}", "weight")
 
 
-def _render_trend_chart(df_plot, x_col, color_col, val_col, key):        
+# 4번 영역
+def render_trend_graph(df_plot, x_col, color_col, val_col, key):        
     if df_plot is None or df_plot.empty: st.warning("데이터가 없습니다."); return
     grp = df_plot.groupby([x_col, color_col], dropna=False)[val_col].sum().reset_index()
     grp = grp[grp[color_col].astype(str).str.strip() != ""].sort_values(x_col)
@@ -500,6 +644,7 @@ def _render_trend_chart(df_plot, x_col, color_col, val_col, key):
     fig.update_traces(hovertemplate="%{x}<br>%{customdata[0]}: %{y:,.1f}<extra></extra>")
     fig.update_layout(height=330, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None), xaxis_title=None, yaxis_title=None)
     st.plotly_chart(fig, use_container_width=True, key=key)
+
 
 
 # ──────────────────────────────────
@@ -643,6 +788,7 @@ def main():
     # ──────────────────────────────────
     today = datetime.now().date()
     _def_s, _def_e = today - timedelta(days=14), today - timedelta(days=1)
+    _def_s2, _def_e2 = today, today + timedelta(days=13)
     _min_d, _max_d = today - timedelta(days=365), today + timedelta(days=365)
 
 
@@ -653,59 +799,62 @@ def main():
     st.markdown("<h5 style='margin:0'>제목 1</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 1", unsafe_allow_html=True)
 
-    # 롱포맷 통합 데이터 생성
-    df_flow = pd.concat([_build_long_df1(df1), _build_long_df2(df2)], ignore_index=True)
-    df_flow["event_date"] = pd.to_datetime(df_flow["event_date"], errors="coerce").dt.normalize()
-    df_flow["cnt"] = pd.to_numeric(df_flow["cnt"], errors="coerce").fillna(0)
-    df_flow = df_flow.dropna(subset=["event_date"])
+    # 데이터 (롱포맷 통합형)
+    df_total = pd.concat([_build_long_df1(df1), _build_long_df2(df2)], ignore_index=True)
+    df_total["event_date"] = pd.to_datetime(df_total["event_date"], errors="coerce").dt.normalize()
+    df_total["cnt"] = pd.to_numeric(df_total["cnt"], errors="coerce").fillna(0)
+    df_total = df_total.dropna(subset=["event_date"])
 
-    # 공통 필터 및 차트 뷰 선택 (통합)
+    # 필터
     with st.expander("공통 Filter", expanded=True):
-        f1, f2, _p = st.columns([1.5, 1, 1], vertical_alignment="bottom")
+        f1, f2, _p = st.columns([2, 2, 2], vertical_alignment="bottom")
         with f1:
-            flow_date = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="flow_date_rng")
+            date_default = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="daily_dd")
         with f2:
-            chart_view = st.selectbox(
-                "그래프 선택", 
+            sel_chart = st.selectbox("그래프 선택",
                 [
-                    "1. 전체 방문 추이", 
-                    "2. 예약 VS 워크인 비중", 
-                    "3. 방문 VS 노쇼 비중",
-                    "4. 조회 대비 예약"
-                ],
-                key="flow_chart_view"
-            )
+                "1. 전체 방문 추이", 
+                "2. 예약 VS 워크인 비중", 
+                "3. 방문 VS 노쇼 비중",
+                "4. 조회 대비 예약"
+                ], key="daily_cv")
     
-    if isinstance(flow_date, (list, tuple)) and len(flow_date) == 2: flow_s, flow_e = flow_date
-    else: flow_s, flow_e = _def_s, _def_e
+    if isinstance(date_default, (list, tuple)) and len(date_default) == 2:
+        def_s, def_e = date_default
+    else:
+        def_s, def_e = _def_s, _def_e
 
-    top_tabs = st.tabs(["지점별", "권역별", "유형별"])
-    with top_tabs[0]:
-        sel_branch = st.selectbox("", get_dim_options(df_flow, "shrm_branch"), label_visibility="collapsed", key="flow_branch")
-        daily = build_total_table(df_flow, flow_s, flow_e, "shrm_branch", sel_branch)
-        render_total_card(daily)
-        render_selected_graph(daily, f"br_{sel_branch}", chart_view)
-        render_total_table(daily)
-    with top_tabs[1]:
-        opts = [x for x in get_dim_options(df_flow, "shrm_region") if x != ALL_LABEL]
+    # 렌더링
+    tabs_daily = st.tabs(["지점별", "권역별", "유형별"])
+    
+    with tabs_daily[0]:
+        sel_branch = st.selectbox("", dim_options(df_total, "shrm_branch"), label_visibility="collapsed", key="daily_sb")
+        daily = build_daily(df_total, def_s, def_e, "shrm_branch", sel_branch)
+        render_daily_card(daily)
+        render_daily_graph(daily, f"brh_{sel_branch}", sel_chart)
+        render_daily_table(daily)
+    
+    with tabs_daily[1]:
+        opts = [x for x in dim_options(df_total, "shrm_region") if x != "전체"]
         if opts:
             sub_tabs = st.tabs(opts)
             for i, opt in enumerate(opts):
                 with sub_tabs[i]:
-                    daily = build_total_table(df_flow, flow_s, flow_e, "shrm_region", opt)
-                    render_total_card(daily)
-                    render_selected_graph(daily, f"reg_{opt}", chart_view)
-                    render_total_table(daily)
-    with top_tabs[2]:
-        opts = [x for x in get_dim_options(df_flow, "shrm_type") if x != ALL_LABEL]
+                    daily = build_daily(df_total, def_s, def_e, "shrm_region", opt)
+                    render_daily_card(daily)
+                    render_daily_graph(daily, f"reg_{opt}", sel_chart)
+                    render_daily_table(daily)
+    
+    with tabs_daily[2]:
+        opts = [x for x in dim_options(df_total, "shrm_type") if x != "전체"]
         if opts:
             sub_tabs = st.tabs(opts)
             for i, opt in enumerate(opts):
                 with sub_tabs[i]:
-                    daily = build_total_table(df_flow, flow_s, flow_e, "shrm_type", opt)
-                    render_total_card(daily)
-                    render_selected_graph(daily, f"typ_{opt}", chart_view)
-                    render_total_table(daily)
+                    daily = build_daily(df_total, def_s, def_e, "shrm_type", opt)
+                    render_daily_card(daily)
+                    render_daily_graph(daily, f"typ_{opt}", sel_chart)
+                    render_daily_table(daily)
 
 
     # ──────────────────────────────────
@@ -714,8 +863,49 @@ def main():
     st.header(" ")
     st.markdown("<h5 style='margin:0'>제목 2</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 2", unsafe_allow_html=True)
-    st.warning("예약 현황 및 방문 트래픽 예측")
-    st.warning("과거 패턴 기반 방문 예측 모델 구축 중")
+    
+    # 데이터
+    df_resv = df_total[df_total["event_type"] == "res_cnt"]  
+
+    # 필터
+    with st.expander("공통 Filter", expanded=True):
+        f1, _p = st.columns([2, 4], vertical_alignment="bottom")
+        with f1:
+            date_default = st.date_input("기간 선택", value=[_def_s2, _def_e2], min_value=_min_d, max_value=_max_d, key="resv_dd")
+    
+    if isinstance(date_default, (list, tuple)) and len(date_default) == 2:
+        def_s, def_e = date_default
+    else:
+        def_s, def_e = _def_s2, _def_e2
+
+    # 렌더링
+    tabs_resv = st.tabs(["지점별", "권역별", "유형별"])
+    
+    with tabs_resv[0]:
+        sel_branch = st.selectbox("", dim_options(df_resv, "shrm_branch"), label_visibility="collapsed", key="resv_sb")
+        resv = build_resv(df_resv, def_s, def_e, "shrm_branch", sel_branch)
+        render_resv_graph(resv, f"brh_{sel_branch}")
+        render_resv_table(resv)
+    
+    with tabs_resv[1]:
+        opts = [x for x in dim_options(df_resv, "shrm_region") if x != "전체"]
+        if opts:
+            sub_tabs = st.tabs(opts)
+            for i, opt in enumerate(opts):
+                with sub_tabs[i]:
+                    resv = build_resv(df_resv, def_s, def_e, "shrm_region", opt)
+                    render_resv_graph(resv, f"reg_{opt}")
+                    render_resv_table(resv)
+    
+    with tabs_resv[2]:
+        opts = [x for x in dim_options(df_resv, "shrm_type") if x != "전체"]
+        if opts:
+            sub_tabs = st.tabs(opts)
+            for i, opt in enumerate(opts):
+                with sub_tabs[i]:
+                    resv = build_resv(df_resv, def_s, def_e, "shrm_type", opt)
+                    render_resv_graph(resv, f"typ_{opt}")
+                    render_resv_table(resv)
 
 
     # ──────────────────────────────────
@@ -724,33 +914,42 @@ def main():
     st.header(" ")
     st.markdown("<h5 style='margin:0'>제목 3</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 3", unsafe_allow_html=True)
-
+    
+    # 필터
     with st.expander("공통 Filter", expanded=True):
-        f1, f2, _p = st.columns([1.5, 1, 1], vertical_alignment="bottom")
-        with f1: prof_date = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="prof_date")
-        with f2: sel_vt = st.selectbox("예약 VS 워크인 선택", get_dim_options(df1, "visit_type"), key="prof_vt")
+        f1, f2, _p = st.columns([2, 2, 2], vertical_alignment="bottom")
+        with f1:
+            date_default = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="prof_dd")
+        with f2:
+            sel_visit = st.selectbox("예약 VS 워크인 선택", dim_options(df1, "visit_type"), key="prof_sv")
 
-    df1_p = filter_dim(filter_by_date(df1, prof_date), "visit_type", sel_vt)
-    df_aw_p = filter_dim(filter_by_date(df_aw, prof_date), "visit_type", sel_vt)
+    # 데이터
+    df_prof_tt = filter_by_dim(filter_by_date(df1, date_default), "visit_type", sel_visit)
+    df_prof_aw = filter_by_dim(filter_by_date(df_aw, date_default), "visit_type", sel_visit)
 
-    top_tabs_p = st.tabs(["지점별", "권역별", "유형별"])
-    with top_tabs_p[0]:
-        sel_br = st.selectbox("", get_dim_options(df1_p, "shrm_branch"), label_visibility="collapsed", key="prof_br")
-        render_profile_block(filter_dim(df1_p, "shrm_branch", sel_br), filter_dim(df_aw_p, "shrm_branch", sel_br), f"br_{sel_br}")
-    with top_tabs_p[1]:
-        opts = [x for x in get_dim_options(df1_p, "shrm_region") if x != ALL_LABEL]
+    # 렌더링
+    tabs_prof = st.tabs(["지점별", "권역별", "유형별"])
+    
+    with tabs_prof[0]:
+        sel_branch = st.selectbox("", dim_options(df_prof_tt, "shrm_branch"), label_visibility="collapsed", key="prof_sb")
+        render_prof_block(filter_by_dim(df_prof_tt, "shrm_branch", sel_branch), filter_by_dim(df_prof_aw, "shrm_branch", sel_branch), f"brh_{sel_branch}")
+    
+    with tabs_prof[1]:
+        opts = [x for x in dim_options(df_prof_tt, "shrm_region") if x != "전체"]
         if opts:
             sub_tabs = st.tabs(opts)
             for i, opt in enumerate(opts):
                 with sub_tabs[i]:
-                    render_profile_block(filter_dim(df1_p, "shrm_region", opt), filter_dim(df_aw_p, "shrm_region", opt), f"reg_{opt}")
-    with top_tabs_p[2]:
-        opts = [x for x in get_dim_options(df1_p, "shrm_type") if x != ALL_LABEL]
+                    render_prof_block(filter_by_dim(df_prof_tt, "shrm_region", opt), filter_by_dim(df_prof_aw, "shrm_region", opt), f"reg_{opt}")
+    
+    with tabs_prof[2]:
+        opts = [x for x in dim_options(df_prof_tt, "shrm_type") if x != "전체"]
         if opts:
             sub_tabs = st.tabs(opts)
             for i, opt in enumerate(opts):
                 with sub_tabs[i]:
-                    render_profile_block(filter_dim(df1_p, "shrm_type", opt), filter_dim(df_aw_p, "shrm_type", opt), f"typ_{opt}")
+                    render_prof_block(filter_by_dim(df_prof_tt, "shrm_type", opt), filter_by_dim(df_prof_aw, "shrm_type", opt), f"typ_{opt}")
+
 
     # ──────────────────────────────────
     # 4)
@@ -761,37 +960,37 @@ def main():
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 4", unsafe_allow_html=True)
 
     with st.expander("공통 Filter", expanded=True):
-        t_f1, t_f2, _p = st.columns([1.5, 1, 1], vertical_alignment="bottom")
+        t_f1, t_f2, _p = st.columns([2, 2, 2], vertical_alignment="bottom")
         with t_f1: trend_date = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="t_date")
-        with t_f2: sel_t_vt = st.selectbox("예약 VS 워크인 선택", get_dim_options(df1, "visit_type"), key="t_vt")
+        with t_f2: sel_t_vt = st.selectbox("예약 VS 워크인 선택", dim_options(df1, "visit_type"), key="t_vt")
 
         t_f4, t_f3, t_f5, t_f7, t_f6, t_f8 = st.columns(6, vertical_alignment="bottom")
-        with t_f4: sel_t_age = st.selectbox("연령대 선택", get_dim_options(df1, "demo_age"), key="t_age")
-        with t_f3: sel_t_gender = st.selectbox("성별 선택", get_dim_options(df1, "demo_gender"), key="t_gender")
-        with t_f5: sel_t_purp = st.selectbox("구매목적 선택", get_dim_options(df1, "purchase_purpose"), key="t_purp")
-        with t_f7: sel_t_branch = st.selectbox("쇼룸 지점 선택", get_dim_options(df1, "shrm_branch"), key="t_branch")
-        with t_f6: sel_t_region = st.selectbox("쇼룸 권역 선택", get_dim_options(df1, "shrm_region"), key="t_region")
-        with t_f8: sel_t_type = st.selectbox("쇼룸 유형 선택", get_dim_options(df1, "shrm_type"), key="t_type")
+        with t_f4: sel_t_age = st.selectbox("연령대 선택", dim_options(df1, "demo_age"), key="t_age")
+        with t_f3: sel_t_gender = st.selectbox("성별 선택", dim_options(df1, "demo_gender"), key="t_gender")
+        with t_f5: sel_t_purp = st.selectbox("구매목적 선택", dim_options(df1, "purchase_purpose"), key="t_purp")
+        with t_f7: sel_t_branch = st.selectbox("쇼룸 지점 선택", dim_options(df1, "shrm_branch"), key="t_branch")
+        with t_f6: sel_t_region = st.selectbox("쇼룸 권역 선택", dim_options(df1, "shrm_region"), key="t_region")
+        with t_f8: sel_t_type = st.selectbox("쇼룸 유형 선택", dim_options(df1, "shrm_type"), key="t_type")
 
 
     df1_t, df_aw_t = filter_by_date(df1, trend_date), filter_by_date(df_aw, trend_date)
     
     for col, val in {"visit_type": sel_t_vt, "demo_gender": sel_t_gender, "demo_age": sel_t_age, "purchase_purpose": sel_t_purp, "shrm_region": sel_t_region, "shrm_branch": sel_t_branch, "shrm_type": sel_t_type}.items():
-        df1_t = filter_dim(df1_t, col, val)
-        df_aw_t = filter_dim(df_aw_t, col, val)
+        df1_t = filter_by_dim(df1_t, col, val)
+        df_aw_t = filter_by_dim(df_aw_t, col, val)
 
     if not df1_t.empty: df1_t["cnt"] = 1
 
     trend_tabs = st.tabs(["인지단계", "인지채널", "연령대", "성별", "구매목적", "지점별", "권역별", "유형별"])
     
-    with trend_tabs[0]: _render_trend_chart(df_aw_t, "event_date", "awareness_type_a", "weight", "tr_aw_stg") #인지단계
-    with trend_tabs[1]: _render_trend_chart(df_aw_t, "event_date", "awareness_type_b", "weight", "tr_aw_chn") #인지채널
-    with trend_tabs[2]: _render_trend_chart(df1_t, "event_date", "demo_age", "cnt", "tr_age") # 연령대
-    with trend_tabs[3]: _render_trend_chart(df1_t, "event_date", "demo_gender", "cnt", "tr_gen") # 성별
-    with trend_tabs[4]: _render_trend_chart(df1_t, "event_date", "purchase_purpose", "cnt", "tr_purp") #구매목적
-    with trend_tabs[5]: _render_trend_chart(df1_t, "event_date", "shrm_branch", "cnt", "tr_brn") #지점
-    with trend_tabs[6]: _render_trend_chart(df1_t, "event_date", "shrm_region", "cnt", "tr_reg") #권역
-    with trend_tabs[7]: _render_trend_chart(df1_t, "event_date", "shrm_type", "cnt", "tr_typ") #유형
+    with trend_tabs[0]: render_trend_graph(df_aw_t, "event_date", "awareness_type_a", "weight", "tr_aw_stg") #인지단계
+    with trend_tabs[1]: render_trend_graph(df_aw_t, "event_date", "awareness_type_b", "weight", "tr_aw_chn") #인지채널
+    with trend_tabs[2]: render_trend_graph(df1_t, "event_date", "demo_age", "cnt", "tr_age") # 연령대
+    with trend_tabs[3]: render_trend_graph(df1_t, "event_date", "demo_gender", "cnt", "tr_gen") # 성별
+    with trend_tabs[4]: render_trend_graph(df1_t, "event_date", "purchase_purpose", "cnt", "tr_purp") #구매목적
+    with trend_tabs[5]: render_trend_graph(df1_t, "event_date", "shrm_branch", "cnt", "tr_brn") #지점
+    with trend_tabs[6]: render_trend_graph(df1_t, "event_date", "shrm_region", "cnt", "tr_reg") #권역
+    with trend_tabs[7]: render_trend_graph(df1_t, "event_date", "shrm_type", "cnt", "tr_typ") #유형
 
 
 if __name__ == "__main__":
