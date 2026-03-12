@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 from datetime import datetime, timedelta
+from pandas.io.formats.style import Styler
 
 # ──────────────────────────────────
 # TRANSFORM (데이터 변환/정렬)
@@ -426,7 +427,7 @@ def style_cmap(
     *,
     default_cmap: str = "OrRd",
     na_color: str = "#ffffff",
-) -> pd.io.formats.style.Styler:
+) -> Styler:
     """
     - cmap_span : 컬러맵 일부 구간만 사용 (색 강도 제어)
     - robust_clip : 분위수 기반 min/max (이상치 영향 제거)
@@ -437,7 +438,7 @@ def style_cmap(
     """
 
     # --- styler 확보 ---
-    if isinstance(df_or_styler, pd.io.formats.style.Styler):
+    if isinstance(df_or_styler, Styler):
         styler = df_or_styler
         df = styler.data
     else:
