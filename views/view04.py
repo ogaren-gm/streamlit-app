@@ -685,10 +685,18 @@ def main():
         df1 = parse_shrm(df1); df1 = df1[df1["shrm_name"].astype("string").fillna("").str.strip() != ""]
         df2 = parse_shrm(df2); df2 = df2[df2["shrm_name"].astype("string").fillna("").str.strip() != ""]
 
+        # [추가] 숫자형 컬럼 변환 (취소 컬럼 포함)
+        numeric_cols = ["look_cnt", "res_cnt", "bookreq_cnt", "rescancel_cnt", "bookcancel_cnt"]
+        for col in numeric_cols:
+            if col in df2.columns:
+                df2[col] = pd.to_numeric(df2[col], errors="coerce").fillna(0)
+
+        # 카테고리컬 컬럼 정규화
         for d in [df1, df2]:
             for c in COLS_CATEGORICAL:
                 if c in d.columns: d[c] = d[c].astype("category")
-
+        
+        # 날짜 정규화
         if "event_date" in df1.columns: df1["event_date"] = pd.to_datetime(df1["event_date"], errors="coerce").dt.normalize()
         if "event_date" in df2.columns: df2["event_date"] = pd.to_datetime(df2["event_date"], errors="coerce").dt.normalize()
 
@@ -799,15 +807,9 @@ def main():
     st.markdown("<h5 style='margin:0'>제목 1</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 1", unsafe_allow_html=True)
 
-    # 데이터 (롱포맷 통합형)
-    df_total = pd.concat([_build_long_df1(df1), _build_long_df2(df2)], ignore_index=True)
-    df_total["event_date"] = pd.to_datetime(df_total["event_date"], errors="coerce").dt.normalize()
-    df_total["cnt"] = pd.to_numeric(df_total["cnt"], errors="coerce").fillna(0)
-    df_total = df_total.dropna(subset=["event_date"])
-
     # 필터
     with st.expander("공통 Filter", expanded=True):
-        f1, f2, _p = st.columns([2, 2, 2], vertical_alignment="bottom")
+        f1, f2, f3 = st.columns([2, 2, 2], vertical_alignment="bottom")
         with f1:
             date_default = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="daily_dd")
         with f2:
@@ -818,7 +820,23 @@ def main():
                 "3. 방문 VS 노쇼 비중",
                 "4. 조회 대비 예약"
                 ], key="daily_cv")
-    
+        with f3:
+            sel_mode = st.radio("예약 집계 선택", ["취소 제외", "취소 포함"], horizontal=True, key="daily_sm")
+
+    # 데이터 가공 로직 반영
+    df2_tmp = df2.copy()
+    if sel_mode == "취소 제외":
+        if "rescancel_cnt" in df2_tmp.columns:
+            df2_tmp["res_cnt"] = (df2_tmp["res_cnt"] - df2_tmp["rescancel_cnt"]).clip(lower=0)
+        if "bookcancel_cnt" in df2_tmp.columns:
+            df2_tmp["bookreq_cnt"] = (df2_tmp["bookreq_cnt"] - df2_tmp["bookcancel_cnt"]).clip(lower=0)
+
+    # 데이터 (롱포맷 통합형)
+    df_total = pd.concat([_build_long_df1(df1), _build_long_df2(df2_tmp)], ignore_index=True)
+    df_total["event_date"] = pd.to_datetime(df_total["event_date"], errors="coerce").dt.normalize()
+    df_total["cnt"] = pd.to_numeric(df_total["cnt"], errors="coerce").fillna(0)
+    df_total = df_total.dropna(subset=["event_date"])
+
     if isinstance(date_default, (list, tuple)) and len(date_default) == 2:
         def_s, def_e = date_default
     else:
@@ -864,15 +882,25 @@ def main():
     st.markdown("<h5 style='margin:0'>제목 2</h5>", unsafe_allow_html=True)
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 2", unsafe_allow_html=True)
     
-    # 데이터
-    df_resv = df_total[df_total["event_type"] == "res_cnt"]  
-
     # 필터
     with st.expander("공통 Filter", expanded=True):
-        f1, _p = st.columns([2, 4], vertical_alignment="bottom")
+        f1, f2 = st.columns([2, 4], vertical_alignment="bottom")
         with f1:
             date_default = st.date_input("기간 선택", value=[_def_s2, _def_e2], min_value=_min_d, max_value=_max_d, key="resv_dd")
-    
+        with f2:
+            sel_mode = st.radio("예약 집계 선택", ["취소 제외", "취소 포함"], horizontal=True, key="resv_sm")
+
+    # 데이터 가공 로직 반영
+    df2_resv_tmp = df2.copy()
+    if sel_mode == "취소 제외":
+        if "rescancel_cnt" in df2_resv_tmp.columns:
+            df2_resv_tmp["res_cnt"] = (df2_resv_tmp["res_cnt"] - df2_resv_tmp["rescancel_cnt"]).clip(lower=0)
+
+    # 데이터 (롱포맷 통합형2)
+    df_resv = pd.concat([_build_long_df1(df1), _build_long_df2(df2_resv_tmp)], ignore_index=True)
+    df_resv["event_date"] = pd.to_datetime(df_resv["event_date"], errors="coerce").dt.normalize()
+    df_resv = df_resv[df_resv["event_type"] == "res_cnt"]
+
     if isinstance(date_default, (list, tuple)) and len(date_default) == 2:
         def_s, def_e = date_default
     else:
