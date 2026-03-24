@@ -260,6 +260,87 @@ def filter_df3(df: pd.DataFrame, start_dt, end_dt, dim_col: str | None = None, d
     return d
 
 
+def build_walkin_pred(
+    df: pd.DataFrame,
+    pred_start,
+    pred_end,
+    dim_col: str,
+    dim_val=None,
+    lookback_weeks: int = 2,
+) -> pd.DataFrame:
+    s_pred = pd.to_datetime(pred_start, errors="coerce").normalize()
+    e_pred = pd.to_datetime(pred_end, errors="coerce").normalize()
+
+    if pd.isna(s_pred) or pd.isna(e_pred):
+        return pd.DataFrame(columns=["날짜", dim_col, "pred_walkin"])
+
+    w = df.copy()
+    w["event_date"] = pd.to_datetime(w["event_date"], errors="coerce").dt.normalize()
+    w["cnt"] = pd.to_numeric(w["cnt"], errors="coerce").fillna(0)
+    w = w.dropna(subset=["event_date"])
+
+    w[dim_col] = w[dim_col].astype("string").fillna("").astype(str).str.strip()
+    w = w[w[dim_col] != ""]
+
+    if isinstance(dim_val, (list, tuple, set)):
+        dims = [str(x).strip() for x in dim_val if str(x).strip() and str(x).strip() != "전체"]
+    elif dim_val not in [None, "", "전체"]:
+        dims = [str(dim_val).strip()]
+    else:
+        dims = sorted(w[dim_col].dropna().astype(str).unique().tolist())
+
+    if not dims:
+        return pd.DataFrame(columns=["날짜", dim_col, "pred_walkin"])
+
+    future_dates = pd.date_range(s_pred, e_pred, freq="D")
+    out = []
+
+    for pred_dt in future_dates:
+        hist_end = pred_dt - pd.Timedelta(days=1)
+        hist_start = hist_end - pd.Timedelta(days=lookback_weeks * 7 - 1)
+        weekday = pred_dt.dayofweek
+
+        hist = w[(w["event_date"] >= hist_start) & (w["event_date"] <= hist_end)]
+        hist = hist[hist[dim_col].isin(dims)]
+
+        # 날짜×차원별 일합계
+        daily = (
+            hist.groupby(["event_date", dim_col], dropna=False, as_index=False)["cnt"]
+            .sum()
+            .rename(columns={"event_date": "날짜"})
+        )
+
+        # 빈 날짜도 0으로 채우기
+        hist_dates = pd.date_range(hist_start, hist_end, freq="D")
+        full_daily = pd.MultiIndex.from_product(
+            [hist_dates, dims],
+            names=["날짜", dim_col]
+        ).to_frame(index=False)
+
+        daily = full_daily.merge(daily, on=["날짜", dim_col], how="left")
+        daily["cnt"] = pd.to_numeric(daily["cnt"], errors="coerce").fillna(0)
+        daily["weekday"] = daily["날짜"].dt.dayofweek
+
+        # 예측일과 같은 요일만 사용
+        base = (
+            daily[daily["weekday"] == weekday]
+            .groupby(dim_col, dropna=False, as_index=False)["cnt"]
+            .mean()
+            .rename(columns={"cnt": "pred_walkin"})
+        )
+
+        base["날짜"] = pred_dt
+        out.append(base[["날짜", dim_col, "pred_walkin"]])
+
+    if not out:
+        return pd.DataFrame(columns=["날짜", dim_col, "pred_walkin"])
+
+    out = pd.concat(out, ignore_index=True)
+    out["pred_walkin"] = pd.to_numeric(out["pred_walkin"], errors="coerce").fillna(0).round(0).astype(int)
+
+    return out[["날짜", dim_col, "pred_walkin"]]
+
+
 # ──────────────────────────────────
 # UI 렌더링 함수들 (섹션 1~4)
 # ──────────────────────────────────
@@ -406,20 +487,93 @@ def render_funnel_graph_right(df: pd.DataFrame, tab_key: str):
 
 
 # [섹션 3]
-def render_resv_graph(df: pd.DataFrame, dim_col: str, key_tag: str):
+# def render_resv_graph(df: pd.DataFrame, dim_col: str, key_tag: str):
+#     g = df.groupby("날짜", dropna=False, as_index=False)["res_cnt"].sum().sort_values("날짜")
+#     h = df.groupby(["날짜", dim_col], dropna=False, as_index=False)["res_cnt"].sum()
+#     h = h[h["res_cnt"] > 0]
+
+#     hover_map = (h.assign(txt=h[dim_col].astype(str) + ": " + h["res_cnt"].map(lambda x: f"{x:,.0f}")).groupby("날짜")["txt"].apply(lambda s: "<br>".join(s.tolist())).to_dict())
+#     g["hover_txt"] = g["날짜"].map(hover_map).fillna("")
+
+#     fig = go.Figure()
+#     fig.add_trace(go.Bar(x=g["날짜"], y=g["res_cnt"], name="예약이용수", showlegend=True, marker_color="#cfdcf0", text=g["res_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition="outside", cliponaxis=False, customdata=g["hover_txt"], hovertemplate="%{customdata}<extra></extra>",))
+#     fig.update_traces(marker_opacity=0.8)
+#     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+#     fig.update_layout(barmode="stack", height=330, hovermode="x unified", margin=dict(l=10, r=10, t=10, b=10), bargap=0.4, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None))
+#     st.plotly_chart(fig, use_container_width=True, key=f"resv_fig_{key_tag}")
+def render_resv_graph(
+    df: pd.DataFrame,
+    dim_col: str,
+    key_tag: str,
+    df_pred: pd.DataFrame | None = None,
+    show_pred: bool = False,
+):
     g = df.groupby("날짜", dropna=False, as_index=False)["res_cnt"].sum().sort_values("날짜")
     h = df.groupby(["날짜", dim_col], dropna=False, as_index=False)["res_cnt"].sum()
     h = h[h["res_cnt"] > 0]
 
-    hover_map = (h.assign(txt=h[dim_col].astype(str) + ": " + h["res_cnt"].map(lambda x: f"{x:,.0f}")).groupby("날짜")["txt"].apply(lambda s: "<br>".join(s.tolist())).to_dict())
+    hover_map = (
+        h.assign(txt=h[dim_col].astype(str) + ": " + h["res_cnt"].map(lambda x: f"{x:,.0f}"))
+         .groupby("날짜")["txt"]
+         .apply(lambda s: "<br>".join(s.tolist()))
+         .to_dict()
+    )
     g["hover_txt"] = g["날짜"].map(hover_map).fillna("")
 
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=g["날짜"], y=g["res_cnt"], name="예약이용수", showlegend=True, marker_color="#cfdcf0", text=g["res_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition="outside", cliponaxis=False, customdata=g["hover_txt"], hovertemplate="%{customdata}<extra></extra>",))
+    fig.add_trace(
+        go.Bar(
+            x=g["날짜"],
+            y=g["res_cnt"],
+            name="예약이용수",
+            showlegend=True,
+            marker_color="#cfdcf0",
+            text=g["res_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""),
+            textposition="inside",
+            insidetextanchor="middle",
+            textangle=0,
+            customdata=g["hover_txt"],
+            hovertemplate="%{customdata}<extra></extra>",
+        )
+    )
+
+    if show_pred and df_pred is not None and not df_pred.empty and "pred_walkin" in df_pred.columns:
+        p = df_pred.copy()
+        p["날짜"] = pd.to_datetime(p["날짜"], errors="coerce").dt.normalize()
+        p["pred_walkin"] = pd.to_numeric(p["pred_walkin"], errors="coerce").fillna(0)
+        p = (
+            p.groupby("날짜", dropna=False, as_index=False)["pred_walkin"]
+            .sum()
+            .sort_values("날짜")
+        )
+
+        fig.add_trace(
+            go.Bar(
+                x=p["날짜"],
+                y=p["pred_walkin"],
+                name="예측 워크인수",
+                marker_color="#10b981",
+                text=p["pred_walkin"].map(lambda x: f"{x:,.0f}" if x > 0 else ""),
+                textposition="inside",
+                insidetextanchor="middle",
+                textangle=0,
+                hovertemplate="예측 워크인수: %{y:,.0f}<extra></extra>",
+                showlegend=True,
+            )
+        )
+
     fig.update_traces(marker_opacity=0.8)
-    fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-    fig.update_layout(barmode="stack", height=330, hovermode="x unified", margin=dict(l=10, r=10, t=10, b=10), bargap=0.4, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None))
+    fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__") if getattr(t, "type", "") == "bar" else None)
+    fig.update_layout(
+        barmode="stack",
+        height=330,
+        hovermode="x unified",
+        margin=dict(l=10, r=10, t=10, b=10),
+        bargap=0.4,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None),
+    )
     st.plotly_chart(fig, use_container_width=True, key=f"resv_fig_{key_tag}")
+
 
 def render_resv_table(df_raw, start_dt, end_dt, filter_col, filter_val=None, table_col="shrm_branch"):
     d = filter_by_date(df_raw, (start_dt, end_dt), col="event_date")
@@ -629,12 +783,40 @@ def render_content_by_section(section_id, df_main, df_aux, def_s, def_e, dim_col
             render_funnel_graph_right(daily, f"right_{k}")
             render_funnel_dim_table(df_main, def_s, def_e, filter_col=dim_col, filter_val=dim_val, table_col="shrm_branch", target_event="bookreq_cnt")
 
+    # elif section_id == "resv":
+    #     resv = build_resv(df_main, def_s, def_e, dim_col, dim_val)
+    #     g1, _p, g2 = st.columns([1, 0.03, 1], vertical_alignment="top")
+    #     with g1:
+    #         st.markdown("""<h6 style="margin:0;">🔔 예약이용수 추이</h6>""", unsafe_allow_html=True)
+    #         render_resv_graph(resv, dim_col, f"resv_{k}")
+    #         render_resv_table(df_main, def_s, def_e, filter_col=dim_col, filter_val=dim_val, table_col="shrm_branch")
+    #     with g2:
+    #         st.markdown("""<h6 style="margin:0;">🔔 리드타임</h6>""", unsafe_allow_html=True)
+    #         render_lead_graph(df_aux, def_s, def_e, dim_col, dim_val, base_col="이용일")
+    #         render_lead_table(df_aux, def_s, def_e, dim_col, dim_val)
     elif section_id == "resv":
         resv = build_resv(df_main, def_s, def_e, dim_col, dim_val)
+        df_pred = pd.DataFrame()
+        if kwargs.get("apply_pred_walkin") == "적용":
+            df_pred = build_walkin_pred(
+                kwargs.get("df_walkin_src"),
+                def_s,
+                def_e,
+                dim_col=dim_col,
+                dim_val=dim_val,
+                lookback_weeks=kwargs.get("pred_weeks", 2),
+            )
         g1, _p, g2 = st.columns([1, 0.03, 1], vertical_alignment="top")
         with g1:
-            st.markdown("""<h6 style="margin:0;">🔔 예약이용수 추이</h6>""", unsafe_allow_html=True)
-            render_resv_graph(resv, dim_col, f"resv_{k}")
+            ttl_rev = "🔔 예약이용수 추이 & 예측 워크인수 합산" if kwargs.get("apply_pred_walkin") == "적용" else "🔔 예약이용수 추이"    
+            st.markdown(f"""<h6 style="margin:0;">{ttl_rev}</h6>""", unsafe_allow_html=True)
+            render_resv_graph(
+                resv,
+                dim_col,
+                f"resv_{k}",
+                df_pred=df_pred,
+                show_pred=(kwargs.get("apply_pred_walkin") == "적용"),
+            )
             render_resv_table(df_main, def_s, def_e, filter_col=dim_col, filter_val=dim_val, table_col="shrm_branch")
         with g2:
             st.markdown("""<h6 style="margin:0;">🔔 리드타임</h6>""", unsafe_allow_html=True)
@@ -806,7 +988,7 @@ def main():
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 1", unsafe_allow_html=True)
 
     with st.expander("공통 Filter", expanded=True):
-        f1, f2, f3 = st.columns([2, 2, 2], vertical_alignment="bottom")
+        f1, f2, _p, f3 = st.columns([2, 2, 0.1, 2], vertical_alignment="bottom")
         with f1: date_default = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="daily_dd")
         with f2: sel_chart = st.selectbox("그래프 선택", ["방문수 추이 (예약 & 워크인)", "방문수 비중 (예약 vs 워크인)", "노쇼 추이 (예약이용 中 예약)", "조회 및 예약 추이 (조회수 中 예약신청)"], key="daily_cv")
         with f3: sel_mode = st.radio("예약 집계 선택", ["취소 제외", "취소 포함"], horizontal=True, key="daily_sm")
@@ -845,9 +1027,16 @@ def main():
     st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 3", unsafe_allow_html=True)
     
     with st.expander("공통 Filter", expanded=True):
-        f1, f2 = st.columns([2, 4], vertical_alignment="bottom")
+        f1, f2, f3 = st.columns([2, 2, 2], vertical_alignment="bottom")
         with f1: date_default_resv = st.date_input("기간 선택", value=[_def_s2, _def_e2], min_value=_min_d, max_value=_max_d, key="resv_dd")
         with f2: sel_mode_resv = st.radio("예약 집계 선택", ["취소 제외", "취소 포함"], horizontal=True, key="resv_sm")
+        with f3:
+            apply_pred_walkin = st.radio(
+                "예측 워크인 적용",
+                ["적용안함", "적용"],
+                horizontal=True,
+                key="resv_pred_apply"
+            )
 
     # 데이터 전처리
     df2_resv_tmp, df3_resv_tmp = df2.copy(), df3.copy()
@@ -862,9 +1051,26 @@ def main():
 
     def_s_resv, def_e_resv = get_safe_dates(date_default_resv, _def_s2, _def_e2)
 
-    # 탭 자동화 렌더러 호출
-    render_dashboard_section("resv", df_resv, df3_resv_tmp, def_s_resv, def_e_resv)
+    df_walkin_src = _build_long_df1(df1)
+    df_walkin_src["event_date"] = pd.to_datetime(df_walkin_src["event_date"], errors="coerce").dt.normalize()
+    df_walkin_src["cnt"] = pd.to_numeric(df_walkin_src["cnt"], errors="coerce").fillna(0)
+    df_walkin_src = df_walkin_src[
+        (df_walkin_src["event_type"] == "visit_walkin") &
+        (df_walkin_src["event_date"].notna())
+    ]
 
+    # 탭 자동화 렌더러 호출
+    # render_dashboard_section("resv", df_resv, df3_resv_tmp, def_s_resv, def_e_resv)
+    render_dashboard_section(
+        "resv",
+        df_resv,
+        df3_resv_tmp,
+        def_s_resv,
+        def_e_resv,
+        df_walkin_src=df_walkin_src,
+        apply_pred_walkin=apply_pred_walkin,
+        pred_weeks=2,
+    )
 
     # ──────────────────────────────────
     # 4) 섹션 4
