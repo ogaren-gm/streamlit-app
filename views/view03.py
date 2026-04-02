@@ -31,7 +31,7 @@ CFG = {
     "HIER_BRAND": ["슬립퍼", "누어", "토들즈"],                # Order Rule - 대분류 고정 순서
     "HIER_CATE": ["매트리스", "프레임", "부자재"],    # Order Rule - 중분류 우선 순위
 
-    "OPTS_TOPK": [5, 10, 15, 20],
+    "OPTS_TOPK": [5, 10, 15, 20, '전체'],
     "OPTS_PERIOD": ["일별", "주별"],
     "OPTS_PATH": ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"],
 
@@ -185,8 +185,18 @@ def _agg_period_dim(tb: pd.DataFrame, mode: str, dim: pd.Series, dim_label: str,
     s = dim.reindex(tmp.index).astype(str).replace("nan", "").fillna("").str.strip()
     s = s.replace("", "기타")
 
-    topv = set(ui.get_topk_values(s[s != "기타"], topk))
-    tmp.loc[:, "_dim2"] = s.where(s.isin(topv), "기타")
+    # --- 수정 부분 시작 ---
+    if topk == "전체":
+        # TOP K 제한 없이 원본 차원 그대로 사용
+        tmp.loc[:, "_dim2"] = s
+    else:
+        # 기존 TOP K 로직 유지
+        topv = set(ui.get_topk_values(s[s != "기타"], topk))
+        tmp.loc[:, "_dim2"] = s.where(s.isin(topv), "기타")
+    # --- 수정 부분 끝 ---
+
+    # topv = set(ui.get_topk_values(s[s != "기타"], topk))
+    # tmp.loc[:, "_dim2"] = s.where(s.isin(topv), "기타")
 
     agg = (
         tmp.groupby(["_period", "_dim2"], dropna=False)
