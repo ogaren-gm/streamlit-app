@@ -776,40 +776,88 @@ def main():
                 key="metric_mode_3",
             )
 
-    metrics = pivot_event_overview(df, mode=mode_3, metric_mode=metric_mode_3)
-    metrics = metrics.dropna(subset=["_period_dt"])
+    # metrics = pivot_event_overview(df, mode=mode_3, metric_mode=metric_mode_3)
+    # metrics = metrics.dropna(subset=["_period_dt"])
 
-    def _cols_for(events: list[str]) -> list[str]:
-        label_map = {ev: label for ev, label in EVENTS_META}
-        cols = []
-        for ev in events:
-            label = label_map.get(ev, ev)
-            if metric_mode_3 == "이벤트수":
-                cols.append(f"{label}_이벤트수")
-            elif metric_mode_3 == "세션수":
-                cols.append(f"{label}_세션수")
-            else:
-                cols.append(f"{label}_유저수")
-        return [c for c in cols if c in metrics.columns]
+    # def _cols_for(events: list[str]) -> list[str]:
+    #     label_map = {ev: label for ev, label in EVENTS_META}
+    #     cols = []
+    #     for ev in events:
+    #         label = label_map.get(ev, ev)
+    #         if metric_mode_3 == "이벤트수":
+    #             cols.append(f"{label}_이벤트수")
+    #         elif metric_mode_3 == "세션수":
+    #             cols.append(f"{label}_세션수")
+    #         else:
+    #             cols.append(f"{label}_유저수")
+    #     return [c for c in cols if c in metrics.columns]
 
-    m2 = metrics.copy()
-    x_col_3 = "_period_dt" if mode_3 == "일별" else "기간"
+    # m2 = metrics.copy()
+    # x_col_3 = "_period_dt" if mode_3 == "일별" else "기간"
 
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["🔍 제품탐색"]), title="🔍 제품탐색")
-    with col_b:
-        ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["💓 관심표현"]), title="💓 관심표현")
-    with col_c:
-        ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["🧺 전환의도"]), title="🧺 전환의도")
+    # col_a, col_b, col_c = st.columns(3)
+    # with col_a:
+    #     ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["🔍 제품탐색"]), title="🔍 제품탐색")
+    # with col_b:
+    #     ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["💓 관심표현"]), title="💓 관심표현")
+    # with col_c:
+    #     ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["🧺 전환의도"]), title="🧺 전환의도")
 
-    # long3 = metrics.melt(id_vars=["기간"], var_name="지표", value_name="값")
-    long3 = metrics.drop(columns=["_period_dt"], errors="ignore").melt(id_vars=["기간"], var_name="지표", value_name="값")
+    # # long3 = metrics.melt(id_vars=["기간"], var_name="지표", value_name="값")
+    # long3 = metrics.drop(columns=["_period_dt"], errors="ignore").melt(id_vars=["기간"], var_name="지표", value_name="값")
 
-    pv3 = ui.build_pivot_table(long3, index_col="지표", col_col="기간", val_col="값")
+    # pv3 = ui.build_pivot_table(long3, index_col="지표", col_col="기간", val_col="값")
     
-    styled = ui.style_format(pv3, decimals_map={c: 0 for c in pv3.columns if c != "지표"})
-    st.dataframe(styled, row_height=30, hide_index=True)
+    # styled = ui.style_format(pv3, decimals_map={c: 0 for c in pv3.columns if c != "지표"})
+    # st.dataframe(styled, row_height=30, hide_index=True)
+    def _render_event_trend(df_in: pd.DataFrame):
+        metrics = pivot_event_overview(df_in, mode=mode_3, metric_mode=metric_mode_3)
+        metrics = metrics.dropna(subset=["_period_dt"])
+
+        def _cols_for(events: list[str]) -> list[str]:
+            label_map = {ev: label for ev, label in EVENTS_META}
+            cols = []
+            for ev in events:
+                label = label_map.get(ev, ev)
+                if metric_mode_3 == "이벤트수":
+                    cols.append(f"{label}_이벤트수")
+                elif metric_mode_3 == "세션수":
+                    cols.append(f"{label}_세션수")
+                else:
+                    cols.append(f"{label}_유저수")
+            return [c for c in cols if c in metrics.columns]
+
+        m2 = metrics.copy()
+        x_col_3 = "_period_dt" if mode_3 == "일별" else "기간"
+
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["🔍 제품탐색"]), title="🔍 제품탐색")
+        with col_b:
+            ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["💓 관심표현"]), title="💓 관심표현")
+        with col_c:
+            ui.render_line_graph(m2, x=x_col_3, y=_cols_for(EVENT_GROUPS["🧺 전환의도"]), title="🧺 전환의도")
+
+        long3 = metrics.drop(columns=["_period_dt"], errors="ignore").melt(id_vars=["기간"], var_name="지표", value_name="값")
+        pv3 = ui.build_pivot_table(long3, index_col="지표", col_col="기간", val_col="값")
+
+        styled = ui.style_format(pv3, decimals_map={c: 0 for c in pv3.columns if c != "지표"})
+        st.dataframe(styled, row_height=30, hide_index=True)
+
+    tab_evt_all, tab_evt_slpr, tab_evt_nouer, tab_evt_todz = st.tabs(["전체", "슬립퍼", "누어", "토들즈"])
+
+    with tab_evt_all:
+        _render_event_trend(df)
+
+    with tab_evt_slpr:
+        _render_event_trend(df[_safe_dim_series(df, "product_cat_a") == "슬립퍼"])
+
+    with tab_evt_nouer:
+        _render_event_trend(df[_safe_dim_series(df, "product_cat_a") == "누어"])
+
+    with tab_evt_todz:
+        _render_event_trend(df[_safe_dim_series(df, "product_cat_a") == "토들즈"])
+
 
 
     # ──────────────────────────────────
