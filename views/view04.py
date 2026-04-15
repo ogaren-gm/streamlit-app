@@ -375,8 +375,8 @@ def render_daily_card(df: pd.DataFrame):
     kpi["visit_walkin_rate"] = _safe_rate(kpi["visit_walkin"], kpi["visit_total"])
 
     cards = [
-        {"title": "조회수", "value": f'{kpi["look_cnt"]:,.0f}', "meta": [], "color": "#F2EEFB"},
-        {"title": "예약신청수", "value": f'{kpi["bookreq_cnt"]:,.0f}', "meta": [f'평균 예약신청률 {kpi["bookreq_rate"]:.1f}%'], "color": "#C4B5FD"},
+        {"title": "조회수", "value": f'{kpi["look_cnt"]:,.0f}', "meta": [], "color": "#FFD785"},
+        {"title": "예약신청수", "value": f'{kpi["bookreq_cnt"]:,.0f}', "meta": [f'평균 예약신청률 {kpi["bookreq_rate"]:.1f}%'], "color": "#FF9C30"},
         {"title": "예약이용수", "value": f'{kpi["res_cnt"]:,.0f}', "meta": [f'평균 노쇼 비중 {kpi["noshow_rate"]:.1f}%'], "color": "#cfdcf0"},
         {"title": "방문수", "value": f'{kpi["visit_total"]:,.0f}', "meta": [], "color": "linear-gradient(to bottom, #3b82f6 50%, #10b981 50%)"},
         {"title": "방문수(예약)", "value": f'{kpi["visit_reserved"]:,.0f}', "meta": [f'평균 예약 비중 {kpi["visit_reserved_rate"]:.1f}%'], "color": "#3b82f6"},
@@ -426,13 +426,14 @@ def render_daily_graph(df: pd.DataFrame, tab_key: str, view_type: str):
         fig.update_layout(barmode="overlay", height=330, yaxis_title="예약이용수 · 방문수", hovermode="x unified")
     
     elif view_type == "조회 및 예약 추이 (조회수 中 예약신청)":
-        fig.add_trace(go.Bar(x=df["날짜"], y=df["look_cnt"], name="조회수", marker_color="#F2EEFB", yaxis="y1", hovertemplate="조회수: %{y:,.0f}건<extra></extra>"))
-        fig.add_trace(go.Bar(x=df["날짜"], y=df["bookreq_cnt"], name="예약신청수", marker_color="#C4B5FD", yaxis="y1", text=df["bookreq_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition="outside", cliponaxis=False, hovertemplate="예약신청수: %{y:,.0f}건<extra></extra>"))
-        fig.add_trace(go.Scatter(x=df["날짜"], y=df["bookreq_rate"], mode="lines+markers", name="예약신청률", yaxis="y2", line=dict(color="#8B5CF6", width=2.5), hovertemplate="예약신청률: %{y:.1f}%<extra></extra>"))
+        fig.add_trace(go.Bar(x=df["날짜"], y=df["look_cnt"], name="조회수", marker_color="#FFD785", yaxis="y1", hovertemplate="조회수: %{y:,.0f}건<extra></extra>"))
+        fig.add_trace(go.Bar(x=df["날짜"], y=df["bookreq_cnt"], name="예약신청수", marker_color="#FF9C30", yaxis="y1", text=df["bookreq_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition="outside", cliponaxis=False, hovertemplate="예약신청수: %{y:,.0f}건<extra></extra>"))
+        fig.add_trace(go.Scatter(x=df["날짜"], y=df["bookreq_rate"], mode="lines+markers", name="예약신청률", yaxis="y2", line=dict(color="#FF5555", width=2.5), hovertemplate="예약신청률: %{y:.1f}%<extra></extra>"))
         fig.update_layout(barmode="overlay", height=330, yaxis=dict(title="조회수 · 예약신청수"), yaxis2=dict(title="예약신청률", overlaying="y", side="right", showgrid=False, ticksuffix="%"), hovermode="x unified")
 
     fig.update_traces(marker_opacity=0.8)
     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+    ui.add_weekend_shading(fig, pd.to_datetime(df["날짜"], errors="coerce")) # 쉐이딩 추가
     fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), bargap=0.5, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None))
     st.plotly_chart(fig, use_container_width=True, key=f"fig_{view_type[:2]}_{tab_key}")
 
@@ -441,6 +442,11 @@ def render_daily_table(df: pd.DataFrame):
     df["날짜"] = pd.to_datetime(df["날짜"], errors="coerce").dt.strftime("%Y-%m-%d")
     df = df.set_index("날짜").T.reset_index().rename(columns={"index": "지표"})
     df["event_type"] = df["event_type"].map(COLS_LABELMAP).fillna(df["event_type"])
+    
+    val_cols = [c for c in df.columns if c != "event_type"]
+    mask = df["event_type"].isin(["예약신청률 (%)", "예약 비중 (%)", "워크인 비중 (%)", "노쇼 비중 (%)"])
+    df.loc[mask, val_cols] = df.loc[mask, val_cols].apply(pd.to_numeric, errors="coerce").round(1)
+    
     st.dataframe(df, use_container_width=True, row_height=30, hide_index=True)
 
 
@@ -474,14 +480,22 @@ def render_funnel_dim_table(df_raw, start_dt, end_dt, filter_col, filter_val=Non
 
 def render_funnel_graph_left(df: pd.DataFrame, tab_key: str):
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=df["날짜"], y=df["look_cnt"], name="조회수", marker_color="#F2EEFB", text=df["look_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition="outside", cliponaxis=False, hovertemplate="조회수: %{y:,0f}<extra></extra>", showlegend=True))
+    fig.add_trace(go.Bar(x=df["날짜"], y=df["look_cnt"], name="조회수", marker_color="#FFD785", text=df["look_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""),
+                            textposition="inside",
+                            insidetextanchor="start",
+                            hovertemplate="조회수: %{y:,0f}<extra></extra>", showlegend=True))
+    ui.add_weekend_shading(fig, pd.to_datetime(df["날짜"], errors="coerce"))
     fig.update_layout(height=330, yaxis_title=None, hovermode="x unified", margin=dict(l=10, r=10, t=10, b=10), bargap=0.4, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None))
     st.plotly_chart(fig, use_container_width=True, key=f"funnel_left_{tab_key}")
 
 def render_funnel_graph_right(df: pd.DataFrame, tab_key: str):
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=df["날짜"], y=df["bookreq_cnt"], name="예약신청수", marker_color="#C4B5FD", text=df["bookreq_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition="outside", cliponaxis=False, hovertemplate="예약신청수: %{y:,0f}<extra></extra>"))
-    fig.add_trace(go.Scatter(x=df["날짜"], y=df["bookreq_rate"], name="예약신청률", mode="lines+markers+text", text=df["bookreq_rate"].map(lambda x: f"{x:.1f}%" if pd.notnull(x) and x > 0 else ""), textposition="top center", yaxis="y2", hovertemplate="예약신청률: %{y:.1f}%<extra></extra>", line=dict(color="#8B5CF6", width=2)))
+    fig.add_trace(go.Bar(x=df["날짜"], y=df["bookreq_cnt"], name="예약신청수", marker_color="#FF9C30", text=df["bookreq_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""),
+                            textposition="inside",
+                            insidetextanchor="start",
+                            hovertemplate="예약신청수: %{y:,0f}<extra></extra>"))
+    fig.add_trace(go.Scatter(x=df["날짜"], y=df["bookreq_rate"], name="예약신청률", mode="lines+markers+text", text=df["bookreq_rate"].map(lambda x: f"{x:.1f}%" if pd.notnull(x) and x > 0 else ""), textposition="top center", yaxis="y2", hovertemplate="예약신청률: %{y:.1f}%<extra></extra>", line=dict(color="#FF5555", width=2)))
+    ui.add_weekend_shading(fig, pd.to_datetime(df["날짜"], errors="coerce"))
     fig.update_layout(height=330, yaxis_title=None, yaxis2=dict(title=None, overlaying="y", side="right", ticksuffix="%", showline=False, showgrid=False, zeroline=False, showticklabels=False), hovermode="x unified", margin=dict(l=10, r=10, t=10, b=10), bargap=0.4, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None))
     st.plotly_chart(fig, use_container_width=True, key=f"funnel_right_{tab_key}")
 
@@ -530,7 +544,7 @@ def render_resv_graph(
             marker_color="#cfdcf0",
             text=g["res_cnt"].map(lambda x: f"{x:,.0f}" if x > 0 else ""),
             textposition="inside",
-            insidetextanchor="middle",
+            insidetextanchor="start",
             textangle=0,
             customdata=g["hover_txt"],
             hovertemplate="%{customdata}<extra></extra>",
@@ -555,7 +569,7 @@ def render_resv_graph(
                 marker_color="#10b981",
                 text=p["pred_walkin"].map(lambda x: f"{x:,.0f}" if x > 0 else ""),
                 textposition="inside",
-                insidetextanchor="middle",
+                insidetextanchor="start",
                 textangle=0,
                 hovertemplate="예측 워크인수: %{y:,.0f}<extra></extra>",
                 showlegend=True,
@@ -564,6 +578,7 @@ def render_resv_graph(
 
     fig.update_traces(marker_opacity=0.8)
     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__") if getattr(t, "type", "") == "bar" else None)
+    ui.add_weekend_shading(fig, pd.to_datetime(g["날짜"], errors="coerce")) # 쉐이딩 추가
     fig.update_layout(
         barmode="stack",
         height=330,
@@ -646,76 +661,472 @@ def render_lead_graph(df3, start_dt, end_dt, dim_col=None, dim_val=None, base_co
     fig = px.bar(pt, x="dt_lbl", y="cnt", color="lead_label", category_orders={"lead_label": lead_labels})
     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
     fig.update_traces(marker_opacity=0.8, hovertemplate="%{fullData.name}: %{y}건<extra></extra>")
+    ui.add_weekend_shading(fig, pd.to_datetime(pt[x_col], errors="coerce"))
     fig.update_layout(barmode="stack", xaxis_title=None, yaxis_title=None, hovermode="x unified", bargap=0.4, height=330, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None))
     st.plotly_chart(fig, use_container_width=True)
 
 
 # [섹션 4]
-def render_d1_bar(df_base: pd.DataFrame, col: str, key: str, weight_col: str | None = None):
+# def render_d1_bar(df_base: pd.DataFrame, col: str, key: str, weight_col: str | None = None):
+#     target_cols = [col] + ([weight_col] if weight_col else [])
+#     d = _standardize_df(df_base, target_cols)
+#     d = d[d[col] != ""]
+#     if d.empty: return
+    
+#     g = d.groupby(col, dropna=False)[weight_col].sum().reset_index(name="cnt") if weight_col else d.groupby(col, dropna=False).size().reset_index(name="cnt")
+#     g["pct"] = g["cnt"] / g["cnt"].sum() * 100
+#     if col == "demo_age":
+#         g[col] = pd.Categorical(g[col], categories=_get_age_order(g[col].astype(str).unique().tolist()), ordered=True)
+#         g = g.sort_values(col, ascending=False)
+#     else:
+#         g = g.sort_values("pct", ascending=True)
+
+#     fig = px.bar(g, y=col, x="pct", orientation="h", text="pct", custom_data=[col, "cnt", "pct"])
+#     fig.update_traces(marker_opacity=0.8, texttemplate="%{x:.1f}%", textposition="outside", hovertemplate="%{customdata[0]}<br>값=%{customdata[1]:,.0f}<br>비중=%{customdata[2]:.1f}%<extra></extra>")
+#     fig.update_layout(height=200, margin=dict(l=10, r=30, t=10, b=10), showlegend=False, xaxis_title=None, yaxis_title=None, xaxis=dict(ticksuffix="%"))
+#     st.plotly_chart(fig, use_container_width=True, key=key)
+
+# def render_d2_stack(df_base: pd.DataFrame, row_col: str, col_col: str, key: str, weight_col: str | None = None):
+#     target_cols = [row_col, col_col] + ([weight_col] if weight_col else [])
+#     d = _standardize_df(df_base, target_cols)
+#     d = d[(d[row_col] != "") & (d[col_col] != "")]
+#     if d.empty: return
+    
+#     g = d.groupby([row_col, col_col], dropna=False)[weight_col].sum().reset_index(name="cnt") if weight_col else d.groupby([row_col, col_col], dropna=False).size().reset_index(name="cnt")
+    
+#     row_order = _get_age_order(g[row_col].astype(str).unique().tolist()) if row_col == "demo_age" else g.groupby(row_col)["cnt"].sum().sort_values(ascending=True).index.tolist()
+#     col_order = _get_age_order(g[col_col].astype(str).unique().tolist()) if col_col == "demo_age" else g.groupby(col_col)["cnt"].sum().sort_values(ascending=False).index.tolist()
+
+#     pt = g.pivot_table(index=row_col, columns=col_col, values="cnt", aggfunc="sum", fill_value=0).reindex(row_order).fillna(0)
+#     for c in col_order:
+#         if c not in pt.columns: pt[c] = 0
+#     pt = pt[col_order]
+
+#     share = pt.div(pt.sum(axis=1).replace(0, np.nan), axis=0).fillna(0) * 100
+#     plot_df = share.reset_index().melt(id_vars=row_col, var_name=col_col, value_name="pct").merge(
+#         pt.reset_index().melt(id_vars=row_col, var_name=col_col, value_name="cnt"), on=[row_col, col_col], how="left"
+#     )
+
+#     plot_df[row_col] = pd.Categorical(plot_df[row_col], categories=row_order, ordered=True)
+#     plot_df[col_col] = pd.Categorical(plot_df[col_col], categories=col_order, ordered=True)
+
+#     fig = px.bar(plot_df, y=row_col, x="pct", color=col_col, orientation="h", barmode="stack", custom_data=[col_col, "cnt", "pct"], category_orders={row_col: row_order, col_col: col_order})
+#     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+#     fig.update_traces(marker_opacity=0.8, hovertemplate="%{customdata[0]}<br>값=%{customdata[1]:,.0f}<br>비중=%{customdata[2]:.1f}%<extra></extra>")
+#     fig.update_layout(height=200, margin=dict(l=10, r=10, t=10, b=10), legend_title=None, xaxis_title=None, yaxis_title=None, xaxis=dict(range=[0, 100], ticksuffix="%"))
+#     fig.update_yaxes(categoryorder="array", categoryarray=row_order[::-1] if row_col == "demo_age" else row_order)
+#     st.plotly_chart(fig, use_container_width=True, key=key)
+
+# def render_prof_insight(df_base: pd.DataFrame, df_aw_base: pd.DataFrame):
+#     if df_base is None or df_base.empty: return
+    
+#     age_c = df_base[df_base["demo_age"] != ""]["demo_age"].value_counts()
+#     gen_c = df_base[df_base["demo_gender"] != ""]["demo_gender"].value_counts()
+#     purp_c = df_base[df_base["purchase_purpose"] != ""]["purchase_purpose"].value_counts()
+    
+#     top_age = age_c.idxmax() if not age_c.empty else "-"
+#     top_gender = gen_c.idxmax() if not gen_c.empty else "-"
+#     top_purp = purp_c.idxmax() if not purp_c.empty else "-"
+
+#     top_channel_b, top_channel_a, channel_display = "-", "-", "none"
+    
+#     if df_aw_base is not None and not df_aw_base.empty:
+#         aw_grp = df_aw_base[df_aw_base["awareness_type_b"] != ""].groupby(["awareness_type_a", "awareness_type_b"])["weight"].sum().reset_index()
+#         if not aw_grp.empty:
+#             top_row = aw_grp.loc[aw_grp["weight"].idxmax()]
+#             top_channel_a, top_channel_b = top_row["awareness_type_a"], top_row["awareness_type_b"]
+#             channel_display = "block"
+
+#     st.markdown(
+#         f"""
+#         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px 18px; margin-bottom: 20px;">
+#             <div style="font-size:14px; margin-bottom:12px; color:#64748b; line-height:1.8;">🎯 Insight Summary</div>
+#             <div style="font-size:15px; font-weight:400; color:#1e293b; line-height:1.2;">
+#                 선택한 조건에서 주요 방문객은 <b style="color:#3b82f6;font-weight:700;">{top_age} {top_gender}</b>이며, 
+#                 <b style="color:#3b82f6;font-weight:700;">{top_purp}</b>을(를) 목적으로 매장을 방문합니다.
+#                 <div style="display:{channel_display}; margin-top:6px;">
+#                     이들은 주로 <b style="color:#3b82f6;font-weight:700;">{top_channel_b}</b>을(를) 통해,
+#                     브랜드를 <b style="color:#3b82f6;font-weight:700;">{top_channel_a}</b>하여 유입되는 것으로 분석됩니다.
+#                 </div>
+#             </div>
+#         </div>
+#         """, unsafe_allow_html=True,
+#     )
+
+# def render_prof_block(df_base: pd.DataFrame, df_aw_base: pd.DataFrame, key_tag: str):
+#     render_prof_insight(df_base, df_aw_base)
+#     def _icon(icon_name, title):
+#         return f'<div style="display: flex; align-items: flex-start; gap: 6px;"><span class="material-symbols-outlined" style="font-size: 17px; color: #475569;padding-top: 6px;">{icon_name}</span><h6 style="margin: 0;">{title}</h6></div>'
+
+#     c1, c2, c3, c4 = st.columns(4, vertical_alignment="top")
+#     with c1: st.markdown(_icon("bed", "연령대"), unsafe_allow_html=True); render_d1_bar(df_base, "demo_age", f"age::{key_tag}")
+#     with c2: st.markdown(_icon("bed", "연령대 × 성별"), unsafe_allow_html=True); render_d2_stack(df_base, "demo_age", "demo_gender", f"age_gen::{key_tag}")
+#     with c3: st.markdown(_icon("bed", "구매목적"), unsafe_allow_html=True); render_d1_bar(df_base, "purchase_purpose", f"purp::{key_tag}")
+#     with c4: st.markdown(_icon("bed", "구매목적 × 연령대"), unsafe_allow_html=True); render_d2_stack(df_base, "purchase_purpose", "demo_age", f"purp_age::{key_tag}")
+
+#     st.markdown(" ")
+#     c5, c6, c7, c8 = st.columns(4, vertical_alignment="top")
+#     with c5: st.markdown(_icon("bed", "인지단계"), unsafe_allow_html=True); render_d1_bar(df_aw_base, "awareness_type_a", f"aw_a::{key_tag}", "weight")
+#     with c6: st.markdown(_icon("bed", "인지단계 × 인지채널"), unsafe_allow_html=True); render_d2_stack(df_aw_base, "awareness_type_a", "awareness_type_b", f"aw_ab::{key_tag}", "weight")
+#     with c7: st.markdown(_icon("bed", "구매목적 × 인지채널"), unsafe_allow_html=True); render_d2_stack(df_aw_base, "purchase_purpose", "awareness_type_b", f"purp_aw::{key_tag}", "weight")
+#     with c8: st.markdown(_icon("bed", "연령대 × 인지채널"), unsafe_allow_html=True); render_d2_stack(df_aw_base, "demo_age", "awareness_type_b", f"age_aw::{key_tag}", "weight")
+# [섹션 4]
+def render_d1_bar(
+    df_base: pd.DataFrame,
+    col: str,
+    key: str,
+    weight_col: str | None = None,
+    height: int = 260,
+):
     target_cols = [col] + ([weight_col] if weight_col else [])
     d = _standardize_df(df_base, target_cols)
     d = d[d[col] != ""]
-    if d.empty: return
-    
-    g = d.groupby(col, dropna=False)[weight_col].sum().reset_index(name="cnt") if weight_col else d.groupby(col, dropna=False).size().reset_index(name="cnt")
-    g["pct"] = g["cnt"] / g["cnt"].sum() * 100
+    if d.empty:
+        st.info("데이터가 없습니다.")
+        return
+
+    if weight_col:
+        g = d.groupby(col, dropna=False)[weight_col].sum().reset_index(name="cnt")
+    else:
+        g = d.groupby(col, dropna=False).size().reset_index(name="cnt")
+
+    g["pct"] = np.where(g["cnt"].sum() > 0, g["cnt"] / g["cnt"].sum() * 100, 0)
+
     if col == "demo_age":
-        g[col] = pd.Categorical(g[col], categories=_get_age_order(g[col].astype(str).unique().tolist()), ordered=True)
+        order = _get_age_order(g[col].astype(str).unique().tolist())
+        g[col] = pd.Categorical(g[col], categories=order, ordered=True)
         g = g.sort_values(col, ascending=False)
     else:
         g = g.sort_values("pct", ascending=True)
 
-    fig = px.bar(g, y=col, x="pct", orientation="h", text="pct", custom_data=[col, "cnt", "pct"])
-    fig.update_traces(marker_opacity=0.8, texttemplate="%{x:.1f}%", textposition="outside", hovertemplate="%{customdata[0]}<br>값=%{customdata[1]:,.0f}<br>비중=%{customdata[2]:.1f}%<extra></extra>")
-    fig.update_layout(height=200, margin=dict(l=10, r=30, t=10, b=10), showlegend=False, xaxis_title=None, yaxis_title=None, xaxis=dict(ticksuffix="%"))
+    fig = px.bar(
+        g,
+        y=col,
+        x="pct",
+        orientation="h",
+        text="pct",
+        custom_data=[col, "cnt", "pct"],
+    )
+    fig.update_traces(
+        marker_opacity=0.8,
+        texttemplate="%{x:.1f}%",
+        textposition="outside",
+        hovertemplate="%{customdata[0]}<br>값=%{customdata[1]:,.0f}<br>비중=%{customdata[2]:.1f}%<extra></extra>",
+    )
+    fig.update_layout(
+        height=height,
+        margin=dict(l=10, r=30, t=10, b=10),
+        showlegend=False,
+        xaxis_title=None,
+        yaxis_title=None,
+        xaxis=dict(ticksuffix="%"),
+    )
     st.plotly_chart(fig, use_container_width=True, key=key)
 
-def render_d2_stack(df_base: pd.DataFrame, row_col: str, col_col: str, key: str, weight_col: str | None = None):
+
+def render_d2_stack(
+    df_base: pd.DataFrame,
+    row_col: str,
+    col_col: str,
+    key: str,
+    weight_col: str | None = None,
+    height: int = 260,
+):
     target_cols = [row_col, col_col] + ([weight_col] if weight_col else [])
     d = _standardize_df(df_base, target_cols)
     d = d[(d[row_col] != "") & (d[col_col] != "")]
-    if d.empty: return
-    
-    g = d.groupby([row_col, col_col], dropna=False)[weight_col].sum().reset_index(name="cnt") if weight_col else d.groupby([row_col, col_col], dropna=False).size().reset_index(name="cnt")
-    
-    row_order = _get_age_order(g[row_col].astype(str).unique().tolist()) if row_col == "demo_age" else g.groupby(row_col)["cnt"].sum().sort_values(ascending=True).index.tolist()
-    col_order = _get_age_order(g[col_col].astype(str).unique().tolist()) if col_col == "demo_age" else g.groupby(col_col)["cnt"].sum().sort_values(ascending=False).index.tolist()
+    if d.empty:
+        st.info("데이터가 없습니다.")
+        return
 
-    pt = g.pivot_table(index=row_col, columns=col_col, values="cnt", aggfunc="sum", fill_value=0).reindex(row_order).fillna(0)
+    if weight_col:
+        g = d.groupby([row_col, col_col], dropna=False)[weight_col].sum().reset_index(name="cnt")
+    else:
+        g = d.groupby([row_col, col_col], dropna=False).size().reset_index(name="cnt")
+
+    row_order = (
+        _get_age_order(g[row_col].astype(str).unique().tolist())
+        if row_col == "demo_age"
+        else g.groupby(row_col)["cnt"].sum().sort_values(ascending=True).index.tolist()
+    )
+    col_order = (
+        _get_age_order(g[col_col].astype(str).unique().tolist())
+        if col_col == "demo_age"
+        else g.groupby(col_col)["cnt"].sum().sort_values(ascending=False).index.tolist()
+    )
+
+    pt = (
+        g.pivot_table(index=row_col, columns=col_col, values="cnt", aggfunc="sum", fill_value=0)
+         .reindex(row_order)
+         .fillna(0)
+    )
     for c in col_order:
-        if c not in pt.columns: pt[c] = 0
+        if c not in pt.columns:
+            pt[c] = 0
     pt = pt[col_order]
 
     share = pt.div(pt.sum(axis=1).replace(0, np.nan), axis=0).fillna(0) * 100
-    plot_df = share.reset_index().melt(id_vars=row_col, var_name=col_col, value_name="pct").merge(
-        pt.reset_index().melt(id_vars=row_col, var_name=col_col, value_name="cnt"), on=[row_col, col_col], how="left"
+    plot_df = (
+        share.reset_index()
+             .melt(id_vars=row_col, var_name=col_col, value_name="pct")
+             .merge(
+                 pt.reset_index().melt(id_vars=row_col, var_name=col_col, value_name="cnt"),
+                 on=[row_col, col_col],
+                 how="left"
+             )
     )
 
     plot_df[row_col] = pd.Categorical(plot_df[row_col], categories=row_order, ordered=True)
     plot_df[col_col] = pd.Categorical(plot_df[col_col], categories=col_order, ordered=True)
 
-    fig = px.bar(plot_df, y=row_col, x="pct", color=col_col, orientation="h", barmode="stack", custom_data=[col_col, "cnt", "pct"], category_orders={row_col: row_order, col_col: col_order})
+    fig = px.bar(
+        plot_df,
+        y=row_col,
+        x="pct",
+        color=col_col,
+        orientation="h",
+        barmode="stack",
+        custom_data=[col_col, "cnt", "pct"],
+        category_orders={row_col: row_order, col_col: col_order},
+    )
     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-    fig.update_traces(marker_opacity=0.8, hovertemplate="%{customdata[0]}<br>값=%{customdata[1]:,.0f}<br>비중=%{customdata[2]:.1f}%<extra></extra>")
-    fig.update_layout(height=200, margin=dict(l=10, r=10, t=10, b=10), legend_title=None, xaxis_title=None, yaxis_title=None, xaxis=dict(range=[0, 100], ticksuffix="%"))
-    fig.update_yaxes(categoryorder="array", categoryarray=row_order[::-1] if row_col == "demo_age" else row_order)
+    fig.update_traces(
+        marker_opacity=0.8,
+        hovertemplate="%{customdata[0]}<br>값=%{customdata[1]:,.0f}<br>비중=%{customdata[2]:.1f}%<extra></extra>",
+    )
+    fig.update_layout(
+        height=height,
+        margin=dict(l=10, r=10, t=10, b=10),
+        legend_title=None,
+        xaxis_title=None,
+        yaxis_title=None,
+        xaxis=dict(range=[0, 100], ticksuffix="%"),
+    )
+    fig.update_yaxes(
+        categoryorder="array",
+        categoryarray=row_order[::-1] if row_col == "demo_age" else row_order,
+    )
+    st.plotly_chart(fig, use_container_width=True, key=key)
+
+
+def _build_d1_trend(
+    df_base: pd.DataFrame,
+    col: str,
+    weight_col: str | None = None,
+) -> pd.DataFrame:
+    target_cols = ["event_date", col] + ([weight_col] if weight_col else [])
+    d = _standardize_df(df_base, target_cols)
+    d = d[d[col] != ""]
+    if d.empty:
+        return pd.DataFrame(columns=["날짜", col, "cnt", "pct"])
+
+    d["event_date"] = pd.to_datetime(d["event_date"], errors="coerce").dt.normalize()
+    d = d[d["event_date"].notna()]
+    if d.empty:
+        return pd.DataFrame(columns=["날짜", col, "cnt", "pct"])
+
+    if weight_col:
+        g = d.groupby(["event_date", col], dropna=False)[weight_col].sum().reset_index(name="cnt")
+    else:
+        g = d.groupby(["event_date", col], dropna=False).size().reset_index(name="cnt")
+
+    g["tot"] = g.groupby("event_date")["cnt"].transform("sum")
+    g["pct"] = np.where(g["tot"] > 0, g["cnt"] / g["tot"] * 100, 0)
+    g = g.rename(columns={"event_date": "날짜"}).sort_values(["날짜", col]).reset_index(drop=True)
+    return g[["날짜", col, "cnt", "pct"]]
+
+
+def _build_d2_trend(
+    df_base: pd.DataFrame,
+    row_col: str,
+    col_col: str,
+    row_val: str,
+    weight_col: str | None = None,
+) -> pd.DataFrame:
+    target_cols = ["event_date", row_col, col_col] + ([weight_col] if weight_col else [])
+    d = _standardize_df(df_base, target_cols)
+    d = d[(d[row_col] != "") & (d[col_col] != "")]
+    if d.empty:
+        return pd.DataFrame(columns=["날짜", col_col, "cnt", "pct"])
+
+    d["event_date"] = pd.to_datetime(d["event_date"], errors="coerce").dt.normalize()
+    d = d[d["event_date"].notna()]
+    d = d[d[row_col] == str(row_val).strip()]
+    if d.empty:
+        return pd.DataFrame(columns=["날짜", col_col, "cnt", "pct"])
+
+    if weight_col:
+        g = d.groupby(["event_date", col_col], dropna=False)[weight_col].sum().reset_index(name="cnt")
+    else:
+        g = d.groupby(["event_date", col_col], dropna=False).size().reset_index(name="cnt")
+
+    g["tot"] = g.groupby("event_date")["cnt"].transform("sum")
+    g["pct"] = np.where(g["tot"] > 0, g["cnt"] / g["tot"] * 100, 0)
+    g = g.rename(columns={"event_date": "날짜"}).sort_values(["날짜", col_col]).reset_index(drop=True)
+    return g[["날짜", col_col, "cnt", "pct"]]
+
+def render_d1_trend(
+    df_base: pd.DataFrame,
+    col: str,
+    key: str,
+    weight_col: str | None = None,
+    height: int = 320,
+):
+    g = _build_d1_trend(df_base, col, weight_col)
+    if g.empty:
+        st.info("추이 데이터가 없습니다.")
+        return
+
+    if col == "demo_age":
+        order = _get_age_order(g[col].astype(str).unique().tolist())
+    else:
+        order = (
+            g.groupby(col)["cnt"]
+             .sum()
+             .sort_values(ascending=False)
+             .index
+             .tolist()
+        )
+
+    fig = px.bar(
+        g,
+        x="날짜",
+        y="cnt",
+        color=col,
+        barmode="stack",
+        category_orders={col: order},
+        custom_data=[col, "cnt", "pct"],
+    )
+    fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+    fig.update_traces(
+        marker_opacity=0.85,
+        hovertemplate="%{customdata[0]}<br>값=%{customdata[1]:,.0f}<br>비중=%{customdata[2]:.1f}%<extra></extra>",
+    )
+    ui.add_weekend_shading(fig, pd.to_datetime(g["날짜"], errors="coerce"))
+    fig.update_layout(
+        height=height,
+        margin=dict(l=10, r=10, t=10, b=10),
+        xaxis_title=None,
+        yaxis_title=None,
+        hovermode="x unified",
+        bargap=0.5,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            title=None,
+        ),
+    )
+    st.plotly_chart(fig, use_container_width=True, key=key)
+
+
+def render_d2_trend(
+    df_base: pd.DataFrame,
+    row_col: str,
+    col_col: str,
+    key: str,
+    weight_col: str | None = None,
+    height: int = 320,
+):
+    target_cols = [row_col, col_col] + ([weight_col] if weight_col else [])
+    d = _standardize_df(df_base, target_cols)
+    d = d[(d[row_col] != "") & (d[col_col] != "")]
+    if d.empty:
+        st.info("추이 데이터가 없습니다.")
+        return
+
+    if row_col == "demo_age":
+        row_opts = _get_age_order(d[row_col].astype(str).unique().tolist())
+    else:
+        row_opts = (
+            d.groupby(row_col)[weight_col].sum().sort_values(ascending=False).index.tolist()
+            if weight_col
+            else d[row_col].value_counts().index.tolist()
+        )
+
+    if not row_opts:
+        st.info("추이 데이터가 없습니다.")
+        return
+
+    sel_row = st.selectbox(
+        "기준 선택",
+        options=row_opts,
+        index=0,
+        key=f"sel_{key}",
+    )
+
+    g = _build_d2_trend(df_base, row_col, col_col, sel_row, weight_col)
+    if g.empty:
+        st.info("추이 데이터가 없습니다.")
+        return
+
+    if col_col == "demo_age":
+        col_order = _get_age_order(g[col_col].astype(str).unique().tolist())
+    else:
+        col_order = (
+            g.groupby(col_col)["cnt"]
+             .sum()
+             .sort_values(ascending=False)
+             .index
+             .tolist()
+        )
+
+    fig = px.bar(
+        g,
+        x="날짜",
+        y="cnt",
+        color=col_col,
+        barmode="stack",
+        category_orders={col_col: col_order},
+        custom_data=[col_col, "cnt", "pct"],
+    )
+    fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
+    fig.update_traces(
+        marker_opacity=0.85,
+        hovertemplate="%{customdata[0]}<br>값=%{customdata[1]:,.0f}<br>비중=%{customdata[2]:.1f}%<extra></extra>",
+    )
+    ui.add_weekend_shading(fig, pd.to_datetime(g["날짜"], errors="coerce"))
+    fig.update_layout(
+        height=height,
+        margin=dict(l=10, r=10, t=10, b=10),
+        xaxis_title=None,
+        yaxis_title=None,
+        hovermode="x unified",
+        bargap=0.5,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            title=None,
+        ),
+    )
     st.plotly_chart(fig, use_container_width=True, key=key)
 
 def render_prof_insight(df_base: pd.DataFrame, df_aw_base: pd.DataFrame):
-    if df_base is None or df_base.empty: return
-    
+    if df_base is None or df_base.empty:
+        return
+
     age_c = df_base[df_base["demo_age"] != ""]["demo_age"].value_counts()
     gen_c = df_base[df_base["demo_gender"] != ""]["demo_gender"].value_counts()
     purp_c = df_base[df_base["purchase_purpose"] != ""]["purchase_purpose"].value_counts()
-    
+
     top_age = age_c.idxmax() if not age_c.empty else "-"
     top_gender = gen_c.idxmax() if not gen_c.empty else "-"
     top_purp = purp_c.idxmax() if not purp_c.empty else "-"
 
     top_channel_b, top_channel_a, channel_display = "-", "-", "none"
-    
+
     if df_aw_base is not None and not df_aw_base.empty:
-        aw_grp = df_aw_base[df_aw_base["awareness_type_b"] != ""].groupby(["awareness_type_a", "awareness_type_b"])["weight"].sum().reset_index()
+        aw_grp = (
+            df_aw_base[df_aw_base["awareness_type_b"] != ""]
+            .groupby(["awareness_type_a", "awareness_type_b"])["weight"]
+            .sum()
+            .reset_index()
+        )
         if not aw_grp.empty:
             top_row = aw_grp.loc[aw_grp["weight"].idxmax()]
             top_channel_a, top_channel_b = top_row["awareness_type_a"], top_row["awareness_type_b"]
@@ -726,7 +1137,7 @@ def render_prof_insight(df_base: pd.DataFrame, df_aw_base: pd.DataFrame):
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px 18px; margin-bottom: 20px;">
             <div style="font-size:14px; margin-bottom:12px; color:#64748b; line-height:1.8;">🎯 Insight Summary</div>
             <div style="font-size:15px; font-weight:400; color:#1e293b; line-height:1.2;">
-                선택한 조건에서 주요 방문객은 <b style="color:#3b82f6;font-weight:700;">{top_age} {top_gender}</b>이며, 
+                선택한 조건에서 주요 방문객은 <b style="color:#3b82f6;font-weight:700;">{top_age} {top_gender}</b>이며,
                 <b style="color:#3b82f6;font-weight:700;">{top_purp}</b>을(를) 목적으로 매장을 방문합니다.
                 <div style="display:{channel_display}; margin-top:6px;">
                     이들은 주로 <b style="color:#3b82f6;font-weight:700;">{top_channel_b}</b>을(를) 통해,
@@ -734,26 +1145,111 @@ def render_prof_insight(df_base: pd.DataFrame, df_aw_base: pd.DataFrame):
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True,
+        """,
+        unsafe_allow_html=True,
     )
 
+
 def render_prof_block(df_base: pd.DataFrame, df_aw_base: pd.DataFrame, key_tag: str):
-    render_prof_insight(df_base, df_aw_base)
-    def _icon(icon_name, title):
-        return f'<div style="display: flex; align-items: flex-start; gap: 6px;"><span class="material-symbols-outlined" style="font-size: 17px; color: #475569;padding-top: 6px;">{icon_name}</span><h6 style="margin: 0;">{title}</h6></div>'
+    # render_prof_insight(df_base, df_aw_base)
 
-    c1, c2, c3, c4 = st.columns(4, vertical_alignment="top")
-    with c1: st.markdown(_icon("bed", "연령대"), unsafe_allow_html=True); render_d1_bar(df_base, "demo_age", f"age::{key_tag}")
-    with c2: st.markdown(_icon("bed", "연령대 × 성별"), unsafe_allow_html=True); render_d2_stack(df_base, "demo_age", "demo_gender", f"age_gen::{key_tag}")
-    with c3: st.markdown(_icon("bed", "구매목적"), unsafe_allow_html=True); render_d1_bar(df_base, "purchase_purpose", f"purp::{key_tag}")
-    with c4: st.markdown(_icon("bed", "구매목적 × 연령대"), unsafe_allow_html=True); render_d2_stack(df_base, "purchase_purpose", "demo_age", f"purp_age::{key_tag}")
+    def _ttl(title):
+        st.markdown(f"<h6 style='margin:0;'>{title}</h6>", unsafe_allow_html=True)
+        
+    def _left_h(title: str) -> int:
+        return 340 if "×" in title else 270
 
-    st.markdown(" ")
-    c5, c6, c7, c8 = st.columns(4, vertical_alignment="top")
-    with c5: st.markdown(_icon("bed", "인지단계"), unsafe_allow_html=True); render_d1_bar(df_aw_base, "awareness_type_a", f"aw_a::{key_tag}", "weight")
-    with c6: st.markdown(_icon("bed", "인지단계 × 인지채널"), unsafe_allow_html=True); render_d2_stack(df_aw_base, "awareness_type_a", "awareness_type_b", f"aw_ab::{key_tag}", "weight")
-    with c7: st.markdown(_icon("bed", "구매목적 × 인지채널"), unsafe_allow_html=True); render_d2_stack(df_aw_base, "purchase_purpose", "awareness_type_b", f"purp_aw::{key_tag}", "weight")
-    with c8: st.markdown(_icon("bed", "연령대 × 인지채널"), unsafe_allow_html=True); render_d2_stack(df_aw_base, "demo_age", "awareness_type_b", f"age_aw::{key_tag}", "weight")
+    prof_tabs = st.tabs([
+        "연령대",
+        "연령대 × 성별",
+        "구매목적",
+        "구매목적 × 연령대",
+        "인지단계",
+        "인지단계 × 인지채널",
+        "구매목적 × 인지채널",
+        "연령대 × 인지채널",
+    ])
+
+    with prof_tabs[0]:
+        l, r = st.columns([3, 7], vertical_alignment="top")
+        with l:
+            ttl = "연령대 분포"
+            _ttl(ttl)
+            render_d1_bar(df_base, "demo_age", f"age::{key_tag}", height=_left_h(ttl))
+        with r:
+            _ttl("연령대 추이")
+            render_d1_trend(df_base, "demo_age", f"age_tr::{key_tag}", height=280)
+
+    with prof_tabs[1]:
+        l, r = st.columns([3, 7], vertical_alignment="top")
+        with l:
+            ttl = "연령대 × 성별 분포"
+            _ttl(ttl)
+            render_d2_stack(df_base, "demo_age", "demo_gender", f"age_gen::{key_tag}", height=_left_h(ttl))
+        with r:
+            _ttl("연령대별 성별 추이")
+            render_d2_trend(df_base, "demo_age", "demo_gender", f"age_gen_tr::{key_tag}", height=280)
+
+    with prof_tabs[2]:
+        l, r = st.columns([3, 7], vertical_alignment="top")
+        with l:
+            ttl = "구매목적 분포"
+            _ttl(ttl)
+            render_d1_bar(df_base, "purchase_purpose", f"purp::{key_tag}", height=_left_h(ttl))
+        with r:
+            _ttl("구매목적 추이")
+            render_d1_trend(df_base, "purchase_purpose", f"purp_tr::{key_tag}", height=280)
+
+    with prof_tabs[3]:
+        l, r = st.columns([3, 7], vertical_alignment="top")
+        with l:
+            ttl = "구매목적 × 연령대 분포"
+            _ttl(ttl)
+            render_d2_stack(df_base, "purchase_purpose", "demo_age", f"purp_age::{key_tag}", height=_left_h(ttl))
+        with r:
+            _ttl("구매목적별 연령대 추이")
+            render_d2_trend(df_base, "purchase_purpose", "demo_age", f"purp_age_tr::{key_tag}", height=280)
+
+    with prof_tabs[4]:
+        l, r = st.columns([3, 7], vertical_alignment="top")
+        with l:
+            ttl = "인지단계 분포"
+            _ttl(ttl)
+            render_d1_bar(df_aw_base, "awareness_type_a", f"aw_a::{key_tag}", "weight", height=_left_h(ttl))
+        with r:
+            _ttl("인지단계 추이")
+            render_d1_trend(df_aw_base, "awareness_type_a", f"aw_a_tr::{key_tag}", "weight", height=280)
+
+    with prof_tabs[5]:
+        l, r = st.columns([3, 7], vertical_alignment="top")
+        with l:
+            ttl = "인지단계 × 인지채널 분포"
+            _ttl(ttl)
+            render_d2_stack(df_aw_base, "awareness_type_a", "awareness_type_b", f"aw_ab::{key_tag}", "weight", height=_left_h(ttl))
+        with r:
+            _ttl("인지단계별 인지채널 추이")
+            render_d2_trend(df_aw_base, "awareness_type_a", "awareness_type_b", f"aw_ab_tr::{key_tag}", "weight", height=280)
+
+    with prof_tabs[6]:
+        l, r = st.columns([3, 7], vertical_alignment="top")
+        with l:
+            ttl = "구매목적 × 인지채널 분포"
+            _ttl(ttl)
+            render_d2_stack(df_aw_base, "purchase_purpose", "awareness_type_b", f"purp_aw::{key_tag}", "weight", height=_left_h(ttl))
+        with r:
+            _ttl("구매목적별 인지채널 추이")
+            render_d2_trend(df_aw_base, "purchase_purpose", "awareness_type_b", f"purp_aw_tr::{key_tag}", "weight", height=280)
+
+    with prof_tabs[7]:
+        l, r = st.columns([3, 7], vertical_alignment="top")
+        with l:
+            ttl = "연령대 × 인지채널 분포"
+            _ttl(ttl)
+            render_d2_stack(df_aw_base, "demo_age", "awareness_type_b", f"age_aw::{key_tag}", "weight", height=_left_h(ttl))
+        with r:
+            _ttl("연령대별 인지채널 추이")
+            render_d2_trend(df_aw_base, "demo_age", "awareness_type_b", f"age_aw_tr::{key_tag}", "weight", height=280)
+
 
 
 # ──────────────────────────────────
@@ -775,11 +1271,11 @@ def render_content_by_section(section_id, df_main, df_aux, def_s, def_e, dim_col
         daily = build_daily(df_main, def_s, def_e, dim_col, dim_val)
         g1, _p, g2 = st.columns([1, 0.03, 1], vertical_alignment="top")
         with g1:
-            st.markdown("""<h6 style="margin:0;">🔔 조회수 추이</h6>""", unsafe_allow_html=True)
+            st.markdown("""<h6 style="margin:0;">조회수 추이</h6>""", unsafe_allow_html=True)
             render_funnel_graph_left(daily, f"left_{k}")
             render_funnel_dim_table(df_main, def_s, def_e, filter_col=dim_col, filter_val=dim_val, table_col="shrm_branch", target_event="look_cnt")
         with g2:
-            st.markdown("""<h6 style="margin:0;">🔔 예약신청수 추이</h6>""", unsafe_allow_html=True)
+            st.markdown("""<h6 style="margin:0;">예약신청수 추이</h6>""", unsafe_allow_html=True)
             render_funnel_graph_right(daily, f"right_{k}")
             render_funnel_dim_table(df_main, def_s, def_e, filter_col=dim_col, filter_val=dim_val, table_col="shrm_branch", target_event="bookreq_cnt")
 
@@ -787,11 +1283,11 @@ def render_content_by_section(section_id, df_main, df_aux, def_s, def_e, dim_col
     #     resv = build_resv(df_main, def_s, def_e, dim_col, dim_val)
     #     g1, _p, g2 = st.columns([1, 0.03, 1], vertical_alignment="top")
     #     with g1:
-    #         st.markdown("""<h6 style="margin:0;">🔔 예약이용수 추이</h6>""", unsafe_allow_html=True)
+    #         st.markdown("""<h6 style="margin:0;">예약이용수 추이</h6>""", unsafe_allow_html=True)
     #         render_resv_graph(resv, dim_col, f"resv_{k}")
     #         render_resv_table(df_main, def_s, def_e, filter_col=dim_col, filter_val=dim_val, table_col="shrm_branch")
     #     with g2:
-    #         st.markdown("""<h6 style="margin:0;">🔔 리드타임</h6>""", unsafe_allow_html=True)
+    #         st.markdown("""<h6 style="margin:0;">리드타임</h6>""", unsafe_allow_html=True)
     #         render_lead_graph(df_aux, def_s, def_e, dim_col, dim_val, base_col="이용일")
     #         render_lead_table(df_aux, def_s, def_e, dim_col, dim_val)
     elif section_id == "resv":
@@ -808,7 +1304,7 @@ def render_content_by_section(section_id, df_main, df_aux, def_s, def_e, dim_col
             )
         g1, _p, g2 = st.columns([1, 0.03, 1], vertical_alignment="top")
         with g1:
-            ttl_rev = "🔔 예약이용수 추이 & 예측 워크인수 합산" if kwargs.get("apply_pred_walkin") == "적용" else "🔔 예약이용수 추이"    
+            ttl_rev = "예약이용수 추이 & 예측 워크인수 합산" if kwargs.get("apply_pred_walkin") == "적용" else "예약이용수 추이"    
             st.markdown(f"""<h6 style="margin:0;">{ttl_rev}</h6>""", unsafe_allow_html=True)
             render_resv_graph(
                 resv,
@@ -819,7 +1315,7 @@ def render_content_by_section(section_id, df_main, df_aux, def_s, def_e, dim_col
             )
             render_resv_table(df_main, def_s, def_e, filter_col=dim_col, filter_val=dim_val, table_col="shrm_branch")
         with g2:
-            st.markdown("""<h6 style="margin:0;">🔔 리드타임</h6>""", unsafe_allow_html=True)
+            st.markdown("""<h6 style="margin:0;">리드타임</h6>""", unsafe_allow_html=True)
             render_lead_graph(df_aux, def_s, def_e, dim_col, dim_val, base_col="이용일")
             render_lead_table(df_aux, def_s, def_e, dim_col, dim_val)
 
@@ -984,8 +1480,8 @@ def main():
     # 1) 섹션 1
     # ──────────────────────────────────
     st.markdown(" ")
-    st.markdown("<h5 style='margin:0'>제목 1</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 1", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>쇼룸 전체 추이</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ플레이스 조회부터 예약, 이용, 방문까지의 쇼룸 퍼널의 전반적인 흐름과, 단계별 비중 변화를 함께 확인합니다. ", unsafe_allow_html=True)
 
     with st.expander("공통 Filter", expanded=True):
         f1, f2, _p, f3 = st.columns([2, 2, 0.1, 2], vertical_alignment="bottom")
@@ -1004,11 +1500,11 @@ def main():
     # 2) 섹션 2
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>제목 2</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 2", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>조회 및 예약신청</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ플레이스 조회가 예약 신청으로 얼마나 이어지는지 지점·권역·유형별로 확인합니다.", unsafe_allow_html=True)
 
     with st.expander("공통 Filter", expanded=True):
-        nf1, nf2 = st.columns([2, 4], vertical_alignment="bottom")
+        nf1, _p, nf2 = st.columns([2, 0.1, 4], vertical_alignment="bottom")
         with nf1: date_default_new = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="funnel_dd")
         with nf2: sel_mode_new = st.radio("예약 집계 선택", ["취소 제외", "취소 포함"], horizontal=True, key="funnel_sm")
 
@@ -1023,11 +1519,11 @@ def main():
     # 3) 섹션 3
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>제목 3</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 3", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>예약이용 및 리드타임</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ확보된 예약 이용과 예약 신청 기준 리드타임을 지점·권역·유형별로 확인합니다.", unsafe_allow_html=True)
     
     with st.expander("공통 Filter", expanded=True):
-        f1, f2, f3 = st.columns([2, 2, 2], vertical_alignment="bottom")
+        f1, _p1, f2, f3, _p2 = st.columns([2, 0.1, 1.6, 2, 0.4], vertical_alignment="bottom")
         with f1: date_default_resv = st.date_input("기간 선택", value=[_def_s2, _def_e2], min_value=_min_d, max_value=_max_d, key="resv_dd")
         with f2: sel_mode_resv = st.radio("예약 집계 선택", ["취소 제외", "취소 포함"], horizontal=True, key="resv_sm")
         with f3:
@@ -1035,7 +1531,8 @@ def main():
                 "예측 워크인 적용",
                 ["적용안함", "적용"],
                 horizontal=True,
-                key="resv_pred_apply"
+                key="resv_pred_apply",
+                help="과거의 워크인 방문 패턴을 바탕으로 매장에 발생할 예상 총 방문객을 확인합니다."
             )
 
     # 데이터 전처리
@@ -1076,11 +1573,11 @@ def main():
     # 4) 섹션 4
     # ──────────────────────────────────
     st.header(" ")
-    st.markdown("<h5 style='margin:0'>제목 4</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ설명 4", unsafe_allow_html=True)
+    st.markdown("<h5 style='margin:0'>고객 프로파일</h5>", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ방문 고객의 연령·성별·구매목적·인지경로 분포 및 추이를 지점·권역·유형별로 확인합니다.", unsafe_allow_html=True)
     
     with st.expander("공통 Filter", expanded=True):
-        f1, f2, _p = st.columns([2, 2, 2], vertical_alignment="bottom")
+        f1, f2, _p = st.columns([2, 2, 2.1], vertical_alignment="bottom")
         with f1: date_default_prof = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="prof_dd")
         with f2: sel_visit = st.selectbox("예약 VS 워크인 선택", dim_options(df1, "visit_type"), key="prof_sv")
 
@@ -1091,6 +1588,8 @@ def main():
 
     # 탭 자동화 렌더러 호출
     render_dashboard_section("prof", df_prof_tt, df_prof_aw, def_s_prof, def_e_prof)
+
+
 
 if __name__ == "__main__":
     main()
