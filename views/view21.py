@@ -1165,7 +1165,7 @@ def main():
         sel_evt_label = evt_opts[0][0]
 
     # 6개 카드 레이아웃
-    st.markdown("###### 📊 Summary ")
+    st.markdown("###### 📊 Summary (라스트클릭)")
     c1, c2, c3, c4, c5, c6 = st.columns(6, vertical_alignment="top")
 
     # (selectbox와 무관한 공통 KPI)
@@ -1359,14 +1359,15 @@ def main():
         render_style_perf(df_pivot, group_keys)
 
         st.download_button(
-            label="기존 표 엑셀 다운로드",
+            label="상기 표 엑셀 다운로드",
             data=excel_bytes(df_export),
             file_name=f"ORANGE_Perf_Report_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             icon="💾",
         )
 
-        st.markdown("###### 📋 tb_media + tb_media_touchpoint 합본 데이터")
+        st.subheader(" ")
+        st.markdown("###### 📊 Summary (누적 기여 D+7)")
 
         # 2) 합본 표
         if show_totals:
@@ -1393,7 +1394,7 @@ def main():
         render_style_perf(df_pivot_u, group_keys)
 
         st.download_button(
-            label="합본 표 엑셀 다운로드",
+            label="상기 표 엑셀 다운로드",
             data=excel_bytes(df_export_u),
             file_name=f"ORANGE_Perf_Report_union_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
