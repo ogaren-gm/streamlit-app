@@ -52,7 +52,9 @@ class BigQuery():
         self.tb_sleeper_e_pdp   = json_data[self.projectCode]['tb_sleeper_e_pdp']
         self.tb_sleeper_e_cart  = json_data[self.projectCode]['tb_sleeper_e_cart']
         self.tb_media           = json_data[self.projectCode]['tb_media']
+        self.tb_media_touchpoint        = json_data[self.projectCode]['tb_media_touchpoint']
         self.tb_sleeper_f_cmp   = json_data[self.projectCode]['tb_sleeper_f_cmp']
+        self.tb_sleeper_f_attribution = json_data[self.projectCode]['tb_sleeper_f_attribution']
         self.raw_geo_city_kr    = json_data[self.projectCode]['raw_geo_city_kr']
         self.tb_max             = json_data[self.projectCode]['tb_max']
 

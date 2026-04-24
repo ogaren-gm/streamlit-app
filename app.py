@@ -67,6 +67,7 @@ pages = {
     ],
     "GOAL": [
         st.Page("views/view21.py", title="ㅤ퍼포먼스 대시보드"),
+        st.Page("views/view99.py", title="ㅤ테스트 대시보드"),
     ],
     "BUZZ": [
         st.Page("views/view31.py", title="ㅤ언드·PPL 대시보드"),

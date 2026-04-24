@@ -143,9 +143,8 @@ def main():
     # ──────────────────────────────────
     @st.cache_data(ttl=CFG["CACHE_TTL"])
     def load_data(cs: str, ce: str):
-        bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
-
         # 1) tb_media
+        bq = BigQuery(projectCode="sleeper", custom_startDate=cs, custom_endDate=ce)
         df_bq = bq.get_data("tb_media")
         df_bq["event_date"] = pd.to_datetime(df_bq["event_date"], format="%Y%m%d", errors="coerce")
 
@@ -156,23 +155,13 @@ def main():
             parts.loc[mask, :4].apply(lambda r: "_".join(r.dropna().astype(str)), axis=1)
         )
 
-        # 2) tb_media_touchpoint
-        df_bq_touchpoint = bq.get_data("tb_media_touchpoint")
-        df_bq_touchpoint["event_date"] = pd.to_datetime(df_bq_touchpoint["event_date"], format="%Y%m%d", errors="coerce")
-
-        parts_touchpoint = df_bq_touchpoint["campaign_name"].astype(str).str.split("_", n=5, expand=True)
-        df_bq_touchpoint["campaign_name_short"] = df_bq_touchpoint["campaign_name"]
-        mask_touchpoint = parts_touchpoint[5].notna()
-        df_bq_touchpoint.loc[mask_touchpoint, "campaign_name_short"] = (
-            parts_touchpoint.loc[mask_touchpoint, :4].apply(lambda r: "_".join(r.dropna().astype(str)), axis=1)
-        )
-
-        # 3) Google Sheet
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive",]
+        # 2) Google Sheet
+        # secrets가 dict/string 어떤 형태든 처리(원 코드 동작 유지)
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive",] 
         try:
             creds = Credentials.from_service_account_file("C:/_code/auth/sleeper-461005-c74c5cd91818.json", scopes=scope)
         except:
-            sa_info = st.secrets["sleeper-462701-admin"]
+            sa_info = st.secrets["sleeper-462701-admin"] 
             if isinstance(sa_info, str):
                 import json
                 sa_info = json.loads(sa_info)
@@ -182,67 +171,69 @@ def main():
         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1g2HWpm3Le3t3P3Hb9nm2owoiaxywaXv--L0SHEDx3rQ/edit")
         df_sheet = pd.DataFrame(sh.worksheet("perf_campaign").get_all_records())
 
-        # 4) merge
+        # 3) merge
         merged = df_bq.merge(df_sheet, how="left", on="campaign_name_short")
-        merged_touchpoint = df_bq_touchpoint.merge(df_sheet, how="left", on="campaign_name_short")
 
-        # 5) AGG_MAP에서 쓰는 컬럼이 tb_media_touchpoint에 없으면 0으로 생성
-        need_cols = [
-            "cost", "impressions", "clicks",
-            "view_item", "product_page_scroll_50", "product_option_price",
-            "find_nearby_showroom", "showroom_10s", "add_to_cart",
-            "showroom_leads", "purchase", "session_start", "engagement_time_msec_sum"
-        ]
-        for c in need_cols:
-            if c not in merged.columns:
-                merged[c] = 0
-            if c not in merged_touchpoint.columns:
-                merged_touchpoint[c] = 0
-
-        # 6) cost_gross(v2)
-        for x in [merged, merged_touchpoint]:
-            x["cost_gross"] = np.where(
-                x["event_date"] < pd.to_datetime("2025-11-06"),
-                np.where(
-                    x["media_name"].isin(["GOOGLE", "META"]),
-                    x["cost"] * 1.1 / 0.98,
-                    x["cost"],
-                ),
-                np.where(
-                    x["media_name"].isin(["GOOGLE", "META"]),
-                    x["cost"] * 1.1 / 0.955,
-                    x["cost"],
-                ),
-            )
-
-        # 7) handle NSA
-        for x in [merged, merged_touchpoint]:
-            cond = (
-                (x["media_name"] == "NSA")
-                & x["utm_source"].isna()
-                & x["utm_medium"].isna()
-                & x["media_name_type"].isin(["RSA_AD", "TEXT_45"])
-            )
-            x.loc[cond, ["utm_source", "utm_medium"]] = ["naver", "search-nonmatch"]
-
-        # 8) 주별 컬럼
-        for x in [merged, merged_touchpoint]:
-            week_start = x["event_date"] - pd.to_timedelta(x["event_date"].dt.weekday, unit="D")
-            week_end = week_start + pd.Timedelta(days=6)
-            x["event_date2"] = week_start.dt.strftime("%Y-%m-%d") + " ~ " + week_end.dt.strftime("%Y-%m-%d")
-
-        # 9) 공통 컬럼 기준으로 union
-        common_cols = [c for c in merged.columns if c in merged_touchpoint.columns]
-        merged_union = pd.concat(
-            [merged[common_cols], merged_touchpoint[common_cols]],
-            ignore_index=True
+        # [ 하드코딩 전처리 ] cost_gross(v2) 
+        merged["cost_gross"] = np.where(
+            merged["event_date"] < pd.to_datetime("2025-11-06"),
+            np.where(
+                merged["media_name"].isin(["GOOGLE", "META"]),
+                merged["cost"] * 1.1 / 0.98,
+                merged["cost"],
+            ),
+            np.where(
+                merged["media_name"].isin(["GOOGLE", "META"]),
+                merged["cost"] * 1.1 / 0.955,
+                merged["cost"],
+            ),
         )
 
-        # 10) 최종 event_date 문자열 변환
-        merged["event_date"] = merged["event_date"].dt.strftime("%Y-%m-%d")
-        merged_union["event_date"] = pd.to_datetime(merged_union["event_date"], errors="coerce").dt.strftime("%Y-%m-%d")
+        # [ 하드코딩 전처리 ] handle NSA - 기존 로직 유지
+        cond = (
+            (merged["media_name"] == "NSA")
+            & merged["utm_source"].isna()
+            & merged["utm_medium"].isna()
+            & merged["media_name_type"].isin(["RSA_AD", "TEXT_45"])
+        )
+        merged.loc[cond, ["utm_source", "utm_medium"]] = ["naver", "search-nonmatch"]
 
-        return merged, merged_union
+        # (26.04.14) 주별 추가
+        week_start = merged["event_date"] - pd.to_timedelta(merged["event_date"].dt.weekday, unit="D")
+        week_end = week_start + pd.Timedelta(days=6)
+        merged["event_date2"] = week_start.dt.strftime("%Y-%m-%d") + " ~ " + week_end.dt.strftime("%Y-%m-%d")
+
+        # ⚠️ 원 코드와 동일: merged.event_date는 문자열 표기로 변환
+        merged["event_date"] = merged["event_date"].dt.strftime("%Y-%m-%d")
+
+        return merged
+
+    # with st.spinner("데이터를 불러오는 중입니다. 잠시만 기다려 주세요."):
+    #     if use_compare:
+    #         cs_cmp = comp_start.strftime("%Y%m%d")
+    #         df_merged = load_data(cs_cmp, ce)
+
+    #         # 비교/선택 분리용 event_date를 datetime으로 복원(원 코드 유지)
+    #         df_merged["event_date"] = pd.to_datetime(df_merged["event_date"], errors="coerce")
+
+    #         df_primary = df_merged[
+    #             (df_merged["event_date"] >= pd.to_datetime(start_date))
+    #             & (df_merged["event_date"] <= pd.to_datetime(end_date))
+    #         ]
+    #         df_compare = df_merged[
+    #             (df_merged["event_date"] >= pd.to_datetime(comp_start))
+    #             & (df_merged["event_date"] <= pd.to_datetime(comp_end))
+    #         ]
+
+    #         df_filtered = df_primary
+    #         df_filtered_cmp = df_compare
+    #     else:
+    #         df_merged = load_data(cs, ce)
+    #         df_merged["event_date"] = pd.to_datetime(df_merged["event_date"], errors="coerce")
+    #         df_filtered = df_merged
+    #         df_filtered_cmp = None
+    #     # apply_filter_pair에서 옵션은 항상 "선택기간 기준"을 쓰므로 원본 유지
+    #     df_primary = df_filtered
 
 
     # ──────────────────────────────────
@@ -277,10 +268,8 @@ def main():
 
     if use_compare:
         cs_cmp = comp_start.strftime("%Y%m%d")
-        df_merged, df_merged_union = load_data(cs_cmp, ce)
-
+        df_merged = load_data(cs_cmp, ce)
         df_merged["event_date"] = pd.to_datetime(df_merged["event_date"], errors="coerce")
-        df_merged_union["event_date"] = pd.to_datetime(df_merged_union["event_date"], errors="coerce")
 
         df_filtered = df_merged[
             (df_merged["event_date"] >= pd.to_datetime(start_date))
@@ -290,26 +279,11 @@ def main():
             (df_merged["event_date"] >= pd.to_datetime(comp_start))
             & (df_merged["event_date"] <= pd.to_datetime(comp_end))
         ]
-
-        df_filtered_union = df_merged_union[
-            (df_merged_union["event_date"] >= pd.to_datetime(start_date))
-            & (df_merged_union["event_date"] <= pd.to_datetime(end_date))
-        ]
-        df_filtered_cmp_union = df_merged_union[
-            (df_merged_union["event_date"] >= pd.to_datetime(comp_start))
-            & (df_merged_union["event_date"] <= pd.to_datetime(comp_end))
-        ]
     else:
-        df_merged, df_merged_union = load_data(cs, ce)
-
+        df_merged = load_data(cs, ce)
         df_merged["event_date"] = pd.to_datetime(df_merged["event_date"], errors="coerce")
-        df_merged_union["event_date"] = pd.to_datetime(df_merged_union["event_date"], errors="coerce")
-
         df_filtered = df_merged
         df_filtered_cmp = None
-
-        df_filtered_union = df_merged_union
-        df_filtered_cmp_union = None
 
     progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 중입니다...")
     time.sleep(0.4)
@@ -557,87 +531,6 @@ def main():
             if df_cmp is not None:
                 df_cmp = df_cmp[df_cmp[column].isin(sel)]
         return df, df_cmp
-
-
-    def apply_saved_filter(
-        df: pd.DataFrame,
-        df_cmp: pd.DataFrame | None,
-        column: str,
-        text_filter: bool = False,
-    ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
-        key = f"{column}_{'text' if text_filter else 'multi'}"
-
-        if text_filter:
-            expr = st.session_state.get(key, "")
-            if not expr:
-                return df, df_cmp
-
-            s = df[column].astype(str)
-
-            if "&" in expr:
-                terms = [t.strip() for t in expr.split("&") if t.strip()]
-                mask = pd.Series(True, index=df.index)
-                for t in terms:
-                    if t.startswith("!"):
-                        mask &= ~s.str.contains(t[1:], regex=True, na=False)
-                    else:
-                        mask &= s.str.contains(t, regex=True, na=False)
-
-            elif "|" in expr:
-                terms = [t.strip() for t in expr.split("|") if t.strip()]
-                mask = pd.Series(False, index=df.index)
-                for t in terms:
-                    if t.startswith("!"):
-                        mask |= ~s.str.contains(t[1:], regex=True, na=False)
-                    else:
-                        mask |= s.str.contains(t, regex=True, na=False)
-
-            else:
-                if expr.startswith("!"):
-                    mask = ~s.str.contains(expr[1:], regex=True, na=False)
-                else:
-                    mask = s.str.contains(expr, regex=True, na=False)
-
-            df = df[mask]
-
-            if df_cmp is not None:
-                s_cmp = df_cmp[column].astype(str)
-
-                if "&" in expr:
-                    terms = [t.strip() for t in expr.split("&") if t.strip()]
-                    mask_cmp = pd.Series(True, index=df_cmp.index)
-                    for t in terms:
-                        if t.startswith("!"):
-                            mask_cmp &= ~s_cmp.str.contains(t[1:], regex=True, na=False)
-                        else:
-                            mask_cmp &= s_cmp.str.contains(t, regex=True, na=False)
-
-                elif "|" in expr:
-                    terms = [t.strip() for t in expr.split("|") if t.strip()]
-                    mask_cmp = pd.Series(False, index=df_cmp.index)
-                    for t in terms:
-                        if t.startswith("!"):
-                            mask_cmp |= ~s_cmp.str.contains(t[1:], regex=True, na=False)
-                        else:
-                            mask_cmp |= s_cmp.str.contains(t, regex=True, na=False)
-
-                else:
-                    if expr.startswith("!"):
-                        mask_cmp = ~s_cmp.str.contains(expr[1:], regex=True, na=False)
-                    else:
-                        mask_cmp = s_cmp.str.contains(expr, regex=True, na=False)
-
-                df_cmp = df_cmp[mask_cmp]
-
-            return df, df_cmp
-
-        sel = st.session_state.get(key, [])
-        if sel:
-            df = df[df[column].isin(sel)]
-            if df_cmp is not None:
-                df_cmp = df_cmp[df_cmp[column].isin(sel)]
-        return df, df_cmp
-
 
     # (26.03.06) 엑셀 다운로드
     def excel_bytes(df: pd.DataFrame) -> bytes:
@@ -1069,28 +962,6 @@ def main():
         with ft18:
             df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_term", text_filter=True)
 
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "media_name", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "utm_source", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "utm_medium", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "brand_type", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "funnel_type", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "product_type", text_filter=False)
-
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "campaign_name", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "campaign_name", text_filter=True)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "adgroup_name", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "adgroup_name", text_filter=True)
-
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "ad_name", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "ad_name", text_filter=True)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "keyword_name", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "keyword_name", text_filter=True)
-
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "utm_content", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "utm_content", text_filter=True)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "utm_term", text_filter=False)
-        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "utm_term", text_filter=True)
-
 
     # ------------------------------
     # ★ 영역
@@ -1355,53 +1226,21 @@ def main():
 
         df_export = render_decor_perf(df_pivot, group_keys)
 
-        # 1) 기존 표
+        # 1) 표 먼저 출력
         render_style_perf(df_pivot, group_keys)
 
+        # 2) 표 아래에 다운로드 버튼 배치
         st.download_button(
-            label="기존 표 엑셀 다운로드",
+            label="엑셀 다운로드",
             data=excel_bytes(df_export),
             file_name=f"ORANGE_Perf_Report_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             icon="💾",
-        )
-
-        st.markdown("###### 📋 tb_media + tb_media_touchpoint 합본 데이터")
-
-        # 2) 합본 표
-        if show_totals:
-            df_sel_u = df_filtered_union.assign(period=f"{start_date_str} ~ {end_date_str}")
-
-            if use_compare:
-                df_cmp_u = df_filtered_cmp_union.assign(period=f"{default_comp_s_str} ~ {default_comp_e_str}")
-                df_combined_u = pd.concat([df_sel_u, df_cmp_u], ignore_index=True)
-            else:
-                df_combined_u = df_sel_u
-
-            df_pivot_u = pivot_perf(df_combined_u, group_keys)
-
-        else:
-            df_sel_u = pivot_perf(df_filtered_union, pivot_cols).assign(period=f"{start_date_str} ~ {end_date_str}")
-
-            if use_compare:
-                df_cmp_u = pivot_perf(df_filtered_cmp_union, pivot_cols).assign(period=f"{default_comp_s_str} ~ {default_comp_e_str}")
-                df_pivot_u = pd.concat([df_sel_u, df_cmp_u], ignore_index=True)
-            else:
-                df_pivot_u = df_sel_u
-
-        df_export_u = render_decor_perf(df_pivot_u, group_keys)
-        render_style_perf(df_pivot_u, group_keys)
-
-        st.download_button(
-            label="합본 표 엑셀 다운로드",
-            data=excel_bytes(df_export_u),
-            file_name=f"ORANGE_Perf_Report_union_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            icon="💾",
-        )
+            )
 
     else:
         st.warning("피벗할 행 필드를 하나 이상 선택해 주세요.")
+
 
 if __name__ == "__main__":
     main()
