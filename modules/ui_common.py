@@ -421,6 +421,138 @@ def style_format(
     return styler
 
 
+# def style_cmap(
+#     df_or_styler,
+#     gradient_rules: list[dict],
+#     *,
+#     default_cmap: str = "OrRd",
+#     na_color: str = "#ffffff",
+# ) -> Styler:
+#     """
+#     - cmap_span : 컬러맵 일부 구간만 사용 (색 강도 제어)
+#     - robust_clip : 분위수 기반 min/max (이상치 영향 제거)
+#     - pad_ratio : 데이터 범위 기준 여백 추가
+#     - zero_as_white : 0 값은 흰색 처리
+
+#     ※ vmin / vmax 사용자 지정 기능 제거
+#     """
+
+#     # --- styler 확보 ---
+#     if isinstance(df_or_styler, Styler):
+#         styler = df_or_styler
+#         df = styler.data
+#     else:
+#         df = df_or_styler
+#         styler = df.style
+
+#     idx = pd.IndexSlice
+#     rows = df.index
+
+#     # --- cmap 일부 구간만 사용 ---
+#     from matplotlib import cm
+#     from matplotlib.colors import LinearSegmentedColormap
+
+#     def _slice_cmap(cmap_name: str, span: tuple[float, float]):
+#         a, b = span
+#         a = float(max(0.0, min(1.0, a)))
+#         b = float(max(0.0, min(1.0, b)))
+#         if b < a:
+#             a, b = b, a
+#         if abs(b - a) < 1e-9:
+#             b = min(1.0, a + 1e-3)
+
+#         base = cm.get_cmap(cmap_name)
+#         xs = np.linspace(a, b, 256)
+#         colors = base(xs)
+#         return LinearSegmentedColormap.from_list(f"{cmap_name}_{a:.2f}_{b:.2f}", colors)
+
+#     # --- 메인 ---
+#     for sp in gradient_rules:
+#         cols = sp.get("cols")
+#         col = sp.get("col")
+
+#         if cols is not None:
+#             targets = [c for c in cols if c in df.columns]
+#         elif col is not None and col in df.columns:
+#             targets = [col]
+#         else:
+#             continue
+
+#         cmap_name   = sp.get("cmap", default_cmap)
+#         cmap_span   = sp.get("cmap_span", (0.0, 1.0))
+#         robust_clip = sp.get("robust_clip", None)     # (q_low, q_high)
+#         pad_ratio   = sp.get("pad_ratio", (0.0, 0.0)) # (pad_low, pad_high)
+#         zero_as_white = sp.get("zero_as_white", True)
+#         low  = sp.get("low", 0.0)
+#         high = sp.get("high", 0.0)
+
+#         # cmap span 적용
+#         try:
+#             cmap_obj = _slice_cmap(cmap_name, cmap_span)
+#         except Exception:
+#             cmap_obj = cmap_name
+
+#         for c in targets:
+#             s = pd.to_numeric(df[c], errors="coerce").replace([np.inf, -np.inf], np.nan)
+#             s_finite = s.dropna()
+#             if s_finite.empty:
+#                 continue
+
+#             # --- 데이터 기준 min/max ---
+#             if robust_clip and isinstance(robust_clip, (tuple, list)) and len(robust_clip) == 2:
+#                 ql, qh = robust_clip
+#                 ql = max(0.0, min(1.0, ql))
+#                 qh = max(0.0, min(1.0, qh))
+#                 if qh < ql:
+#                     ql, qh = qh, ql
+#                 vmin_raw = float(s_finite.quantile(ql))
+#                 vmax_raw = float(s_finite.quantile(qh))
+#             else:
+#                 nonzero_min = s_finite[s_finite != 0].min()
+#                 vmin_raw = float(nonzero_min) if pd.notna(nonzero_min) else float(s_finite.min())
+#                 vmax_raw = float(s_finite.max())
+
+#             # --- pad_ratio 적용 ---
+#             if isinstance(pad_ratio, (tuple, list)) and len(pad_ratio) == 2:
+#                 pl, ph = pad_ratio
+#             else:
+#                 pl, ph = 0.0, 0.0
+
+#             span = vmax_raw - vmin_raw
+#             if np.isfinite(span) and span != 0:
+#                 vmin_c = vmin_raw - span * pl
+#                 vmax_c = vmax_raw + span * ph
+#             else:
+#                 vmin_c, vmax_c = vmin_raw, vmax_raw
+
+#             # 안전 처리
+#             if pd.isna(vmin_c) or pd.isna(vmax_c):
+#                 continue
+#             if vmin_c > vmax_c:
+#                 vmin_c, vmax_c = vmax_c, vmin_c
+
+#             styler = styler.background_gradient(
+#                 subset=idx[rows, [c]],
+#                 cmap=cmap_obj,
+#                 vmin=vmin_c,
+#                 vmax=vmax_c,
+#                 low=low,
+#                 high=high,
+#                 text_color_threshold=0
+#             )
+
+#             # --- 0 흰색 ---
+#             if zero_as_white:
+#                 styler = styler.apply(
+#                     lambda col_: [
+#                         f"background-color: {na_color}" if pd.to_numeric(v, errors="coerce") == 0 else ""
+#                         for v in col_
+#                     ],
+#                     subset=idx[rows, [c]],
+#                 )
+
+#     return styler
+
 def style_cmap(
     df_or_styler,
     gradient_rules: list[dict],
@@ -478,12 +610,12 @@ def style_cmap(
         else:
             continue
 
-        cmap_name   = sp.get("cmap", default_cmap)
-        cmap_span   = sp.get("cmap_span", (0.0, 1.0))
-        robust_clip = sp.get("robust_clip", None)     # (q_low, q_high)
-        pad_ratio   = sp.get("pad_ratio", (0.0, 0.0)) # (pad_low, pad_high)
+        cmap_name = sp.get("cmap", default_cmap)
+        cmap_span = sp.get("cmap_span", (0.0, 1.0))
+        robust_clip = sp.get("robust_clip", None)      # (q_low, q_high)
+        pad_ratio = sp.get("pad_ratio", (0.0, 0.0))    # (pad_low, pad_high)
         zero_as_white = sp.get("zero_as_white", True)
-        low  = sp.get("low", 0.0)
+        low = sp.get("low", 0.0)
         high = sp.get("high", 0.0)
 
         # cmap span 적용
@@ -495,6 +627,8 @@ def style_cmap(
         for c in targets:
             s = pd.to_numeric(df[c], errors="coerce").replace([np.inf, -np.inf], np.nan)
             s_finite = s.dropna()
+
+            # 컬럼 전체가 NA / inf / 비숫자면 색상 적용 스킵
             if s_finite.empty:
                 continue
 
@@ -505,12 +639,36 @@ def style_cmap(
                 qh = max(0.0, min(1.0, qh))
                 if qh < ql:
                     ql, qh = qh, ql
-                vmin_raw = float(s_finite.quantile(ql))
-                vmax_raw = float(s_finite.quantile(qh))
+
+                vmin_raw = s_finite.quantile(ql)
+                vmax_raw = s_finite.quantile(qh)
+
             else:
-                nonzero_min = s_finite[s_finite != 0].min()
-                vmin_raw = float(nonzero_min) if pd.notna(nonzero_min) else float(s_finite.min())
-                vmax_raw = float(s_finite.max())
+                s_nonzero = s_finite[s_finite != 0]
+
+                if s_nonzero.empty:
+                    vmin_raw = s_finite.min()
+                else:
+                    vmin_raw = s_nonzero.min()
+
+                vmax_raw = s_finite.max()
+
+            # pd.NA / NaN / inf 방어
+            vmin_raw = pd.to_numeric(pd.Series([vmin_raw]), errors="coerce").iloc[0]
+            vmax_raw = pd.to_numeric(pd.Series([vmax_raw]), errors="coerce").iloc[0]
+
+            if pd.isna(vmin_raw) or pd.isna(vmax_raw):
+                continue
+
+            vmin_raw = float(vmin_raw)
+            vmax_raw = float(vmax_raw)
+
+            if not np.isfinite(vmin_raw) or not np.isfinite(vmax_raw):
+                continue
+
+            # 값이 전부 동일하면 gradient 계산 의미 없음
+            if vmin_raw == vmax_raw:
+                continue
 
             # --- pad_ratio 적용 ---
             if isinstance(pad_ratio, (tuple, list)) and len(pad_ratio) == 2:
@@ -528,6 +686,8 @@ def style_cmap(
             # 안전 처리
             if pd.isna(vmin_c) or pd.isna(vmax_c):
                 continue
+            if not np.isfinite(vmin_c) or not np.isfinite(vmax_c):
+                continue
             if vmin_c > vmax_c:
                 vmin_c, vmax_c = vmax_c, vmin_c
 
@@ -538,14 +698,16 @@ def style_cmap(
                 vmax=vmax_c,
                 low=low,
                 high=high,
-                text_color_threshold=0
+                text_color_threshold=0,
             )
 
             # --- 0 흰색 ---
             if zero_as_white:
                 styler = styler.apply(
                     lambda col_: [
-                        f"background-color: {na_color}" if pd.to_numeric(v, errors="coerce") == 0 else ""
+                        f"background-color: {na_color}"
+                        if pd.to_numeric(pd.Series([v]), errors="coerce").fillna(np.nan).iloc[0] == 0
+                        else ""
                         for v in col_
                     ],
                     subset=idx[rows, [c]],

@@ -1165,7 +1165,7 @@ def main():
         sel_evt_label = evt_opts[0][0]
 
     # 6개 카드 레이아웃
-    st.markdown("###### 📊 Summary (라스트클릭)")
+    st.markdown("###### 📊 Summary (라스트 클릭)")
     c1, c2, c3, c4, c5, c6 = st.columns(6, vertical_alignment="top")
 
     # (selectbox와 무관한 공통 KPI)
