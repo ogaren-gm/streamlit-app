@@ -636,7 +636,16 @@ def render_lead_table(df3, start_dt, end_dt, dim_col=None, dim_val=None):
     styled = ui.style_cmap(pt, gradient_rules=[{"cols": [c for c in pt.columns if c not in ["register_date", "합계"]], "cmap": "YlOrBr", "cmap_span": (0.0, 0.3)}])
     st.dataframe(styled, hide_index=True, height=315, row_height=30, use_container_width=True)
     
-def render_lead_graph(df3, start_dt, end_dt, dim_col=None, dim_val=None, base_col="register_date"):
+
+def render_lead_graph(
+    df3,
+    start_dt,
+    end_dt,
+    dim_col=None,
+    dim_val=None,
+    base_col="register_date",
+    key_tag: str = "",
+):
     df3_v = filter_df3(df3, start_dt, end_dt, dim_col, dim_val)
     d = df3_v.copy()
     d["register_date"] = pd.to_datetime(d["register_date"], errors="coerce").dt.normalize()
@@ -644,26 +653,67 @@ def render_lead_graph(df3, start_dt, end_dt, dim_col=None, dim_val=None, base_co
     d["lead_days"] = (d["이용일"] - d["register_date"]).dt.days
     d = d[d["lead_days"].notna()]
     d = d[d["lead_days"] >= 0]
-    d["lead_label"] = np.where(d["lead_days"] >= 7, "D7+", "D" + d["lead_days"].astype(int).astype(str))
+    d["lead_label"] = np.where(
+        d["lead_days"] >= 7,
+        "D7+",
+        "D" + d["lead_days"].astype(int).astype(str)
+    )
 
     x_col = "이용일" if base_col == "이용일" else "register_date"
     pt = d.groupby([x_col, "lead_label"], as_index=False).size().rename(columns={"size": "cnt"})
     
-    all_dates = pd.date_range(pd.to_datetime(start_dt).normalize(), pd.to_datetime(end_dt).normalize(), freq="D")
+    all_dates = pd.date_range(
+        pd.to_datetime(start_dt).normalize(),
+        pd.to_datetime(end_dt).normalize(),
+        freq="D"
+    )
     lead_labels = [f"D{i}" for i in range(7)] + ["D7+"]
-    base = pd.MultiIndex.from_product([all_dates, lead_labels], names=[x_col, "lead_label"]).to_frame(index=False)
+    base = pd.MultiIndex.from_product(
+        [all_dates, lead_labels],
+        names=[x_col, "lead_label"]
+    ).to_frame(index=False)
     
     pt = base.merge(pt, on=[x_col, "lead_label"], how="left").fillna({"cnt": 0})
     pt["cnt"] = pt["cnt"].astype(int)
     pt[x_col] = pd.to_datetime(pt[x_col], errors="coerce")
     pt["dt_lbl"] = pt[x_col].dt.strftime("%Y-%m-%d")
 
-    fig = px.bar(pt, x="dt_lbl", y="cnt", color="lead_label", category_orders={"lead_label": lead_labels})
+    fig = px.bar(
+        pt,
+        x="dt_lbl",
+        y="cnt",
+        color="lead_label",
+        category_orders={"lead_label": lead_labels}
+    )
     fig.for_each_trace(lambda t: t.update(offsetgroup="__stack__", alignmentgroup="__stack__"))
-    fig.update_traces(marker_opacity=0.8, hovertemplate="%{fullData.name}: %{y}건<extra></extra>")
+    fig.update_traces(
+        marker_opacity=0.8,
+        hovertemplate="%{fullData.name}: %{y}건<extra></extra>"
+    )
     ui.add_weekend_shading(fig, pd.to_datetime(pt[x_col], errors="coerce"))
-    fig.update_layout(barmode="stack", xaxis_title=None, yaxis_title=None, hovermode="x unified", bargap=0.4, height=330, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None))
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(
+        barmode="stack",
+        xaxis_title=None,
+        yaxis_title=None,
+        hovermode="x unified",
+        bargap=0.4,
+        height=330,
+        margin=dict(l=10, r=10, t=10, b=10),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            title=None
+        )
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        key=f"lead_fig_{base_col}_{key_tag}"
+    )
 
 
 # [섹션 4]
@@ -1316,7 +1366,15 @@ def render_content_by_section(section_id, df_main, df_aux, def_s, def_e, dim_col
             render_resv_table(df_main, def_s, def_e, filter_col=dim_col, filter_val=dim_val, table_col="shrm_branch")
         with g2:
             st.markdown("""<h6 style="margin:0;">리드타임</h6>""", unsafe_allow_html=True)
-            render_lead_graph(df_aux, def_s, def_e, dim_col, dim_val, base_col="이용일")
+            render_lead_graph(
+                df_aux,
+                def_s,
+                def_e,
+                dim_col,
+                dim_val,
+                base_col="이용일",
+                key_tag=f"lead_{k}",
+            )
             render_lead_table(df_aux, def_s, def_e, dim_col, dim_val)
 
     elif section_id == "prof":
