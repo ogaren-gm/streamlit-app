@@ -57,6 +57,7 @@ class BigQuery():
         self.tb_sleeper_f_attribution = json_data[self.projectCode]['tb_sleeper_f_attribution']
         self.raw_geo_city_kr    = json_data[self.projectCode]['raw_geo_city_kr']
         self.tb_max             = json_data[self.projectCode]['tb_max']
+        self.tb_naver_smartblock  = json_data[self.projectCode]['tb_naver_smartblock']
 
 
         try:

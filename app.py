@@ -71,6 +71,7 @@ pages = {
     "BUZZ": [
         st.Page("views/view31.py", title="ㅤ언드·PPL 대시보드"),
         st.Page("views/view32.py", title="ㅤ키워드 대시보드"),
+        st.Page("views/view99.py", title="ㅤTEST 대시보드"),
     ],
 }
 
