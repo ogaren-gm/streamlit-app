@@ -147,9 +147,23 @@ def main():
 
         # 1) tb_media
         df_bq = bq.get_data("tb_media")
+        
+        # (26.05.12) 없는 데이터에 대해 에러 방어
+        if df_bq.empty:
+            return pd.DataFrame(), pd.DataFrame()
+        
         df_bq["event_date"] = pd.to_datetime(df_bq["event_date"], format="%Y%m%d", errors="coerce")
 
-        parts = df_bq["campaign_name"].astype(str).str.split("_", n=5, expand=True)
+        # parts = df_bq["campaign_name"].astype(str).str.split("_", n=5, expand=True)
+        # (26.05.12) 없는 데이터에 대해 에러 방어
+        parts = (
+            df_bq["campaign_name"]
+            .fillna("")
+            .astype(str)
+            .str.split("_", n=5, expand=True)
+            .reindex(columns=range(6))
+        )
+        
         df_bq["campaign_name_short"] = df_bq["campaign_name"]
         mask = parts[5].notna()
         df_bq.loc[mask, "campaign_name_short"] = (
@@ -158,9 +172,23 @@ def main():
 
         # 2) tb_media_touchpoint
         df_bq_touchpoint = bq.get_data("tb_media_touchpoint")
+        
+        # (26.05.12) 없는 데이터에 대해 에러 방어
+        if df_bq_touchpoint.empty:
+            df_bq_touchpoint = pd.DataFrame(columns=df_bq.columns)
+            
         df_bq_touchpoint["event_date"] = pd.to_datetime(df_bq_touchpoint["event_date"], format="%Y%m%d", errors="coerce")
 
-        parts_touchpoint = df_bq_touchpoint["campaign_name"].astype(str).str.split("_", n=5, expand=True)
+        # parts_touchpoint = df_bq_touchpoint["campaign_name"].astype(str).str.split("_", n=5, expand=True)
+        # (26.05.12) 없는 데이터에 대해 에러 방어
+        parts_touchpoint = (
+            df_bq_touchpoint["campaign_name"]
+            .fillna("")
+            .astype(str)
+            .str.split("_", n=5, expand=True)
+            .reindex(columns=range(6))
+        )
+        
         df_bq_touchpoint["campaign_name_short"] = df_bq_touchpoint["campaign_name"]
         mask_touchpoint = parts_touchpoint[5].notna()
         df_bq_touchpoint.loc[mask_touchpoint, "campaign_name_short"] = (
@@ -278,6 +306,13 @@ def main():
     if use_compare:
         cs_cmp = comp_start.strftime("%Y%m%d")
         df_merged, df_merged_union = load_data(cs_cmp, ce)
+        
+        # (26.05.12) 없는 데이터에 대해 에러 방어
+        if df_merged.empty:
+            progress_placeholder.empty()
+            spacer_placeholder.empty()
+            st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
+            st.stop()
 
         df_merged["event_date"] = pd.to_datetime(df_merged["event_date"], errors="coerce")
         df_merged_union["event_date"] = pd.to_datetime(df_merged_union["event_date"], errors="coerce")
@@ -302,6 +337,13 @@ def main():
     else:
         df_merged, df_merged_union = load_data(cs, ce)
 
+        # (26.05.12) 없는 데이터에 대해 에러 방어
+        if df_merged.empty:
+            progress_placeholder.empty()
+            spacer_placeholder.empty()
+            st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
+            st.stop()
+
         df_merged["event_date"] = pd.to_datetime(df_merged["event_date"], errors="coerce")
         df_merged_union["event_date"] = pd.to_datetime(df_merged_union["event_date"], errors="coerce")
 
@@ -310,6 +352,14 @@ def main():
 
         df_filtered_union = df_merged_union
         df_filtered_cmp_union = None
+
+
+    # (26.05.12) 선택 기간 필터 결과 없음 방어
+    if df_filtered.empty:
+        progress_placeholder.empty()
+        spacer_placeholder.empty()
+        st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
+        st.stop()
 
     progress_bar.progress(95, text="데이터 분석 및 시각화를 구성 중입니다...")
     time.sleep(0.4)
