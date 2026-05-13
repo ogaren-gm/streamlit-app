@@ -12,6 +12,7 @@
         "tb_sleeper_f_attribution" : "tb_sleeper.tb_sleeper_f_attribution",
         "raw_geo_city_kr" : "tb_sleeper.raw_geo_city_kr",
         "tb_max" : "tb_sleeper.tb_max",
-        "tb_naver_smartblock" : "tb_sleeper.tb_naver_smartblock"
+        "tb_naver_smartblock" : "tb_sleeper.tb_naver_smartblock",
+        "test" : "tb_sleeper.test"
     }
 }

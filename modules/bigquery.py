@@ -58,6 +58,7 @@ class BigQuery():
         self.raw_geo_city_kr    = json_data[self.projectCode]['raw_geo_city_kr']
         self.tb_max             = json_data[self.projectCode]['tb_max']
         self.tb_naver_smartblock  = json_data[self.projectCode]['tb_naver_smartblock']
+        self.test  = json_data[self.projectCode]['test']
 
 
         try:

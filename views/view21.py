@@ -61,6 +61,7 @@ HEADER_MAP = {
     "event_date2": "날짜(주별)",  # (26.04.14) 주별 추가
     "event_date3": "날짜(월별)",  # (26.05.13) 월별 추가
     "media_name": "매체",
+    "media_name_type": "NSA 세부유형",
     "utm_source": "소스",
     "utm_medium": "미디엄",
     "brand_type": "브랜드",
@@ -72,6 +73,24 @@ HEADER_MAP = {
     "keyword_name": "키워드",
     "utm_content": "컨텐츠",
     "utm_term": "검색어",
+}
+
+MEDIA_TYPE_MAP = {
+    "TEXT_45"                : "파워링크",
+    "RSA_AD"                 : "파워링크",
+    
+    "SHOPPING_PRODUCT_AD"                : "쇼핑검색",
+    "CATALOG_AD"                         : "쇼핑검색",
+    "SHOPPING_BRAND_IMAGE_THUMBNAIL_AD"  : "쇼핑검색",
+    "SHOPPING_BRAND_IMAGE_BANNER_AD"     : "쇼핑검색",
+    
+    "CONTENTS_AD_INFORMATION": "파워컨텐츠",
+    
+    "BRAND_SEARCH_AD"        : "브랜드검색",
+    "BRAND_SEARCH_NEW_AD"    : "브랜드 검색",
+    
+    "PLACE_AD"               : "플레이스", 
+    "LOCAL_AD"               : "플레이스",
 }
 
 AGG_MAP = dict(
@@ -253,6 +272,11 @@ def main():
                 & x["media_name_type"].isin(["RSA_AD", "TEXT_45"])
             )
             x.loc[cond, ["utm_source", "utm_medium"]] = ["naver", "search-nonmatch"]
+
+        # 7-1) media_name_type 한글 치환
+        for x in [merged, merged_touchpoint]:
+            x["media_name_type"] = x["media_name_type"].replace(MEDIA_TYPE_MAP)
+
 
         # 8) 주별/월별 컬럼
         for x in [merged, merged_touchpoint]:
@@ -467,7 +491,7 @@ def main():
             elif c == "event_date3":
                 multi_labels.append(("기본정보", "날짜(월별)"))
             elif c in pivot_extra:
-                multi_labels.append(("기본정보", c))
+                multi_labels.append(("기본정보", HEADER_MAP.get(c, c)))
             else:
                 multi_labels.append(metrics_map_dict.get(c, ("기본정보", c)))
 
@@ -1081,18 +1105,20 @@ def main():
 
     # 필터
     with st.expander("기본 Filter", expanded=False):
-        ft1, ft2, ft3, ft4, ft5, ft6 = st.columns(6)
+        ft1, ft2, ft3, ft4, ft5, ft6, ft7 = st.columns(7)
         with ft1:
             df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "media_name", text_filter=False)
         with ft2:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_source", text_filter=False)
+            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "media_name_type", text_filter=False)
         with ft3:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_medium", text_filter=False)
+            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_source", text_filter=False)
         with ft4:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "brand_type", text_filter=False)
+            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_medium", text_filter=False)
         with ft5:
-            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "funnel_type", text_filter=False)
+            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "brand_type", text_filter=False)
         with ft6:
+            df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "funnel_type", text_filter=False)
+        with ft7:
             df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "product_type", text_filter=False)
 
     with st.expander("고급 Filter", expanded=False):
@@ -1127,6 +1153,7 @@ def main():
             df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "utm_term", text_filter=True)
 
         df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "media_name", text_filter=False)
+        df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "media_name_type", text_filter=False)
         df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "utm_source", text_filter=False)
         df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "utm_medium", text_filter=False)
         df_filtered_union, df_filtered_cmp_union = apply_saved_filter(df_filtered_union, df_filtered_cmp_union, "brand_type", text_filter=False)
