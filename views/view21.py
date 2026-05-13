@@ -59,6 +59,7 @@ CFG = {
 HEADER_MAP = {
     "event_date": "날짜(일별)",
     "event_date2": "날짜(주별)",  # (26.04.14) 주별 추가
+    "event_date3": "날짜(월별)",  # (26.05.13) 월별 추가
     "media_name": "매체",
     "utm_source": "소스",
     "utm_medium": "미디엄",
@@ -253,11 +254,12 @@ def main():
             )
             x.loc[cond, ["utm_source", "utm_medium"]] = ["naver", "search-nonmatch"]
 
-        # 8) 주별 컬럼
+        # 8) 주별/월별 컬럼
         for x in [merged, merged_touchpoint]:
             week_start = x["event_date"] - pd.to_timedelta(x["event_date"].dt.weekday, unit="D")
             week_end = week_start + pd.Timedelta(days=6)
             x["event_date2"] = week_start.dt.strftime("%Y-%m-%d") + " ~ " + week_end.dt.strftime("%Y-%m-%d")
+            x["event_date3"] = x["event_date"].dt.strftime("%Y-%m") # 월별 추가 (26.05.13)
 
         # 9) 공통 컬럼 기준으로 union
         common_cols = [c for c in merged.columns if c in merged_touchpoint.columns]
@@ -407,7 +409,7 @@ def main():
             df2[num_cols] = df2[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
 
         # 컬럼 순서
-        base_info = ["period", "event_date", "event_date2"] # (26.04.14) 주별 추가
+        base_info = ["period", "event_date", "event_date2", "event_date3"] # (26.05.13) 월별 추가
         pivot_extra = [c for c in pivot_cols if c not in base_info and c in df2.columns]
 
         metric_cols = [
@@ -462,6 +464,8 @@ def main():
                 multi_labels.append(("기본정보", "날짜(일별)"))
             elif c == "event_date2":
                 multi_labels.append(("기본정보", "날짜(주별)"))
+            elif c == "event_date3":
+                multi_labels.append(("기본정보", "날짜(월별)"))
             elif c in pivot_extra:
                 multi_labels.append(("기본정보", c))
             else:
@@ -1066,11 +1070,14 @@ def main():
         format_func=lambda x: HEADER_MAP.get(x, x),
     )
 
-    # 기간별 합계 보기 모드라면 event_date 는 무시 
+    # 기간별 합계 보기 모드라면 event_date 필드는 무시 
     if show_totals and "event_date" in pivot_cols:
         pivot_cols.remove("event_date")
-    if show_totals and "event_date2" in pivot_cols: # (26.04.14) 주별 추가
+    if show_totals and "event_date2" in pivot_cols:
         pivot_cols.remove("event_date2")
+    if show_totals and "event_date3" in pivot_cols:
+        pivot_cols.remove("event_date3")
+
 
     # 필터
     with st.expander("기본 Filter", expanded=False):
