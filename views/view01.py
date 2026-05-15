@@ -568,13 +568,13 @@ def main():
         opts = ["전체"] + vc.index.astype(str).tolist()
         return st.selectbox(label, opts, index=0, key=key)
 
-    def _get_src_dim(sel):
+    def _get_src_dim(sel):  # (26.05.15) TERM 추가 
         if sel == "소스 / 매체": return "_sourceMedium", "소스/매체"
         if sel == "소스": return "_source", "소스"
         if sel == "매체": return "_medium", "매체"
         if sel == "캠페인": return "_campaign", "캠페인"
-        if sel == "컨텐츠": return "_content", "컨텐츠"  # (26.05.15) TERM 추가 
-        return "_content", "컨텐츠"
+        if sel == "컨텐츠": return "_content", "컨텐츠"
+        return "_term", "키워드"
 
     def render_dim_trend(
         df_in: pd.DataFrame,
