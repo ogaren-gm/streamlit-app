@@ -240,6 +240,7 @@ def main():
         df["_medium"] = _safe_str_col("collected_traffic_source__manual_medium").replace("", "(not set)")
         df["_campaign"] = _safe_str_col("collected_traffic_source__manual_campaign_name").replace("", "(not set)")
         df["_content"] = _safe_str_col("collected_traffic_source__manual_content").replace("", "(not set)")
+        df["_term"] = _safe_str_col("collected_traffic_source__manual_term").replace("", "(not set)") # (26.05.15) TERM 추가 
         df["_sourceMedium"] = df["_source"] + " / " + df["_medium"]
 
         # 신규/재방문 파생컬럼
@@ -572,6 +573,7 @@ def main():
         if sel == "소스": return "_source", "소스"
         if sel == "매체": return "_medium", "매체"
         if sel == "캠페인": return "_campaign", "캠페인"
+        if sel == "컨텐츠": return "_content", "컨텐츠"  # (26.05.15) TERM 추가 
         return "_content", "컨텐츠"
 
     def render_dim_trend(
@@ -699,7 +701,7 @@ def main():
         with st.expander("탭별 Filter", expanded=False):
             c1, c2, _p = st.columns([1, 1, 3], vertical_alignment="bottom")
             with c1:
-                sel_dim = st.selectbox("유입 기준 선택", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"], index=0, key="s_d")
+                sel_dim = st.selectbox("유입 기준 선택", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠", "키워드"], index=0, key="s_d")  # (26.05.15) TERM 추가 
             with c2:
                 dim_col, dim_label = _get_src_dim(sel_dim)
                 sel = _select_opt(df, dim_col, f"{dim_label} 선택", "s_v")
@@ -1012,7 +1014,7 @@ def main():
         with st.expander("탭별 Filter", expanded=False):
             c1, c2, _p = st.columns([1, 1, 3], vertical_alignment="bottom")
             with c1:
-                sel_dim = st.selectbox("유입 기준 선택", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠"], index=0, key="e4_s_d")
+                sel_dim = st.selectbox("유입 기준 선택", ["소스 / 매체", "소스", "매체", "캠페인", "컨텐츠", "키워드"], index=0, key="e4_s_d")  # (26.05.15) TERM 추가 
             with c2:
                 dim_col, dim_label = _get_src_dim(sel_dim)
                 sel = _select_opt(df, dim_col, f"{dim_label} 선택", "e4_s_v")
