@@ -838,217 +838,807 @@ def main():
     st.divider()
 
 
+    # # ──────────────────────────────────
+    # # 1) QUICK INSIGHT
+    # # ──────────────────────────────────
+    # st.markdown(" ")
+    # st.markdown("<h5 style='margin:0'>QUICK INSIGHT</h5>", unsafe_allow_html=True)
+    # st.markdown(":gray-badge[:material/Info: Info]ㅤ기간 내 핵심 성과 지표를 요약하고, CPA 기준 성과 상·하위 캠페인을 빠르게 진단합니다.", unsafe_allow_html=True)
+
+    # st.markdown(
+    #     """
+    #     <style>
+    #     .kpi-card{
+    #         background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;
+    #     }
+    #     .kpi-title{font-size:15px;color:#64748b;margin:0 0 8px}
+    #     .kpi-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+    #     .kpi-value{font-size:25px;font-weight:500;line-height:1.05;margin:0;white-space:nowrap}
+    #     .kpi-delta{font-size:12px;margin:0;white-space:nowrap}
+
+    #     /* selectbox 간격(전역) */
+    #     div[data-testid="stSelectbox"]>div{margin-top:-10px}
+
+    #     /* QUICK INSIGHT 이벤트 카드 컨테이너(카드 테두리/배경) */
+    #     .st-key-ins_kpi_card_evt{
+    #         background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;
+    #     }
+    #     .st-key-ins_kpi_card_evt div[data-testid="stSelectbox"]{margin-bottom:-10px}
+    #     .st-key-ins_kpi_card_evt div[data-testid="stSelectbox"]>div{margin-top:-6px}
+    #     .st-key-ins_kpi_card_evt .kpi-value{margin-bottom:10px}
+    #     </style>
+    #     """,
+    #     unsafe_allow_html=True,
+    # )
+
+    # evt_opts__ins = [
+    #     ("PDP조회", "view_item"),
+    #     ("PDPscr50", "product_page_scroll_50"),
+    #     ("가격표시", "product_option_price"),
+    #     ("쇼룸찾기", "find_nearby_showroom"),
+    #     ("장바구니", "add_to_cart"),
+    #     ("쇼룸10초", "showroom_10s"),
+    #     ("쇼룸예약", "showroom_leads"),
+    #     ("구매완료", "purchase"),
+    # ]
+    # evt_map__ins = dict(evt_opts__ins)
+    # evt_labels__ins = [x[0] for x in evt_opts__ins]
+
+    # def _safe_div(a, b):
+    #     return 0.0 if b == 0 else (a / b)
+
+    # def _summary(df_in: pd.DataFrame, evt_raw: str) -> dict:
+    #     cost_g = float(df_in["cost_gross"].sum())
+    #     imp = float(df_in["impressions"].sum()) if "impressions" in df_in.columns else 0.0
+    #     clk = float(df_in["clicks"].sum()) if "clicks" in df_in.columns else 0.0
+    #     ses = float(df_in["session_start"].sum())
+    #     evt = float(df_in[evt_raw].sum()) if evt_raw in df_in.columns else 0.0
+    #     return dict(
+    #         cost_g=cost_g,
+    #         clk=clk,
+    #         ses=ses,
+    #         ctr=_safe_div(clk, imp) * 100,
+    #         cpc=_safe_div(cost_g, clk),
+    #         evt=evt,
+    #         cpa=_safe_div(cost_g, evt),
+    #     )
+
+    # def _fmt_delta2(cur, prev, good_if_down=False, decimals=1):
+    #     if prev == 0:
+    #         return "", "#64748b"
+    #     d = (cur - prev) / prev * 100
+    #     col = "#16a34a" if ((d <= 0) if good_if_down else (d >= 0)) else "#ef4444"
+    #     return f"{d:+.{decimals}f}%", col
+
+    # # ✅ 이벤트 선택값(카드 내부 selectbox) 초기값
+    # sel_evt_label__ins = st.session_state.get("ins_evt_in_card", evt_labels__ins[0])
+    # if sel_evt_label__ins not in evt_map__ins:
+    #     sel_evt_label__ins = evt_labels__ins[0]
+    # sel_evt_raw__ins = evt_map__ins[sel_evt_label__ins]
+
+    # cur = _summary(df_filtered, sel_evt_raw__ins)
+    # prev = _summary(df_filtered_cmp, sel_evt_raw__ins) if (use_compare and df_filtered_cmp is not None) else None
+
+    # # 0-1) KPI 6개
+    # q1, q2, q3, q4, q5, q6 = st.columns(6, vertical_alignment="top")
+
+    # with q1:
+    #     t, c = _fmt_delta2(cur["cost_g"], prev["cost_g"], False, 1) if prev else ("", "#64748b")
+    #     st.markdown(f"""
+    #         <div class="kpi-card">
+    #         <div class="kpi-title">광고비(G)</div>
+    #         <div class="kpi-row">
+    #             <div class="kpi-value">{cur["cost_g"]:,.0f}</div>
+    #             <div class="kpi-delta" style="color:{c};">{t}</div>
+    #         </div></div>
+    #     """, unsafe_allow_html=True)
+
+    # with q2:
+    #     t, c = _fmt_delta2(cur["ses"], prev["ses"], False, 1) if prev else ("", "#64748b")
+    #     st.markdown(f"""
+    #         <div class="kpi-card">
+    #         <div class="kpi-title">세션</div>
+    #         <div class="kpi-row">
+    #             <div class="kpi-value">{cur["ses"]:,.0f}</div>
+    #             <div class="kpi-delta" style="color:{c};">{t}</div>
+    #         </div></div>
+    #     """, unsafe_allow_html=True)
+
+    # with q3:
+    #     t, c = _fmt_delta2(cur["clk"], prev["clk"], False, 1) if prev else ("", "#64748b")
+    #     st.markdown(f"""
+    #         <div class="kpi-card">
+    #         <div class="kpi-title">클릭수</div>
+    #         <div class="kpi-row">
+    #             <div class="kpi-value">{cur["clk"]:,.0f}</div>
+    #             <div class="kpi-delta" style="color:{c};">{t}</div>
+    #         </div></div>
+    #     """, unsafe_allow_html=True)
+
+    # with q4:
+    #     t, c = _fmt_delta2(cur["ctr"], prev["ctr"], False, 2) if prev else ("", "#64748b")
+    #     st.markdown(f"""
+    #         <div class="kpi-card">
+    #         <div class="kpi-title">CTR</div>
+    #         <div class="kpi-row">
+    #             <div class="kpi-value">{cur["ctr"]:,.2f}%</div>
+    #             <div class="kpi-delta" style="color:{c};">{t}</div>
+    #         </div></div>
+    #     """, unsafe_allow_html=True)
+
+    # # ✅ 5) 이벤트 카드: "컨테이너(카드) + 내부 selectbox" (딥 인사이트 3번째 카드와 동일 구조)
+    # with q5:
+    #     with st.container(key="ins_kpi_card_evt"):
+    #         sel_evt_label__ins = st.selectbox(
+    #             "",
+    #             evt_labels__ins,
+    #             index=evt_labels__ins.index(sel_evt_label__ins),
+    #             key="ins_evt_in_card",
+    #             label_visibility="collapsed",
+    #         )
+    #         sel_evt_raw__ins = evt_map__ins[sel_evt_label__ins]
+    #         cur = _summary(df_filtered, sel_evt_raw__ins)
+    #         prev = _summary(df_filtered_cmp, sel_evt_raw__ins) if (use_compare and df_filtered_cmp is not None) else None
+    #         t, c = _fmt_delta2(cur["evt"], prev["evt"], False, 1) if prev else ("", "#64748b")
+
+    #         st.markdown(
+    #             f"""
+    #             <div class="kpi-row" style="margin-top:-2px;">
+    #                 <div class="kpi-value">{cur["evt"]:,.0f}</div>
+    #                 <div class="kpi-delta" style="color:{c};">{t}</div>
+    #             </div>
+    #             """,
+    #             unsafe_allow_html=True,
+    #         )
+
+    # with q6:
+    #     t, c = _fmt_delta2(cur["cpa"], prev["cpa"], True, 1) if prev else ("", "#64748b")
+    #     st.markdown(f"""
+    #         <div class="kpi-card">
+    #         <div class="kpi-title">CPA</div>
+    #         <div class="kpi-row">
+    #             <div class="kpi-value">{cur["cpa"]:,.0f}</div>
+    #             <div class="kpi-delta" style="color:{c};">{t}</div>
+    #         </div></div>
+    #     """, unsafe_allow_html=True)
+
+    # st.markdown(" ")
+
+    # # (Quick Insight - TOP/비효율 TOP) ✅ 광고비(G) 1원 이상만 대상으로 소팅
+    # topk = 10
+    # need_cols = ["media_name", "campaign_name", "cost_gross", sel_evt_raw__ins]
+    # if all(c in df_filtered.columns for c in need_cols):
+    #     g = (
+    #         df_filtered
+    #         .groupby(["media_name", "campaign_name"], dropna=False, as_index=False)
+    #         .agg(cost_gross_sum=("cost_gross", "sum"), evt_sum=(sel_evt_raw__ins, "sum"))
+    #     )
+
+    #     # ✅ 광고비 1원 이상 + 이벤트 1 이상만 남기고 소팅
+    #     g = g[(g["cost_gross_sum"] >= 1) & (g["evt_sum"] > 0)]
+
+    #     g["CPA"] = (g["cost_gross_sum"] / g["evt_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(0)
+
+    #     def _top(df_in: pd.DataFrame, asc: bool) -> pd.DataFrame:
+    #         return (
+    #             df_in
+    #             .sort_values(["CPA", "evt_sum", "cost_gross_sum"], ascending=[asc, False, False])
+    #             .head(topk)
+    #             .rename(columns={
+    #                 "media_name": "매체",
+    #                 "campaign_name": "캠페인",
+    #                 "cost_gross_sum": "광고비(G)",
+    #                 "evt_sum": sel_evt_label__ins,
+    #                 "CPA": "CPA",
+    #             })
+    #         )
+
+    #     a, b = st.columns(2, vertical_alignment="top")
+    #     with a:
+    #         st.markdown(f"###### 🙂 Low CPA Top {topk}")
+            
+    #         df_LCT = _top(g, True)
+    #         sty = style_format(df_LCT, decimals_map={"광고비(G)": 0, sel_evt_label__ins: 0, "CPA": 0})
+    #         sty = style_cmap(sty, gradient_rules=[{"col": "CPA", "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)}])
+    #         st.dataframe(sty, use_container_width=True, height=250, hide_index=True)
+                        
+    #     with b:
+    #         st.markdown(f"###### 🙁 High CPA Top {topk}")
+            
+    #         df_HCT = _top(g, False)
+    #         sty = style_format(df_HCT, decimals_map={"광고비(G)": 0, sel_evt_label__ins: 0, "CPA": 0})
+    #         sty = style_cmap(sty, gradient_rules=[{"col": "CPA", "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)}])
+    #         st.dataframe(sty, use_container_width=True, height=250, hide_index=True)            
+
+
     # ──────────────────────────────────
     # 1) QUICK INSIGHT
     # ──────────────────────────────────
     st.markdown(" ")
     st.markdown("<h5 style='margin:0'>QUICK INSIGHT</h5>", unsafe_allow_html=True)
-    st.markdown(":gray-badge[:material/Info: Info]ㅤ기간 내 핵심 성과 지표를 요약하고, CPA 기준 성과 상·하위 캠페인을 빠르게 진단합니다.", unsafe_allow_html=True)
+    st.markdown(":gray-badge[:material/Info: Info]ㅤ기간 윈도우 설정에 따라 A/B/C 기간을 합산 비교하고, 선택한 행 필드 기준으로 성과 변화를 확인합니다.", unsafe_allow_html=True)
 
-    st.markdown(
-        """
-        <style>
-        .kpi-card{
-            background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;
-        }
-        .kpi-title{font-size:15px;color:#64748b;margin:0 0 8px}
-        .kpi-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-        .kpi-value{font-size:25px;font-weight:500;line-height:1.05;margin:0;white-space:nowrap}
-        .kpi-delta{font-size:12px;margin:0;white-space:nowrap}
+    # QUICK INSIGHT Helper
+    QI_METRIC_LABEL_MAP = {
+        "cost_gross_sum": "광고비(G)",
+        "impressions_sum": "노출수",
+        "clicks_sum": "클릭수",
+        "CPC": "CPC",
+        "CTR": "CTR",
+        "session_count": "전체 세션수",
+        "view_item_sum": "PDP조회",
+        "product_page_scroll_50_sum": "PDPscr50",
+        "product_option_price_sum": "가격표시",
+        "find_nearby_showroom_sum": "쇼룸찾기",
+        "add_to_cart_sum": "장바구니",
+        "showroom_10s_sum": "쇼룸10초",
+        "showroom_leads_sum": "쇼룸예약",
+        "purchase_sum": "구매완료",
+    }
 
-        /* selectbox 간격(전역) */
-        div[data-testid="stSelectbox"]>div{margin-top:-10px}
-
-        /* QUICK INSIGHT 이벤트 카드 컨테이너(카드 테두리/배경) */
-        .st-key-ins_kpi_card_evt{
-            background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;
-        }
-        .st-key-ins_kpi_card_evt div[data-testid="stSelectbox"]{margin-bottom:-10px}
-        .st-key-ins_kpi_card_evt div[data-testid="stSelectbox"]>div{margin-top:-6px}
-        .st-key-ins_kpi_card_evt .kpi-value{margin-bottom:10px}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    evt_opts__ins = [
-        ("PDP조회", "view_item"),
-        ("PDPscr50", "product_page_scroll_50"),
-        ("가격표시", "product_option_price"),
-        ("쇼룸찾기", "find_nearby_showroom"),
-        ("장바구니", "add_to_cart"),
-        ("쇼룸10초", "showroom_10s"),
-        ("쇼룸예약", "showroom_leads"),
-        ("구매완료", "purchase"),
+    QI_DEFAULT_METRICS = list(QI_METRIC_LABEL_MAP.keys())
+    QI_DIM_OPTIONS = [
+        c for c in HEADER_MAP.keys()
+        if c not in ["event_date", "event_date2", "event_date3"]
     ]
-    evt_map__ins = dict(evt_opts__ins)
-    evt_labels__ins = [x[0] for x in evt_opts__ins]
 
-    def _safe_div(a, b):
-        return 0.0 if b == 0 else (a / b)
+    def _qi_get_latest_date(df_in: pd.DataFrame, fallback_date):
+        if df_in.empty or "event_date" not in df_in.columns:
+            return pd.to_datetime(fallback_date).date()
 
-    def _summary(df_in: pd.DataFrame, evt_raw: str) -> dict:
-        cost_g = float(df_in["cost_gross"].sum())
-        imp = float(df_in["impressions"].sum()) if "impressions" in df_in.columns else 0.0
-        clk = float(df_in["clicks"].sum()) if "clicks" in df_in.columns else 0.0
-        ses = float(df_in["session_start"].sum())
-        evt = float(df_in[evt_raw].sum()) if evt_raw in df_in.columns else 0.0
-        return dict(
-            cost_g=cost_g,
-            clk=clk,
-            ses=ses,
-            ctr=_safe_div(clk, imp) * 100,
-            cpc=_safe_div(cost_g, clk),
-            evt=evt,
-            cpa=_safe_div(cost_g, evt),
+        s = pd.to_datetime(df_in["event_date"], errors="coerce").dropna()
+        if s.empty:
+            return pd.to_datetime(fallback_date).date()
+
+        return s.max().date()
+
+    def _qi_calc_date_triple(mode: str, base_df: pd.DataFrame, fallback_end, start_date, end_date):
+        latest_date = _qi_get_latest_date(base_df, fallback_end)
+
+        if mode == "DoD":
+            a_s = latest_date
+            a_e = latest_date
+            b_s = latest_date - timedelta(days=1)
+            b_e = latest_date - timedelta(days=1)
+            c_s = latest_date - timedelta(days=2)
+            c_e = latest_date - timedelta(days=2)
+            return a_s, a_e, b_s, b_e, c_s, c_e
+
+        if mode == "WoW":
+            a_e = latest_date
+            a_s = latest_date - timedelta(days=6)
+            b_e = a_s - timedelta(days=1)
+            b_s = b_e - timedelta(days=6)
+            c_e = b_s - timedelta(days=1)
+            c_s = c_e - timedelta(days=6)
+            return a_s, a_e, b_s, b_e, c_s, c_e
+
+        if mode == "MoM":
+            df_m = base_df.copy()
+            df_m["event_date"] = pd.to_datetime(df_m["event_date"], errors="coerce")
+            df_m = df_m[
+                (df_m["event_date"] >= pd.to_datetime(start_date))
+                & (df_m["event_date"] <= pd.to_datetime(end_date))
+            ]
+
+            months = (
+                df_m["event_date"]
+                .dropna()
+                .dt.to_period("M")
+                .drop_duplicates()
+                .sort_values()
+                .tolist()
+            )
+
+            if len(months) < 3:
+                st.warning("MoM에서 A/B/C 비교를 사용하려면 좌측 Filter > 기간 선택에 최소 3개월이 포함되어야 합니다.")
+                e = pd.to_datetime(end_date).date()
+                s = pd.to_datetime(start_date).date()
+                return e, e, s, s, s, s
+
+            c_month = months[-3]
+            b_month = months[-2]
+            a_month = months[-1]
+
+            a_s = max(a_month.start_time.date(), pd.to_datetime(start_date).date())
+            a_e = min(a_month.end_time.date(), pd.to_datetime(end_date).date(), latest_date)
+            b_s = max(b_month.start_time.date(), pd.to_datetime(start_date).date())
+            b_e = min(b_month.end_time.date(), pd.to_datetime(end_date).date())
+            c_s = max(c_month.start_time.date(), pd.to_datetime(start_date).date())
+            c_e = min(c_month.end_time.date(), pd.to_datetime(end_date).date())
+
+            return a_s, a_e, b_s, b_e, c_s, c_e
+
+        # 커스텀 기본값
+        a_e = pd.to_datetime(end_date).date()
+        a_s = a_e - timedelta(days=6)
+        b_e = a_s - timedelta(days=1)
+        b_s = b_e - timedelta(days=6)
+        c_e = b_s - timedelta(days=1)
+        c_s = c_e - timedelta(days=6)
+
+        return a_s, a_e, b_s, b_e, c_s, c_e
+
+    def _qi_add_metrics(df: pd.DataFrame) -> pd.DataFrame:
+        df2 = df.copy()
+
+        df2 = df2.assign(
+            CPC=(df2["cost_gross_sum"] / df2["clicks_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(0),
+            CTR=(df2["clicks_sum"] / df2["impressions_sum"] * 100).replace([np.inf, -np.inf], 0).fillna(0).round(2),
         )
 
-    def _fmt_delta2(cur, prev, good_if_down=False, decimals=1):
-        if prev == 0:
-            return "", "#64748b"
-        d = (cur - prev) / prev * 100
-        col = "#16a34a" if ((d <= 0) if good_if_down else (d >= 0)) else "#ef4444"
-        return f"{d:+.{decimals}f}%", col
+        num_cols = df2.select_dtypes(include=["number"]).columns
+        if len(num_cols) > 0:
+            df2[num_cols] = df2[num_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
 
-    # ✅ 이벤트 선택값(카드 내부 selectbox) 초기값
-    sel_evt_label__ins = st.session_state.get("ins_evt_in_card", evt_labels__ins[0])
-    if sel_evt_label__ins not in evt_map__ins:
-        sel_evt_label__ins = evt_labels__ins[0]
-    sel_evt_raw__ins = evt_map__ins[sel_evt_label__ins]
+        return df2
 
-    cur = _summary(df_filtered, sel_evt_raw__ins)
-    prev = _summary(df_filtered_cmp, sel_evt_raw__ins) if (use_compare and df_filtered_cmp is not None) else None
-
-    # 0-1) KPI 6개
-    q1, q2, q3, q4, q5, q6 = st.columns(6, vertical_alignment="top")
-
-    with q1:
-        t, c = _fmt_delta2(cur["cost_g"], prev["cost_g"], False, 1) if prev else ("", "#64748b")
-        st.markdown(f"""
-            <div class="kpi-card">
-            <div class="kpi-title">광고비(G)</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cur["cost_g"]:,.0f}</div>
-                <div class="kpi-delta" style="color:{c};">{t}</div>
-            </div></div>
-        """, unsafe_allow_html=True)
-
-    with q2:
-        t, c = _fmt_delta2(cur["ses"], prev["ses"], False, 1) if prev else ("", "#64748b")
-        st.markdown(f"""
-            <div class="kpi-card">
-            <div class="kpi-title">세션</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cur["ses"]:,.0f}</div>
-                <div class="kpi-delta" style="color:{c};">{t}</div>
-            </div></div>
-        """, unsafe_allow_html=True)
-
-    with q3:
-        t, c = _fmt_delta2(cur["clk"], prev["clk"], False, 1) if prev else ("", "#64748b")
-        st.markdown(f"""
-            <div class="kpi-card">
-            <div class="kpi-title">클릭수</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cur["clk"]:,.0f}</div>
-                <div class="kpi-delta" style="color:{c};">{t}</div>
-            </div></div>
-        """, unsafe_allow_html=True)
-
-    with q4:
-        t, c = _fmt_delta2(cur["ctr"], prev["ctr"], False, 2) if prev else ("", "#64748b")
-        st.markdown(f"""
-            <div class="kpi-card">
-            <div class="kpi-title">CTR</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cur["ctr"]:,.2f}%</div>
-                <div class="kpi-delta" style="color:{c};">{t}</div>
-            </div></div>
-        """, unsafe_allow_html=True)
-
-    # ✅ 5) 이벤트 카드: "컨테이너(카드) + 내부 selectbox" (딥 인사이트 3번째 카드와 동일 구조)
-    with q5:
-        with st.container(key="ins_kpi_card_evt"):
-            sel_evt_label__ins = st.selectbox(
-                "",
-                evt_labels__ins,
-                index=evt_labels__ins.index(sel_evt_label__ins),
-                key="ins_evt_in_card",
-                label_visibility="collapsed",
-            )
-            sel_evt_raw__ins = evt_map__ins[sel_evt_label__ins]
-            cur = _summary(df_filtered, sel_evt_raw__ins)
-            prev = _summary(df_filtered_cmp, sel_evt_raw__ins) if (use_compare and df_filtered_cmp is not None) else None
-            t, c = _fmt_delta2(cur["evt"], prev["evt"], False, 1) if prev else ("", "#64748b")
-
-            st.markdown(
-                f"""
-                <div class="kpi-row" style="margin-top:-2px;">
-                    <div class="kpi-value">{cur["evt"]:,.0f}</div>
-                    <div class="kpi-delta" style="color:{c};">{t}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    with q6:
-        t, c = _fmt_delta2(cur["cpa"], prev["cpa"], True, 1) if prev else ("", "#64748b")
-        st.markdown(f"""
-            <div class="kpi-card">
-            <div class="kpi-title">CPA</div>
-            <div class="kpi-row">
-                <div class="kpi-value">{cur["cpa"]:,.0f}</div>
-                <div class="kpi-delta" style="color:{c};">{t}</div>
-            </div></div>
-        """, unsafe_allow_html=True)
-
-    st.markdown(" ")
-
-    # (Quick Insight - TOP/비효율 TOP) ✅ 광고비(G) 1원 이상만 대상으로 소팅
-    topk = 10
-    need_cols = ["media_name", "campaign_name", "cost_gross", sel_evt_raw__ins]
-    if all(c in df_filtered.columns for c in need_cols):
-        g = (
-            df_filtered
-            .groupby(["media_name", "campaign_name"], dropna=False, as_index=False)
-            .agg(cost_gross_sum=("cost_gross", "sum"), evt_sum=(sel_evt_raw__ins, "sum"))
+    def _qi_pivot(df_in: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
+        return _qi_add_metrics(
+            df_in.groupby(keys, as_index=False).agg(**AGG_MAP)
         )
 
-        # ✅ 광고비 1원 이상 + 이벤트 1 이상만 남기고 소팅
-        g = g[(g["cost_gross_sum"] >= 1) & (g["evt_sum"] > 0)]
+    def _qi_apply_filter(
+        df: pd.DataFrame,
+        column: str,
+        text_filter: bool = False,
+        key_prefix: str = "qi",
+    ) -> pd.DataFrame:
+        if column not in df.columns:
+            return df
 
-        g["CPA"] = (g["cost_gross_sum"] / g["evt_sum"]).replace([np.inf, -np.inf], 0).fillna(0).round(0)
+        key = f"{key_prefix}_{column}_{'text' if text_filter else 'multi'}"
 
-        def _top(df_in: pd.DataFrame, asc: bool) -> pd.DataFrame:
-            return (
-                df_in
-                .sort_values(["CPA", "evt_sum", "cost_gross_sum"], ascending=[asc, False, False])
-                .head(topk)
-                .rename(columns={
-                    "media_name": "매체",
-                    "campaign_name": "캠페인",
-                    "cost_gross_sum": "광고비(G)",
-                    "evt_sum": sel_evt_label__ins,
-                    "CPA": "CPA",
-                })
+        if text_filter:
+            expr = st.text_input(
+                f"{HEADER_MAP.get(column, column)} 정규식 검색",
+                key=key,
             )
 
-        a, b = st.columns(2, vertical_alignment="top")
-        with a:
-            st.markdown(f"###### 🙂 Low CPA Top {topk}")
-            
-            df_LCT = _top(g, True)
-            sty = style_format(df_LCT, decimals_map={"광고비(G)": 0, sel_evt_label__ins: 0, "CPA": 0})
-            sty = style_cmap(sty, gradient_rules=[{"col": "CPA", "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)}])
-            st.dataframe(sty, use_container_width=True, height=250, hide_index=True)
-                        
-        with b:
-            st.markdown(f"###### 🙁 High CPA Top {topk}")
-            
-            df_HCT = _top(g, False)
-            sty = style_format(df_HCT, decimals_map={"광고비(G)": 0, sel_evt_label__ins: 0, "CPA": 0})
-            sty = style_cmap(sty, gradient_rules=[{"col": "CPA", "cmap": "PiYG_r", "cmap_span": (0.3, 0.7)}])
-            st.dataframe(sty, use_container_width=True, height=250, hide_index=True)            
+            if not expr:
+                return df
+
+            s = df[column].astype(str)
+
+            if "&" in expr:
+                terms = [t.strip() for t in expr.split("&") if t.strip()]
+                mask = pd.Series(True, index=df.index)
+                for t in terms:
+                    if t.startswith("!"):
+                        mask &= ~s.str.contains(t[1:], regex=True, na=False)
+                    else:
+                        mask &= s.str.contains(t, regex=True, na=False)
+
+            elif "|" in expr:
+                terms = [t.strip() for t in expr.split("|") if t.strip()]
+                mask = pd.Series(False, index=df.index)
+                for t in terms:
+                    if t.startswith("!"):
+                        mask |= ~s.str.contains(t[1:], regex=True, na=False)
+                    else:
+                        mask |= s.str.contains(t, regex=True, na=False)
+
+            else:
+                if expr.startswith("!"):
+                    mask = ~s.str.contains(expr[1:], regex=True, na=False)
+                else:
+                    mask = s.str.contains(expr, regex=True, na=False)
+
+            return df[mask]
+
+        opts = sorted(df[column].dropna().unique())
+        sel = st.multiselect(
+            f"{HEADER_MAP.get(column, column)} 필터",
+            opts,
+            key=key,
+        )
+
+        if sel:
+            return df[df[column].isin(sel)]
+
+        return df
+
+    def _qi_build_compare_table(
+        df_a: pd.DataFrame,
+        df_comp: pd.DataFrame,
+        keys: list[str],
+        compare_types: list[str],
+        selected_metrics: list[str],
+        comp_label: str,
+    ) -> pd.DataFrame:
+        a = _qi_pivot(df_a, keys)
+        comp = _qi_pivot(df_comp, keys)
+
+        a_cols = [m for m in selected_metrics if m in a.columns]
+        comp_cols = [m for m in selected_metrics if m in comp.columns]
+
+        a = a[keys + a_cols].rename(columns={m: f"{m}__A" for m in a_cols})
+        comp = comp[keys + comp_cols].rename(columns={m: f"{m}__{comp_label}" for m in comp_cols})
+
+        out = a.merge(comp, on=keys, how="outer")
+
+        for c in out.columns:
+            if c not in keys:
+                out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0)
+
+        ordered_cols = keys.copy()
+
+        for m in selected_metrics:
+            a_col = f"{m}__A"
+            comp_col = f"{m}__{comp_label}"
+
+            if a_col not in out.columns:
+                out[a_col] = 0
+            if comp_col not in out.columns:
+                out[comp_col] = 0
+
+            ordered_cols += [a_col, comp_col]
+
+            if "DIFF(±)" in compare_types:
+                diff_col = f"{m}__DIFF"
+                out[diff_col] = out[a_col] - out[comp_col]
+                ordered_cols.append(diff_col)
+
+            if "PCT(%)" in compare_types:
+                pct_col = f"{m}__PCT"
+                out[pct_col] = np.where(
+                    out[comp_col] == 0,
+                    np.nan,
+                    (out[a_col] - out[comp_col]) / out[comp_col] * 100
+                )
+                out[pct_col] = (
+                    pd.to_numeric(out[pct_col], errors="coerce")
+                    .replace([np.inf, -np.inf], np.nan)
+                    .fillna(0)
+                    .round(2)
+                )
+                ordered_cols.append(pct_col)
+
+            if "PP(%p)" in compare_types and m == "CTR":
+                pp_col = f"{m}__PP"
+                out[pp_col] = out[a_col] - out[comp_col]
+                ordered_cols.append(pp_col)
+
+        return out[ordered_cols]
+
+    def _qi_make_multi_columns(df: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
+        out = df.copy()
+        cols = []
+
+        for c in out.columns:
+            if c in keys:
+                cols.append(("기본정보", "구분" if c == "_qi_total" else HEADER_MAP.get(c, c)))
+                continue
+
+            raw, tp = c.split("__", 1)
+            metric_nm = QI_METRIC_LABEL_MAP.get(raw, raw)
+
+            label_map = {
+                "A": "A",
+                "B": "B",
+                "C": "C",
+                "DIFF": "DIFF(±)",
+                "PCT": "PCT(%)",
+                "PP": "PP(%p)",
+            }
+            cols.append((metric_nm, label_map.get(tp, tp)))
+
+        out.columns = pd.MultiIndex.from_tuples(cols, names=["그룹", "지표"])
+        return out
+
+    def _qi_render_compare_table(df: pd.DataFrame, keys: list[str], height: int = 200) -> pd.DataFrame:
+        show = _qi_make_multi_columns(df, keys)
+
+        decimals_map = {}
+        suffix_map = {}
+
+        for top, sub in show.columns:
+            if sub in ["A", "B", "C", "DIFF(±)"]:
+                decimals_map[(top, sub)] = 2 if top == "CTR" else 0
+
+            if sub == "PCT(%)":
+                decimals_map[(top, sub)] = 2
+                suffix_map[(top, sub)] = " %"
+
+            if sub == "PP(%p)":
+                decimals_map[(top, sub)] = 2
+                suffix_map[(top, sub)] = " %p"
+        
+        def _qi_sign_bg(v):
+            try:
+                v = float(v)
+            except:
+                return ""
+
+            if v > 0:
+                return "background-color: #DDF3FF;"   # 파랑
+            if v < 0:
+                return "background-color: #FFE3E3;"   # 빨강
+            return "background-color: #FFFFFF;"
+
+        styled = style_format(
+            show,
+            decimals_map=decimals_map,
+            suffix_map=suffix_map,
+        )
+
+        sign_cols = [
+            col for col in show.columns
+            if col[1] in ["DIFF(±)", "PCT(%)", "PP(%p)"]
+        ]
+
+        styled = styled.applymap(
+            _qi_sign_bg,
+            subset=sign_cols,
+        )
+
+        st.dataframe(
+            styled,
+            use_container_width=True,
+            height=height,
+            row_height=30,
+            hide_index=True,
+        )
+
+        return show
+
+    # QUICK INSIGHT - Setting
+    with st.expander("설정 Filter", expanded=True):
+        f1, f2, f3, f4 = st.columns([1.3, 1, 1, 1], vertical_alignment="bottom")
+
+        with f1:
+            qi_mode = st.radio(
+                "기간 윈도우 설정",
+                ["DoD", "WoW", "MoM", "커스텀"],
+                index=1,
+                horizontal=True,
+                key="qi_mode",
+                help="DoD/WoW/MoM은 기간이 자동 고정됩니다. 기간을 직접 수정하려면 커스텀을 선택하세요.",
+            )
+
+        qi_base_type_tmp = st.session_state.get("qi_base_type", "라스트 클릭")
+        qi_df_for_date = df_merged_union if qi_base_type_tmp == "누적 기여 D+7" else df_merged
+        qi_df_for_date = qi_df_for_date.copy()
+        qi_df_for_date["event_date"] = pd.to_datetime(qi_df_for_date["event_date"], errors="coerce")
+
+        qi_a_s, qi_a_e, qi_b_s, qi_b_e, qi_c_s, qi_c_e = _qi_calc_date_triple(
+            qi_mode,
+            qi_df_for_date,
+            default_end,
+            start_date,
+            end_date,
+        )
+
+        lock_qi_date = qi_mode != "커스텀"
+
+        with f2:
+            if lock_qi_date:
+                st.date_input(
+                    "A 기간 (기준 데이터)",
+                    value=[qi_a_s, qi_a_e],
+                    disabled=True,
+                    key=f"qi_a_rng_fixed_{qi_mode}",
+                    help="기간을 직접 수정하려면 기간 윈도우 설정에서 커스텀을 선택하세요.",
+                )
+            else:
+                qi_a_rng = st.date_input(
+                    "A 기간 (기준 데이터)",
+                    value=[qi_a_s, qi_a_e],
+                    max_value=end_date,
+                    key="qi_a_rng_custom",
+                )
+                if isinstance(qi_a_rng, (list, tuple)) and len(qi_a_rng) == 2:
+                    qi_a_s, qi_a_e = qi_a_rng
+
+        with f3:
+            if lock_qi_date:
+                st.date_input(
+                    "B 기간",
+                    value=[qi_b_s, qi_b_e],
+                    disabled=True,
+                    key=f"qi_b_rng_fixed_{qi_mode}",
+                    help="기간을 직접 수정하려면 기간 윈도우 설정에서 커스텀을 선택하세요.",
+                )
+            else:
+                qi_b_rng = st.date_input(
+                    "B 기간",
+                    value=[qi_b_s, qi_b_e],
+                    max_value=end_date,
+                    key="qi_b_rng_custom",
+                )
+                if isinstance(qi_b_rng, (list, tuple)) and len(qi_b_rng) == 2:
+                    qi_b_s, qi_b_e = qi_b_rng
+
+        with f4:
+            if lock_qi_date:
+                st.date_input(
+                    "C 기간",
+                    value=[qi_c_s, qi_c_e],
+                    disabled=True,
+                    key=f"qi_c_rng_fixed_{qi_mode}",
+                    help="기간을 직접 수정하려면 기간 윈도우 설정에서 커스텀을 선택하세요.",
+                )
+            else:
+                qi_c_rng = st.date_input(
+                    "C 기간",
+                    value=[qi_c_s, qi_c_e],
+                    max_value=end_date,
+                    key="qi_c_rng_custom",
+                )
+                if isinstance(qi_c_rng, (list, tuple)) and len(qi_c_rng) == 2:
+                    qi_c_s, qi_c_e = qi_c_rng
+
+        f5, f6 = st.columns([1.3, 3], vertical_alignment="bottom")
+
+        with f5:
+            qi_base_type = st.radio(
+                "데이터 기준 선택",
+                ["라스트 클릭", "누적 기여 D+7"],
+                index=0,
+                horizontal=True,
+                key="qi_base_type",
+            )
+
+        with f6:
+            qi_compare_types = st.multiselect(
+                "비교 지표",
+                ["DIFF(±)", "PCT(%)", "PP(%p)"],
+                default=["PCT(%)"],
+                key="qi_compare_types",
+            )
+
+    if not qi_compare_types:
+        qi_compare_types = ["PCT(%)"]
+
+    qi_selected_metrics = QI_DEFAULT_METRICS
+
+    qi_df_base = df_merged_union if qi_base_type == "누적 기여 D+7" else df_merged
+    qi_df_base = qi_df_base.copy()
+    qi_df_base["event_date"] = pd.to_datetime(qi_df_base["event_date"], errors="coerce")
+
+    qi_min_s = min(pd.to_datetime(qi_a_s), pd.to_datetime(qi_b_s), pd.to_datetime(qi_c_s))
+    qi_max_e = max(pd.to_datetime(qi_a_e), pd.to_datetime(qi_b_e), pd.to_datetime(qi_c_e))
+
+    qi_df_base = qi_df_base[
+        (qi_df_base["event_date"] >= qi_min_s)
+        & (qi_df_base["event_date"] <= qi_max_e)
+    ]
+
+    with st.expander("기본 Filter", expanded=False):
+        qi_pivot_cols = st.multiselect(
+            "행 필드 선택 (피벗 기준)",
+            options=QI_DIM_OPTIONS,
+            default=[],
+            format_func=lambda x: HEADER_MAP.get(x, x),
+            key="qi_pivot_cols",
+        )
+
+        ft1, ft2, ft3, ft4, ft5, ft6, ft7 = st.columns(7)
+        with ft1:
+            qi_df_base = _qi_apply_filter(qi_df_base, "media_name", key_prefix="qi_basic")
+        with ft2:
+            qi_df_base = _qi_apply_filter(qi_df_base, "media_name_type", key_prefix="qi_basic")
+        with ft3:
+            qi_df_base = _qi_apply_filter(qi_df_base, "utm_source", key_prefix="qi_basic")
+        with ft4:
+            qi_df_base = _qi_apply_filter(qi_df_base, "utm_medium", key_prefix="qi_basic")
+        with ft5:
+            qi_df_base = _qi_apply_filter(qi_df_base, "brand_type", key_prefix="qi_basic")
+        with ft6:
+            qi_df_base = _qi_apply_filter(qi_df_base, "funnel_type", key_prefix="qi_basic")
+        with ft7:
+            qi_df_base = _qi_apply_filter(qi_df_base, "product_type", key_prefix="qi_basic")
+
+    with st.expander("고급 Filter", expanded=False):
+        ft7, ft8, ft9, ft10 = st.columns([2, 1, 2, 1])
+        with ft7:
+            qi_df_base = _qi_apply_filter(qi_df_base, "campaign_name", text_filter=False, key_prefix="qi_adv")
+        with ft8:
+            qi_df_base = _qi_apply_filter(qi_df_base, "campaign_name", text_filter=True, key_prefix="qi_adv")
+        with ft9:
+            qi_df_base = _qi_apply_filter(qi_df_base, "adgroup_name", text_filter=False, key_prefix="qi_adv")
+        with ft10:
+            qi_df_base = _qi_apply_filter(qi_df_base, "adgroup_name", text_filter=True, key_prefix="qi_adv")
+
+        ft11, ft12, ft13, ft14 = st.columns([2, 1, 2, 1])
+        with ft11:
+            qi_df_base = _qi_apply_filter(qi_df_base, "ad_name", text_filter=False, key_prefix="qi_adv")
+        with ft12:
+            qi_df_base = _qi_apply_filter(qi_df_base, "ad_name", text_filter=True, key_prefix="qi_adv")
+        with ft13:
+            qi_df_base = _qi_apply_filter(qi_df_base, "keyword_name", text_filter=False, key_prefix="qi_adv")
+        with ft14:
+            qi_df_base = _qi_apply_filter(qi_df_base, "keyword_name", text_filter=True, key_prefix="qi_adv")
+
+        ft15, ft16, ft17, ft18 = st.columns([2, 1, 2, 1])
+        with ft15:
+            qi_df_base = _qi_apply_filter(qi_df_base, "utm_content", text_filter=False, key_prefix="qi_adv")
+        with ft16:
+            qi_df_base = _qi_apply_filter(qi_df_base, "utm_content", text_filter=True, key_prefix="qi_adv")
+        with ft17:
+            qi_df_base = _qi_apply_filter(qi_df_base, "utm_term", text_filter=False, key_prefix="qi_adv")
+        with ft18:
+            qi_df_base = _qi_apply_filter(qi_df_base, "utm_term", text_filter=True, key_prefix="qi_adv")
+
+    qi_df_a = qi_df_base[
+        (qi_df_base["event_date"] >= pd.to_datetime(qi_a_s))
+        & (qi_df_base["event_date"] <= pd.to_datetime(qi_a_e))
+    ]
+
+    qi_df_b = qi_df_base[
+        (qi_df_base["event_date"] >= pd.to_datetime(qi_b_s))
+        & (qi_df_base["event_date"] <= pd.to_datetime(qi_b_e))
+    ]
+
+    qi_df_c = qi_df_base[
+        (qi_df_base["event_date"] >= pd.to_datetime(qi_c_s))
+        & (qi_df_base["event_date"] <= pd.to_datetime(qi_c_e))
+    ]
+
+    if qi_df_a.empty or qi_df_b.empty:
+        st.warning("A 또는 B 기간에 해당하는 데이터가 없습니다. 좌측 Filter > 기간 선택에서 날짜를 늘려주세요.")
+    else:
+        qi_group_keys = qi_pivot_cols.copy()
+
+        if not qi_group_keys:
+            qi_df_a = qi_df_a.assign(_qi_total="전체")
+            qi_df_b = qi_df_b.assign(_qi_total="전체")
+            qi_group_keys = ["_qi_total"]
+
+        qi_tbl_ab = _qi_build_compare_table(
+            df_a=qi_df_a,
+            df_comp=qi_df_b,
+            keys=qi_group_keys,
+            compare_types=qi_compare_types,
+            selected_metrics=qi_selected_metrics,
+            comp_label="B",
+        )
+
+        st.markdown("###### 📊 Summary (A vs B)")
+        qi_export_ab = _qi_render_compare_table(qi_tbl_ab, qi_group_keys)
+
+        st.download_button(
+            label="A vs B 표 엑셀 다운로드",
+            data=excel_bytes(qi_export_ab),
+            file_name=f"Orange_Perf_Report_Quick_AvsB_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            icon="💾",
+            key="qi_excel_download_ab",
+        )
+
+    if qi_df_a.empty or qi_df_c.empty:
+        st.warning("A 또는 C 기간에 해당하는 데이터가 없습니다. 좌측 Filter > 기간 선택에서 날짜를 늘려주세요.")
+    else:
+        qi_group_keys_c = qi_pivot_cols.copy()
+
+        if not qi_group_keys_c:
+            qi_df_a_c = qi_df_a.assign(_qi_total="전체")
+            qi_df_c = qi_df_c.assign(_qi_total="전체")
+            qi_group_keys_c = ["_qi_total"]
+        else:
+            qi_df_a_c = qi_df_a
+
+        qi_tbl_ac = _qi_build_compare_table(
+            df_a=qi_df_a_c,
+            df_comp=qi_df_c,
+            keys=qi_group_keys_c,
+            compare_types=qi_compare_types,
+            selected_metrics=qi_selected_metrics,
+            comp_label="C",
+        )
+
+        st.markdown("###### 📊 Summary (A vs C)")
+        qi_export_ac = _qi_render_compare_table(qi_tbl_ac, qi_group_keys_c)
+
+        st.download_button(
+            label="A vs C 표 엑셀 다운로드",
+            data=excel_bytes(qi_export_ac),
+            file_name=f"Orange_Perf_Report_Quick_AvsC_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            icon="💾",
+            key="qi_excel_download_ac",
+        )
+
 
 
     # ──────────────────────────────────
@@ -1087,13 +1677,6 @@ def main():
 
     st.markdown(" ")
 
-    pivot_cols = st.multiselect(
-        "행 필드 선택 ㅤ(*기간별 합계 보기 선택시, 날짜는 자동으로 제외됩니다.)",
-        options=list(HEADER_MAP.keys()),
-        default=["event_date"],
-        format_func=lambda x: HEADER_MAP.get(x, x),
-    )
-
     # 기간별 합계 보기 모드라면 event_date 필드는 무시 
     if show_totals and "event_date" in pivot_cols:
         pivot_cols.remove("event_date")
@@ -1104,7 +1687,15 @@ def main():
 
 
     # 필터
-    with st.expander("기본 Filter", expanded=False):
+    with st.expander("기본 Filter", expanded=True):
+        pivot_cols = st.multiselect(
+            "행 필드 선택 (피벗 기준)",
+            options=list(HEADER_MAP.keys()),
+            default=["event_date"],
+            format_func=lambda x: HEADER_MAP.get(x, x),
+            help = "좌측 Filter > 기간 선택 > 기간별 합계 보기 선택시, 날짜는 자동으로 제외됩니다.",
+        )
+
         ft1, ft2, ft3, ft4, ft5, ft6, ft7 = st.columns(7)
         with ft1:
             df_filtered, df_filtered_cmp = apply_regex_filter(df_filtered, df_filtered_cmp, "media_name", text_filter=False)
@@ -1445,7 +2036,7 @@ def main():
         st.download_button(
             label="상기 표 엑셀 다운로드",
             data=excel_bytes(df_export),
-            file_name=f"ORANGE_Perf_Report_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            file_name=f"Orange_Perf_Report_LastClick_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             icon="💾",
         )
@@ -1480,7 +2071,7 @@ def main():
         st.download_button(
             label="상기 표 엑셀 다운로드",
             data=excel_bytes(df_export_u),
-            file_name=f"ORANGE_Perf_Report_union_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            file_name=f"Orange_Perf_Report_CumAtrib_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             icon="💾",
         )
