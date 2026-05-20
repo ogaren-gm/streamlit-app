@@ -1326,7 +1326,7 @@ def main():
         out.columns = pd.MultiIndex.from_tuples(cols, names=["그룹", "지표"])
         return out
 
-    def _qi_render_compare_table(df: pd.DataFrame, keys: list[str], height: int = 200) -> pd.DataFrame:
+    def _qi_render_compare_table(df: pd.DataFrame, keys: list[str], height: int = 500) -> pd.DataFrame:
         show = _qi_make_multi_columns(df, keys)
 
         decimals_map = {}
