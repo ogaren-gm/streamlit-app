@@ -179,7 +179,7 @@ def _build_long_df2(df2: pd.DataFrame) -> pd.DataFrame:
 
 def get_funnel_long_df(df1: pd.DataFrame, df2: pd.DataFrame, sel_mode: str) -> pd.DataFrame:
     df2_tmp = df2.copy()
-    if sel_mode == "취소 제외":
+    if sel_mode == "취소 반영":
         if "rescancel_cnt" in df2_tmp.columns:
             df2_tmp["res_cnt"] = (df2_tmp["res_cnt"] - df2_tmp["rescancel_cnt"]).clip(lower=0)
         if "bookcancel_cnt" in df2_tmp.columns:
@@ -1545,7 +1545,7 @@ def main():
         f1, f2, _p, f3 = st.columns([2, 2, 0.1, 2], vertical_alignment="bottom")
         with f1: date_default = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="daily_dd")
         with f2: sel_chart = st.selectbox("그래프 선택", ["방문수 추이 (예약 & 워크인)", "방문수 비중 (예약 vs 워크인)", "노쇼 추이 (예약이용 中 예약)", "조회 및 예약 추이 (조회수 中 예약신청)"], key="daily_cv")
-        with f3: sel_mode = st.radio("예약 집계 선택", ["취소 제외", "취소 포함"], horizontal=True, key="daily_sm")
+        with f3: sel_mode = st.radio("예약 집계 선택", ["취소 반영", "취소 미반영"], horizontal=True, key="daily_sm")
 
     def_s, def_e = get_safe_dates(date_default, _def_s, _def_e)
     df_total = get_funnel_long_df(df1, df2, sel_mode)
@@ -1564,7 +1564,7 @@ def main():
     with st.expander("공통 Filter", expanded=True):
         nf1, _p, nf2 = st.columns([2, 0.1, 4], vertical_alignment="bottom")
         with nf1: date_default_new = st.date_input("기간 선택", value=[_def_s, _def_e], min_value=_min_d, max_value=_max_d, key="funnel_dd")
-        with nf2: sel_mode_new = st.radio("예약 집계 선택", ["취소 제외", "취소 포함"], horizontal=True, key="funnel_sm")
+        with nf2: sel_mode_new = st.radio("예약 집계 선택", ["취소 반영", "취소 미반영"], horizontal=True, key="funnel_sm")
 
     def_s_new, def_e_new = get_safe_dates(date_default_new, _def_s, _def_e)
     df_funnel = get_funnel_long_df(df1, df2, sel_mode_new)
@@ -1583,7 +1583,7 @@ def main():
     with st.expander("공통 Filter", expanded=True):
         f1, _p1, f2, f3, _p2 = st.columns([2, 0.1, 1.6, 2, 0.4], vertical_alignment="bottom")
         with f1: date_default_resv = st.date_input("기간 선택", value=[_def_s2, _def_e2], min_value=_min_d, max_value=_max_d, key="resv_dd")
-        with f2: sel_mode_resv = st.radio("예약 집계 선택", ["취소 제외", "취소 포함"], horizontal=True, key="resv_sm")
+        with f2: sel_mode_resv = st.radio("예약 집계 선택", ["취소 반영", "취소 미반영"], horizontal=True, key="resv_sm")
         with f3:
             apply_pred_walkin = st.radio(
                 "예측 워크인 적용",
@@ -1595,7 +1595,7 @@ def main():
 
     # 데이터 전처리
     df2_resv_tmp, df3_resv_tmp = df2.copy(), df3.copy()
-    if sel_mode_resv == "취소 제외":
+    if sel_mode_resv == "취소 반영":
         if "rescancel_cnt" in df2_resv_tmp.columns:
             df2_resv_tmp["res_cnt"] = (df2_resv_tmp["res_cnt"] - df2_resv_tmp["rescancel_cnt"]).clip(lower=0)
         df3_resv_tmp = df3_resv_tmp[df3_resv_tmp["bookingStatusCode"].isin(["RC03", "RC08"])]
