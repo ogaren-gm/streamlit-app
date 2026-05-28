@@ -1677,13 +1677,13 @@ def main():
 
     st.markdown(" ")
 
-    # 기간별 합계 보기 모드라면 event_date 필드는 무시 
-    if show_totals and "event_date" in pivot_cols:
-        pivot_cols.remove("event_date")
-    if show_totals and "event_date2" in pivot_cols:
-        pivot_cols.remove("event_date2")
-    if show_totals and "event_date3" in pivot_cols:
-        pivot_cols.remove("event_date3")
+    # # 기간별 합계 보기 모드라면 event_date 필드는 무시 
+    # if show_totals and "event_date" in pivot_cols:
+    #     pivot_cols.remove("event_date")
+    # if show_totals and "event_date2" in pivot_cols:
+    #     pivot_cols.remove("event_date2")
+    # if show_totals and "event_date3" in pivot_cols:
+    #     pivot_cols.remove("event_date3")
 
 
     # 필터
@@ -1695,6 +1695,12 @@ def main():
             format_func=lambda x: HEADER_MAP.get(x, x),
             help = "좌측 Filter > 기간 선택 > 기간별 합계 보기 선택시, 날짜는 자동으로 제외됩니다.",
         )
+
+        if show_totals:
+            pivot_cols = [
+                c for c in pivot_cols
+                if c not in ["event_date", "event_date2", "event_date3"]
+            ]
 
         ft1, ft2, ft3, ft4, ft5, ft6, ft7 = st.columns(7)
         with ft1:
