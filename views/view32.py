@@ -504,327 +504,6 @@ def main():
                 )
     st.markdown(" ")
 
-
-    # # ──────────────────────────────────
-    # # 2) 검색량 추이 
-    # # ──────────────────────────────────
-    # st.header(" ")
-    # st.markdown("<h5 style='margin:0'>검색량 추이</h5>", unsafe_allow_html=True)
-    # st.markdown(":gray-badge[:material/Info: Info]ㅤ키워드 유형, 개별 키워드, 연령대별 검색량의 변화를 확인합니다.", unsafe_allow_html=True)
-
-    # def _norm_date_range(rng):
-    #     if isinstance(rng, (list, tuple)) and len(rng) == 2:
-    #         s_day, e_day = rng[0], rng[1]
-    #     else:
-    #         s_day, e_day = _def_s, _def_e
-    #     return (e_day, s_day) if s_day > e_day else (s_day, e_day)
-
-    # def _build_series(d: pd.DataFrame, view: str, gran: str):
-    #     mode_label = "일별" if gran == "일" else "주별"
-    #     w_age = ui.add_period_columns(d, "날짜", mode_label)
-    #     w_kw = ui.add_period_columns(_kw_total_base(d), "날짜", mode_label)
-
-    #     dt_lbl = (
-    #         w_age[["_period_dt", "_period"]]
-    #         .assign(_period_dt=lambda x: pd.to_datetime(x["_period_dt"], errors="coerce"))
-    #         .dropna(subset=["_period_dt"])
-    #         .drop_duplicates(subset=["_period"])
-    #         .sort_values("_period_dt")
-    #         .reset_index(drop=True)
-    #     )
-
-    #     if view == "키워드유형별":
-    #         g = (
-    #             w_kw.groupby(["_period_dt", "키워드유형"], as_index=False)
-    #             .agg(val=("kw_total", "sum"))
-    #         )
-    #         dim_col = "키워드유형"
-    #     elif view == "연령대별":
-    #         g = (
-    #             w_age.groupby(["_period_dt", "age_info"], as_index=False)
-    #             .agg(val=("abs_age", "sum"))
-    #         )
-    #         dim_col = "age_info"
-    #     else:
-    #         g = (
-    #             w_kw.groupby(["_period_dt", "키워드"], as_index=False)
-    #             .agg(val=("kw_total", "sum"))
-    #         )
-    #         dim_col = "키워드"
-
-    #     g["_period_dt"] = pd.to_datetime(g["_period_dt"], errors="coerce")
-    #     g = g.dropna(subset=["_period_dt"])
-
-    #     return dt_lbl, g, dim_col, mode_label
-
-    # def _resolve_dims(g: pd.DataFrame, dim_col: str, view: str):
-    #     if view == "연령대별":
-    #         return [a for a in AGE_ORDER if a in g[dim_col].astype(str).unique().tolist()]
-    #     return (
-    #         g.groupby(dim_col)["val"].sum()
-    #         .sort_values(ascending=False)
-    #         .index.astype(str).tolist()
-    #     )
-
-    # def _build_matrix(g: pd.DataFrame, dim_col: str, x_dt, scale: str):
-    #     if scale == "백분율":
-    #         denom = g.groupby("_period_dt", dropna=False)["val"].transform("sum")
-    #         g2 = g.copy()
-    #         g2["val"] = np.where(denom > 0, g2["val"] / denom, 0.0).astype(float)
-    #     else:
-    #         g2 = g.copy()
-    #         g2["val"] = pd.to_numeric(g2["val"], errors="coerce").fillna(0)
-
-    #     mat = (
-    #         g2.pivot_table(index="_period_dt", columns=dim_col, values="val", aggfunc="sum", fill_value=0)
-    #         .reindex(x_dt, fill_value=0)
-    #     )
-    #     return mat
-
-    # def _render_chart(mat, dims, x_dt, tick_text, date_fmt, chart, scale, mode_label, key_tag):
-    #     fig = go.Figure()
-    #     palette = px.colors.qualitative.Pastel
-    #     c_map = {k: palette[i % len(palette)] for i, k in enumerate(dims)}
-
-    #     if chart == "누적막대":
-    #         for k in dims:
-    #             s = mat[str(k)] if str(k) in mat.columns else pd.Series([0] * len(x_dt), index=x_dt)
-    #             fig.add_bar(
-    #                 x=x_dt,
-    #                 y=s.values,
-    #                 name=str(k),
-    #                 marker_color=c_map[k],
-    #                 opacity=0.8,
-    #                 hovertemplate=f"{k}<br>%{{x|{date_fmt}}}<br>"
-    #                               + ("%{y:.1%}" if scale == "백분율" else "%{y:,.0f}")
-    #                               + "<extra></extra>",
-    #             )
-    #         fig.update_layout(barmode="relative")
-    #     else:
-    #         for k in dims:
-    #             s = mat[str(k)] if str(k) in mat.columns else pd.Series([0] * len(x_dt), index=x_dt)
-    #             fig.add_trace(go.Scatter(
-    #                 x=x_dt,
-    #                 y=s.values,
-    #                 mode="lines+markers",
-    #                 name=str(k),
-    #                 marker=dict(size=4),
-    #                 marker_color=c_map[k],
-    #                 hovertemplate=f"{k}<br>%{{x|{date_fmt}}}<br>"
-    #                               + ("%{y:.1%}" if scale == "백분율" else "%{y:,.0f}")
-    #                               + "<extra></extra>",
-    #             ))
-
-    #     if mode_label == "일별":
-    #         ui.add_weekend_shading(fig, x_dt)
-
-    #     fig.update_xaxes(
-    #         type="date",
-    #         tickmode="array",
-    #         tickvals=x_dt,
-    #         ticktext=tick_text,
-    #     )
-    #     if scale == "백분율":
-    #         fig.update_yaxes(tickformat=".0%")
-
-    #     fig.update_layout(
-    #         height=300,
-    #         margin=dict(l=10, r=10, t=10, b=10),
-    #         legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom", title=None),
-    #     )
-    #     st.plotly_chart(fig, use_container_width=True, key=f"fig_{key_tag}")
-
-    # def _render_table(mat, dt_lbl, tick_text, scale):
-    #     pt = mat.T
-    #     col_map = dt_lbl.set_index("_period_dt")["_period"].to_dict()
-    #     pt = pt.rename(columns=col_map)
-    #     pt = pt[[c for c in tick_text if c in pt.columns]]
-
-    #     if scale == "백분율":
-    #         pt = np.round(pt.astype(float) * 100, 1)
-    #         st.dataframe(pt.style.format("{:.1f}%"), row_height=30, use_container_width=True)
-    #     else:
-    #         pt = np.round(pt.astype(float)).astype(int)
-    #         st.dataframe(pt, row_height=30, use_container_width=True)
-
-    # def _render_block(
-    #     d0: pd.DataFrame,
-    #     tab_key: str,
-    #     fixed_types: list[str] | None,
-    #     s_day,
-    #     e_day,
-    #     gran: str,
-    #     chart: str,
-    #     scale: str,
-    #     allow_type_view: bool,
-    # ):
-    #     tk = _clean_key(tab_key)
-
-    #     d = d0[(d0["날짜"] >= pd.to_datetime(s_day)) & (d0["날짜"] <= pd.to_datetime(e_day))]
-    #     if fixed_types is not None:
-    #         d = d[d["키워드유형"].astype(str).isin([str(x) for x in fixed_types])]
-
-    #     if d.empty:
-    #         st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
-    #         return
-
-    #     # ---------- Filter
-    #     with st.expander("탭별 Filter", expanded=False):
-    #         f1, f2 = st.columns([2, 3], vertical_alignment="bottom")
-            
-    #         with f1:
-    #             if allow_type_view:
-    #                 view = st.selectbox(
-    #                     "보기 선택",
-    #                     ["키워드유형별", "연령대별", "키워드별"],
-    #                     index=0,
-    #                     key=f"v_{tk}",
-    #                 )
-    #             else:
-    #                 view = st.selectbox(
-    #                     "보기 선택",
-    #                     ["연령대별", "키워드별"],
-    #                     index=0,
-    #                     key=f"v_{tk}",
-    #                 )
-    #         with f2:
-    #             a_all = [a for a in AGE_ORDER if a in d["age_info"].astype(str).unique().tolist()]
-    #             a_sel = st.multiselect("연령대 선택", options=a_all, default=a_all, key=f"a_{tk}")
-
-    #         k_all = sorted(d["키워드"].astype(str).dropna().unique().tolist())
-    #         use_custom_kw = st.checkbox(
-    #             f"키워드 개별 선택 (전체 {len(k_all)}개 중)",
-    #             value=False,
-    #             key=f"k_toggle_{tk}"
-    #         )
-    #         if use_custom_kw:
-    #             k_sel = st.multiselect(
-    #                 "키워드 선택",
-    #                 options=k_all,
-    #                 default=k_all,
-    #                 key=f"k_{tk}"
-    #             )
-    #         else:
-    #             k_sel = k_all
-
-    #     d = d[
-    #         (d["age_info"].astype(str).isin([str(x) for x in a_sel])) &
-    #         (d["키워드"].astype(str).isin([str(x) for x in k_sel]))
-    #     ]
-
-    #     if d.empty:
-    #         st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
-    #         return
-
-    #     dt_lbl, g, dim_col, mode_label = _build_series(d, view, gran)
-
-    #     if dt_lbl.empty:
-    #         st.warning("선택된 조건에 해당하는 데이터가 없습니다.")
-    #         return
-
-    #     x_dt = pd.to_datetime(dt_lbl["_period_dt"], errors="coerce")
-    #     tick_text = dt_lbl["_period"].astype(str).tolist()
-    #     date_fmt = "%Y-%m-%d"
-    #     dims = _resolve_dims(g, dim_col, view)
-    #     mat = _build_matrix(g, dim_col, x_dt, scale)
-
-    #     _render_chart(mat, dims, x_dt, tick_text, date_fmt, chart, scale, mode_label, tk)
-    #     _render_table(mat, dt_lbl, tick_text, scale)
-
-    # # ---------- 공통 Filter
-    # with st.expander("공통 Filter", expanded=True):
-    #     c1, c2, c3, c4 = st.columns([2,1,1,1], vertical_alignment="bottom")
-    #     # ✅ 기간 선택
-    #     with c1:
-    #         rng = st.date_input(
-    #             "기간 선택",
-    #             value=[_def_s, _def_e],
-    #             min_value=_min_d,
-    #             max_value=_max_d,
-    #             key="rng_common_trend",
-    #         )
-    #         s_day, e_day = _norm_date_range(rng)
-
-    #     # ✅ 집계 단위
-    #     with c2:
-    #         gran = st.radio("집계 단위", ["일", "주"], horizontal=True, index=0, key="g_common_trend")
-
-    #     # ✅ 그래프
-    #     with c3:
-    #         chart = st.radio("그래프", ["꺾은선", "누적막대"], horizontal=True, index=0, key="c_common_trend")
-
-    #     # ✅ 스케일
-    #     with c4:
-    #         scale = st.radio("스케일", ["절대값", "백분율"], horizontal=True, index=0, key="sc_common_trend")
-
-    # # ---- Tabs: 전체 + 대분류(바깥) / 소분류(안쪽)
-    # outer_tabs = st.tabs(outer_names)
-
-    # for ot, maj in zip(outer_tabs, outer_names):
-    #     with ot:
-    #         if maj == "전체":
-    #             _render_block(
-    #                 df,
-    #                 tab_key="all",
-    #                 fixed_types=None,
-    #                 s_day=s_day,
-    #                 e_day=e_day,
-    #                 gran=gran,
-    #                 chart=chart,
-    #                 scale=scale,
-    #                 allow_type_view=True,
-    #             )
-    #             continue
-
-    #         plain = sorted(list(major_map[maj]["plain"]))
-    #         subs_full = sorted(list(major_map[maj]["subs"]))
-    #         all_types = plain + subs_full
-
-    #         if len(subs_full) == 0:
-    #             _render_block(
-    #                 df,
-    #                 tab_key=f"maj_{maj}",
-    #                 fixed_types=all_types,
-    #                 s_day=s_day,
-    #                 e_day=e_day,
-    #                 gran=gran,
-    #                 chart=chart,
-    #                 scale=scale,
-    #                 allow_type_view=False,
-    #             )
-    #             continue
-
-    #         inner_labels = ["전체"] + [t.split("_", 1)[1] for t in subs_full]
-    #         inner_tabs = st.tabs(inner_labels)
-
-    #         for it, sub_lbl in zip(inner_tabs, inner_labels):
-    #             with it:
-    #                 if sub_lbl == "전체":
-    #                     _render_block(
-    #                         df,
-    #                         tab_key=f"maj_{maj}_all",
-    #                         fixed_types=all_types,
-    #                         s_day=s_day,
-    #                         e_day=e_day,
-    #                         gran=gran,
-    #                         chart=chart,
-    #                         scale=scale,
-    #                         allow_type_view=False,
-    #                     )
-    #                 else:
-    #                     full_type = f"{maj}_{sub_lbl}"
-    #                     _render_block(
-    #                         df,
-    #                         tab_key=f"maj_{maj}_sub_{sub_lbl}",
-    #                         fixed_types=[full_type],
-    #                         s_day=s_day,
-    #                         e_day=e_day,
-    #                         gran=gran,
-    #                         chart=chart,
-    #                         scale=scale,
-    #                         allow_type_view=False,
-    #                     )
-
     # ──────────────────────────────────
     # 2) 검색량 추이 
     # ──────────────────────────────────
@@ -1007,8 +686,23 @@ def main():
             return
 
         # ---------- Filter
+        # with st.expander("탭별 Filter", expanded=False):
+        #     f1, f2 = st.columns([2, 3], vertical_alignment="bottom")
+
+        #     with f1:
+        #         view = st.selectbox(
+        #             "보기 선택",
+        #             view_options,
+        #             index=0,
+        #             key=f"v_{tk}",
+        #         )
+
+        #     with f2:
+        #         a_all = [a for a in AGE_ORDER if a in d["age_info"].astype(str).unique().tolist()]
+        #         a_sel = st.multiselect("연령대 선택", options=a_all, default=a_all, key=f"a_{tk}")
+
         with st.expander("탭별 Filter", expanded=False):
-            f1, f2 = st.columns([2, 3], vertical_alignment="bottom")
+            f1, f2, f3 = st.columns([1.4, 3.6, 3], vertical_alignment="bottom")
 
             with f1:
                 view = st.selectbox(
@@ -1021,6 +715,15 @@ def main():
             with f2:
                 a_all = [a for a in AGE_ORDER if a in d["age_info"].astype(str).unique().tolist()]
                 a_sel = st.multiselect("연령대 선택", options=a_all, default=a_all, key=f"a_{tk}")
+
+            type_sel = None
+            if tk == "all" and view in ["키워드유형별(대분류)", "키워드유형별(소분류)"]:
+                with f3:
+                    t_all = sorted(d["키워드유형"].astype(str).apply(_get_major_type).dropna().unique().tolist())
+                    t_default = t_all if view == "키워드유형별(대분류)" else [x for x in ["경쟁사", "자사명"] if x in t_all]
+                    type_sel = st.multiselect("키워드 유형", options=t_all, default=t_default, key=f"t_{tk}_{_clean_key(view)}")
+
+
 
             k_all = sorted(d["키워드"].astype(str).dropna().unique().tolist())
             use_custom_kw = st.checkbox(
@@ -1038,10 +741,20 @@ def main():
             else:
                 k_sel = k_all
 
+        # d = d[
+        #     (d["age_info"].astype(str).isin([str(x) for x in a_sel])) &
+        #     (d["키워드"].astype(str).isin([str(x) for x in k_sel]))
+        # ]
+
+
         d = d[
             (d["age_info"].astype(str).isin([str(x) for x in a_sel])) &
             (d["키워드"].astype(str).isin([str(x) for x in k_sel]))
         ]
+
+        if type_sel is not None:
+            d = d[d["키워드유형"].astype(str).apply(_get_major_type).isin([str(x) for x in type_sel])]
+
 
         if d.empty:
             st.warning("선택된 조건에 해당하는 데이터가 없습니다.")

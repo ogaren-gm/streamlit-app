@@ -87,7 +87,7 @@ MEDIA_TYPE_MAP = {
     "CONTENTS_AD_INFORMATION": "파워컨텐츠",
     
     "BRAND_SEARCH_AD"        : "브랜드검색",
-    "BRAND_SEARCH_NEW_AD"    : "브랜드 검색",
+    "BRAND_SEARCH_NEW_AD"    : "브랜드검색",
     
     "PLACE_AD"               : "플레이스", 
     "LOCAL_AD"               : "플레이스",

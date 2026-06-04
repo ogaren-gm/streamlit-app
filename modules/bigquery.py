@@ -152,7 +152,7 @@ class BigQuery():
         table     = client.get_table(table_ref)
 
         # Storage API 로우 단위 스트리밍
-        print("Fetching rows via Storage API...")
+        print("[Alert] Fetching rows via Storage API...")
         rows = client.list_rows(
             table,
             start_index=0,
@@ -200,7 +200,7 @@ class BigQuery():
         except:
             pass
         
-        print('호출완료!')
+        print('[Success] BigQuery Called.')
         return df
 
     def get_max_date(self, tb_name, date_col="event_date"):
@@ -267,6 +267,6 @@ class BigQuery():
             job_config   = job_config,
             # create_bqstorage_client=self._bqstorage  # 필요시
         )
-        print(f"Appending to `{table}` ... job {load_job.job_id} started.")
+        print(f"[Alert] Appending to `{table}` ... job {load_job.job_id} started.")
         load_job.result()  # 완료 대기
-        print(f"Loaded {load_job.output_rows} rows into {table}.")
+        print(f"[Success] Loaded {load_job.output_rows} rows into {table}.")
