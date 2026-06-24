@@ -13,6 +13,7 @@
         "raw_geo_city_kr" : "tb_sleeper.raw_geo_city_kr",
         "tb_max" : "tb_sleeper.tb_max",
         "tb_naver_smartblock" : "tb_sleeper.tb_naver_smartblock",
+        "tb_sleeper_utmSessionActionDaily" : "tb_sleeper.tb_sleeper_utmSessionActionDaily",
         "test" : "tb_sleeper.test"
     }
 }

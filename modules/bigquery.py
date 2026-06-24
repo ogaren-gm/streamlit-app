@@ -59,6 +59,7 @@ class BigQuery():
         self.tb_max             = json_data[self.projectCode]['tb_max']
         self.tb_naver_smartblock  = json_data[self.projectCode]['tb_naver_smartblock']
         self.test  = json_data[self.projectCode]['test']
+        self.tb_sleeper_utmSessionActionDaily  = json_data[self.projectCode]['tb_sleeper_utmSessionActionDaily']
 
 
         try:
